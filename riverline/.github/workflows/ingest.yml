@@ -1,0 +1,47 @@
+name: ingest
+
+# RiverLine ingestion cron — refreshes data from USGS/NWPS/SNOTEL/NWS,
+# then pushes current.json to CF KV and today's CFS to CF D1.
+# No git commits — Cloudflare is the source of truth for live data.
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: ingest
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run ingestion pipeline
+        run: python -m src.ingest.pipeline
+
+      - name: Push to Cloudflare KV + D1
+        run: python -m src.ingest.push_cf
+        env:
+          CF_ACCOUNT_ID: 3b134bb7dc7ac46e5a2ffe71302f8d69
+          CF_KV_NS_ID: 30fc2c20314c4e98bad40e12e7632167
+          CF_D1_DB_ID: 1792601d-cf3f-4647-a739-8ac06e80f5a0
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}

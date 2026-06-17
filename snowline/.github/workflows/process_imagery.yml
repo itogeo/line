@@ -1,0 +1,144 @@
+name: Process Imagery
+
+# Manual workflow to process Sentinel-2 imagery for specific date(s).
+#
+# Why separate from daily.yml?
+#   Imagery processing is slow (~1-3 min per tile × 8-15 tiles = 15-30 min
+#   per date) and network-dependent (S3 reads from Element84). A single
+#   failed tile fetch can hang the whole job. We don't want this fragility
+#   blocking the daily metadata refresh.
+#
+# How to run:
+#   1. Go to Actions → Process Imagery → Run workflow
+#   2. Optional: enter a date (YYYY-MM-DD) to process just that date
+#   3. Leave date blank to process EVERY unprocessed S2 pass from the
+#      last 10 days listed in sat_availability.json
+#
+# Each date is processed in its own job step so a failure on one doesn't
+# kill the rest.
+
+on:
+  schedule:
+    - cron: '0 13 * * *'  # 1pm UTC / 7am MT — after daily.yml (11am UTC)
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Date to process (YYYY-MM-DD), or blank for all unprocessed in last 10 days"
+        required: false
+        default: ""
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90  # generous — multiple dates can stack up
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r pipeline/requirements.txt
+
+      - name: Build candidate list
+        id: candidates
+        run: |
+          python3 << 'PYEOF'
+          import json, os
+          from pathlib import Path
+          from datetime import datetime, timedelta
+
+          input_date = "${{ github.event.inputs.date }}".strip()
+          out = []
+
+          if input_date:
+              # Single explicit date
+              out = [input_date]
+              print(f"Single date requested: {input_date}")
+          else:
+              # All unprocessed S2 passes in last 10 days
+              SITE_DATA = Path("site/data")
+              sat = json.load(open(SITE_DATA / "sat_availability.json"))
+              rows = sat["rows"]
+
+              # Frontend timeline reads data_10m/dates.json — use that as the
+              # "already processed" set since per-tile is canonical now.
+              dates_path = Path("site/data_10m/dates.json")
+              existing = set()
+              if dates_path.exists():
+                  existing = set(json.load(open(dates_path)).get("dates", []))
+
+              cutoff = (datetime.utcnow() - timedelta(days=10)).strftime("%Y-%m-%d")
+              for r in rows:
+                  if r["dt"] < cutoff:
+                      break
+                  if r["dt"] in existing:
+                      continue
+                  if r.get("s2n", 0) > 0:
+                      out.append(r["dt"])
+              out.sort()
+              print(f"Found {len(out)} unprocessed dates in last 10 days: {out}")
+
+          # Write the list to a file the next step reads
+          with open("/tmp/dates_to_process.txt", "w") as f:
+              f.write("\n".join(out))
+          PYEOF
+
+      - name: Process each date
+        run: |
+          if [[ ! -s /tmp/dates_to_process.txt ]]; then
+            echo "Nothing to process."
+            exit 0
+          fi
+          while IFS= read -r dt; do
+            [[ -z "$dt" ]] && continue
+            echo ""
+            echo "=========================================="
+            echo "Processing $dt"
+            echo "=========================================="
+            # Two-phase pipeline: fetch_bands.py downloads to cache/, then
+            # process_tiles.py reads cache and writes WebPs. Resumable on
+            # network errors. update_date.sh wraps both phases + cleanup +
+            # R2 upload (when CF_ACCOUNT_ID / CF_R2_TOKEN are set).
+            bash pipeline/update_date.sh "$dt" || echo "FAILED $dt — continuing"
+          done < /tmp/dates_to_process.txt
+        env:
+          GDAL_HTTP_UNSAFESSL: 'YES'
+          CF_ACCOUNT_ID: 3b134bb7dc7ac46e5a2ffe71302f8d69
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+
+      - name: Prune old R2 tiles
+        # Keep snow tiles for last 30 dates, truecolor for last 10.
+        # Tiles are in CF R2 (not git) so pruning deletes R2 objects.
+        # Also strips truecolor_file from snowline.json for pruned dates so
+        # the frontend's View Satellite Imagery button disables itself.
+        run: python pipeline/prune_r2.py --keep-snow 30 --keep-truecolor 10
+        env:
+          CF_ACCOUNT_ID: 3b134bb7dc7ac46e5a2ffe71302f8d69
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+
+      - name: Commit and push
+        # Commit only the lightweight JSON files — WebPs now live in CF R2.
+        # snowline.json: per-date metadata (tiles, cloud%, SNOTEL, etc.)
+        # dates.json: ordered list of all processed dates (drives the timeline)
+        # Per-date snowline.json files are committed when truecolor fields are
+        # stripped by prune_r2.py so the frontend's imagery button updates.
+        run: |
+          git config user.name "snowline-bot"
+          git config user.email "bot@snowline"
+          git add site/data/snowline.json site/data_10m/dates.json
+          git add 'site/data_10m/*/snowline.json' 2>/dev/null || true
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Imagery: $(date -u +%Y-%m-%d) — process new dates"
+            for i in 1 2 3; do
+              git pull --rebase origin main && git push && break
+              echo "Push attempt $i failed, retrying in 10s..."
+              sleep 10
+              git pull --rebase origin main || git rebase --abort
+            done
+          fi

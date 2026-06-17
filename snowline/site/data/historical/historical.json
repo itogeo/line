@@ -1,0 +1,80 @@
+{
+  "bbox": [
+    -112.2,
+    45.0,
+    -110.5,
+    46.2
+  ],
+  "bounds": {
+    "west": -112.2,
+    "south": 45.0,
+    "east": -110.5,
+    "north": 46.2
+  },
+  "years": [
+    2001,
+    2025
+  ],
+  "periods": {
+    "309": {
+      "file": "doy_309.webp",
+      "label": "Nov 04",
+      "month": 11,
+      "day": 4
+    },
+    "314": {
+      "file": "doy_314.webp",
+      "label": "Nov 09",
+      "month": 11,
+      "day": 9
+    },
+    "319": {
+      "file": "doy_319.webp",
+      "label": "Nov 14",
+      "month": 11,
+      "day": 14
+    },
+    "324": {
+      "file": "doy_324.webp",
+      "label": "Nov 19",
+      "month": 11,
+      "day": 19
+    },
+    "329": {
+      "file": "doy_329.webp",
+      "label": "Nov 24",
+      "month": 11,
+      "day": 24
+    },
+    "334": {
+      "file": "doy_334.webp",
+      "label": "Nov 29",
+      "month": 11,
+      "day": 29
+    },
+    "339": {
+      "file": "doy_339.webp",
+      "label": "Dec 04",
+      "month": 12,
+      "day": 4
+    },
+    "344": {
+      "file": "doy_344.webp",
+      "label": "Dec 09",
+      "month": 12,
+      "day": 9
+    },
+    "349": {
+      "file": "doy_349.webp",
+      "label": "Dec 14",
+      "month": 12,
+      "day": 14
+    },
+    "354": {
+      "file": "doy_354.webp",
+      "label": "Dec 19",
+      "month": 12,
+      "day": 19
+    }
+  }
+}

@@ -1,0 +1,117 @@
+name: Snowline — Process Imagery
+
+# Manual workflow to process Sentinel-2 imagery for specific date(s).
+#
+# How to run:
+#   1. Go to Actions → Snowline — Process Imagery → Run workflow
+#   2. Optional: enter a date (YYYY-MM-DD) to process just that date
+#   3. Leave date blank to process EVERY unprocessed S2 pass from the
+#      last 10 days listed in sat_availability.json
+
+on:
+  schedule:
+    - cron: '0 13 * * *'  # 1pm UTC / 7am MT — after daily update (11am UTC)
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Date to process (YYYY-MM-DD), or blank for all unprocessed in last 10 days"
+        required: false
+        default: ""
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r snowline/pipeline/requirements.txt
+
+      - name: Build candidate list
+        id: candidates
+        run: |
+          python3 << 'PYEOF'
+          import json, os
+          from pathlib import Path
+          from datetime import datetime, timedelta
+
+          input_date = "${{ github.event.inputs.date }}".strip()
+          out = []
+
+          if input_date:
+              out = [input_date]
+              print(f"Single date requested: {input_date}")
+          else:
+              SITE_DATA = Path("snowline/site/data")
+              sat = json.load(open(SITE_DATA / "sat_availability.json"))
+              rows = sat["rows"]
+
+              dates_path = Path("snowline/site/data_10m/dates.json")
+              existing = set()
+              if dates_path.exists():
+                  existing = set(json.load(open(dates_path)).get("dates", []))
+
+              cutoff = (datetime.utcnow() - timedelta(days=10)).strftime("%Y-%m-%d")
+              for r in rows:
+                  if r["dt"] < cutoff:
+                      break
+                  if r["dt"] in existing:
+                      continue
+                  if r.get("s2n", 0) > 0:
+                      out.append(r["dt"])
+              out.sort()
+              print(f"Found {len(out)} unprocessed dates in last 10 days: {out}")
+
+          with open("/tmp/dates_to_process.txt", "w") as f:
+              f.write("\n".join(out))
+          PYEOF
+
+      - name: Process each date
+        run: |
+          if [[ ! -s /tmp/dates_to_process.txt ]]; then
+            echo "Nothing to process."
+            exit 0
+          fi
+          while IFS= read -r dt; do
+            [[ -z "$dt" ]] && continue
+            echo ""
+            echo "=========================================="
+            echo "Processing $dt"
+            echo "=========================================="
+            bash snowline/pipeline/update_date.sh "$dt" || echo "FAILED $dt — continuing"
+          done < /tmp/dates_to_process.txt
+        env:
+          GDAL_HTTP_UNSAFESSL: 'YES'
+          CF_ACCOUNT_ID: 3b134bb7dc7ac46e5a2ffe71302f8d69
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+
+      - name: Prune old R2 tiles
+        run: python snowline/pipeline/prune_r2.py --keep-snow 30 --keep-truecolor 10
+        env:
+          CF_ACCOUNT_ID: 3b134bb7dc7ac46e5a2ffe71302f8d69
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+
+      - name: Commit and push
+        run: |
+          git config user.name "snowline-bot"
+          git config user.email "bot@snowline"
+          git add snowline/site/data/snowline.json snowline/site/data_10m/dates.json
+          git add 'snowline/site/data_10m/*/snowline.json' 2>/dev/null || true
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Imagery: $(date -u +%Y-%m-%d) — process new dates"
+            for i in 1 2 3; do
+              git pull --rebase origin main && git push && break
+              echo "Push attempt $i failed, retrying in 10s..."
+              sleep 10
+              git pull --rebase origin main || git rebase --abort
+            done
+          fi

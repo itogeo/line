@@ -1,0 +1,59 @@
+name: Snowline — Daily Update
+
+# Daily metadata refresh ONLY. Fast and reliable.
+#
+# Each morning:
+#   1. Rebuilds sat_availability.json — every Sentinel-2 + Landsat pass over
+#      the AOI is logged so the metadata page always shows full transparency.
+#   2. Refreshes snotel_season.json — full current-season SWE + snow depth
+#      history for every station in the bbox.
+#
+# Imagery processing is in snowline-process-imagery.yml (manual workflow).
+
+on:
+  schedule:
+    - cron: '0 11 * * *'  # 11am UTC daily (5am MT)
+  workflow_dispatch:
+
+jobs:
+  daily:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r snowline/pipeline/requirements.txt
+
+      - name: 1. Rebuild satellite availability table
+        run: python snowline/pipeline/build_sat_availability.py
+        env:
+          GDAL_HTTP_UNSAFESSL: 'YES'
+
+      - name: 2. Refresh SNOTEL season-wide history
+        run: python snowline/pipeline/build_snotel_season.py
+        env:
+          GDAL_HTTP_UNSAFESSL: 'YES'
+
+      - name: 3. Commit and push
+        run: |
+          git config user.name "snowline-bot"
+          git config user.email "bot@snowline"
+          git add snowline/site/data/
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Daily: $(date -u +%Y-%m-%d) — sat_availability + snotel_season"
+            for i in 1 2 3; do
+              git pull --rebase origin main && git push && break
+              echo "Push attempt $i failed, retrying in 10s..."
+              sleep 10
+              git pull --rebase origin main || git rebase --abort
+            done
+          fi

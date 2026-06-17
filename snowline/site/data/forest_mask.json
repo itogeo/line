@@ -1,0 +1,10 @@
+{
+  "bounds": {
+    "west": -112.2,
+    "south": 45.0,
+    "east": -110.5,
+    "north": 46.2
+  },
+  "forest_pct": 26.9,
+  "source": "ESA WorldCover 2021 (10m)"
+}

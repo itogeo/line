@@ -1,0 +1,2960 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Snowline — SW Montana Snow Cover</title>
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.js"></script>
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0b0f1a;
+    --panel: rgba(11, 15, 26, 0.92);
+    --border: rgba(79, 195, 247, 0.10);
+    --accent: #4FC3F7;
+    --accent-dim: rgba(79, 195, 247, 0.08);
+    --text: #e0e4ec;
+    --text-muted: #6b7689;
+    --text-dim: #4a5468;
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'DM Sans', -apple-system, sans-serif;
+    --radius: 10px;
+    --radius-sm: 6px;
+    --nav-h: 44px;
+  }
+
+  body { font-family: var(--sans); background: var(--bg); color: var(--text); }
+
+  /* ── Top Nav ── */
+  .top-nav {
+    height: var(--nav-h);
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center;
+    padding: 0 20px; gap: 10px;
+    position: sticky; top: 0; z-index: 200;
+  }
+  .nav-brand { font-family: var(--mono); font-size: 14px; font-weight: 700; color: var(--accent); letter-spacing: -0.5px; }
+  .nav-sep { color: var(--text-dim); font-size: 12px; }
+  .nav-links { display: flex; gap: 2px; margin-left: 8px; }
+  .nav-links a {
+    font-family: var(--mono); font-size: 10px; font-weight: 600;
+    padding: 4px 10px; border-radius: 4px;
+    text-decoration: none; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.8px;
+    transition: background 0.15s, color 0.15s;
+  }
+  .nav-links a:hover { background: var(--accent-dim); color: var(--accent); }
+  .nav-links a.active { background: rgba(79,195,247,0.12); color: var(--accent); }
+  .nav-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+
+  .map-section { position: relative; width: 100%; height: calc(100vh - var(--nav-h) - 36px); overflow: hidden; }
+  #map { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
+
+  /* Below-map bar */
+  .below-bar { background: var(--panel); border-top: 1px solid var(--border); padding: 8px 24px; display: flex; justify-content: space-between; align-items: center; }
+  .below-bar a { font-family: var(--mono); font-size: 10px; color: var(--accent); text-decoration: none; }
+  .below-bar a:hover { text-decoration: underline; }
+  .below-bar .credit { font-family: var(--mono); font-size: 9px; color: var(--text-dim); }
+
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 20px; }
+  .stat-card { background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+  .stat-card .sv { font-family: var(--mono); font-size: 22px; font-weight: 700; color: var(--accent); }
+  .stat-card .sl { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+
+  .data-table { width: 100%; border-collapse: collapse; font-size: 11px; font-family: var(--mono); }
+  .data-table thead th { text-align: left; padding: 8px; background: rgba(79,195,247,0.06); color: var(--accent); font-size: 9px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid var(--border); cursor: pointer; }
+  .data-table thead th:hover { background: rgba(79,195,247,0.12); }
+  .data-table tbody td { padding: 5px 8px; border-bottom: 1px solid rgba(255,255,255,0.03); }
+  .data-table tbody tr:hover { background: rgba(79,195,247,0.03); }
+  .badge { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 8px; font-weight: 600; }
+  .badge-excellent { background: rgba(38,198,218,0.2); color: #26c6da; }
+  .badge-good { background: rgba(79,195,247,0.15); color: #4FC3F7; }
+  .badge-partial { background: rgba(255,183,77,0.15); color: #FFB74D; }
+  .badge-cloudy { background: rgba(84,110,122,0.2); color: #78909c; }
+  .filter-btn { padding: 4px 10px; border-radius: 4px; cursor: pointer; font-family: var(--mono); font-size: 10px; background: rgba(255,255,255,0.04); color: var(--text-muted); border: 1px solid rgba(255,255,255,0.06); }
+  .filter-btn:hover { background: rgba(79,195,247,0.06); }
+  .filter-btn.active { background: rgba(79,195,247,0.12); color: var(--accent); border-color: rgba(79,195,247,0.2); }
+
+  /* ── Panel ── */
+  .panel {
+    position: absolute; top: 12px; left: 12px;
+    background: var(--panel); backdrop-filter: blur(20px) saturate(1.4);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px 20px 14px; z-index: 10; width: 360px; font-size: 13px;
+    max-height: calc(100vh - 80px); overflow-y: auto;
+    transition: opacity 0.3s, transform 0.3s;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+  }
+  .panel.collapsed { opacity: 0; transform: translateX(-300px); pointer-events: none; }
+
+  .brand { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; }
+  .brand h1 { font-family: var(--mono); font-size: 20px; font-weight: 700; color: var(--accent); letter-spacing: -0.5px; line-height: 1; }
+  .brand .region { font-family: var(--mono); font-size: 9px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+
+  .scene-date-badge {
+    font-family: var(--mono); font-size: 16px; font-weight: 700;
+    color: var(--text); margin: 6px 0 2px; line-height: 1;
+  }
+  .mode-badge {
+    display: inline-block; font-family: var(--mono); font-size: 9px; font-weight: 700;
+    padding: 2px 8px; border-radius: 3px; margin-left: 8px;
+    text-transform: uppercase; letter-spacing: 1px; vertical-align: middle;
+  }
+  .mode-badge.live { background: rgba(38,198,218,0.2); color: #26c6da; border: 1px solid rgba(38,198,218,0.3); }
+  .mode-badge.archive { background: rgba(255,152,0,0.15); color: #FFB74D; border: 1px solid rgba(255,152,0,0.2); }
+  .scene-age {
+    display: inline-block; font-family: var(--mono); font-size: 10px;
+    padding: 2px 7px; border-radius: 3px; margin-left: 6px; font-weight: 500;
+  }
+  .scene-age.fresh { background: rgba(38,198,218,0.15); color: #26c6da; }
+  .scene-age.stale { background: rgba(255,152,0,0.15); color: #FFB74D; }
+  .scene-age.old { background: rgba(239,83,80,0.15); color: #EF5350; }
+
+  /* Archive mode — subtle visual shift */
+  .panel.archive-mode { border-color: rgba(255,152,0,0.15); }
+  .panel.archive-mode .brand h1 { color: #FFB74D; }
+  .timeline.archive-mode { border-top-color: rgba(255,152,0,0.15); }
+  .timeline.archive-mode .tl-date { color: #FFB74D; }
+  .scene-meta { font-family: var(--mono); font-size: 9px; color: var(--text-dim); margin: 3px 0 10px; line-height: 1.5; }
+
+  .card { background: var(--accent-dim); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 8px; }
+  .card h3 { font-family: var(--mono); font-size: 9px; color: var(--accent); text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 5px; opacity: 0.8; }
+
+  .sl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 16px; }
+  .sl-item { display: flex; justify-content: space-between; align-items: baseline; padding: 2px 0; }
+  .sl-dir { font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+  .sl-val { font-family: var(--mono); font-weight: 600; font-size: 13px; color: var(--text); }
+  .sl-val.none { color: var(--text-dim); font-weight: 400; font-size: 11px; }
+
+  .snow-bar-wrap { margin-bottom: 8px; }
+  .snow-bar-label { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 9px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 3px; }
+  .snow-bar-label .pct { font-size: 12px; font-weight: 600; color: var(--accent); letter-spacing: 0; text-transform: none; }
+  .snow-bar { height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; }
+  .snow-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), #81d4fa); border-radius: 2px; transition: width 0.6s ease; }
+
+  /* ── Layer toggles ── */
+  .section-label { font-family: var(--mono); font-size: 9px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1.2px; margin: 10px 0 5px; }
+  .layers { display: flex; flex-direction: column; gap: 1px; }
+  .layer-row { display: flex; align-items: center; gap: 7px; padding: 4px 5px; border-radius: 4px; cursor: pointer; user-select: none; }
+  .layer-row:hover { background: rgba(255,255,255,0.03); }
+  .layer-row input { display: none; }
+  .sw { width: 28px; height: 14px; border-radius: 7px; background: #1c2233; position: relative; transition: background 0.2s; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.06); }
+  .sw::after { content: ''; position: absolute; top: 1.5px; left: 2px; width: 9px; height: 9px; border-radius: 50%; background: #3a4255; transition: all 0.2s; }
+  .layer-row input:checked ~ .sw { background: rgba(79,195,247,0.2); border-color: rgba(79,195,247,0.15); }
+  .layer-row input:checked ~ .sw::after { left: 15px; background: var(--accent); }
+  .layer-label { font-size: 11px; color: var(--text-muted); }
+  .layer-row input:checked ~ .layer-label { color: var(--text); }
+  .layer-swatch { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+
+  .opacity-wrap { margin: 4px 0 2px 35px; display: flex; align-items: center; gap: 7px; }
+  .opacity-wrap.hidden { display: none; }
+  .opacity-wrap label { font-family: var(--mono); font-size: 9px; color: var(--text-dim); min-width: 40px; }
+  input[type="range"] { -webkit-appearance: none; appearance: none; flex: 1; height: 3px; background: rgba(255,255,255,0.08); border-radius: 2px; outline: none; }
+  input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 11px; height: 11px; border-radius: 50%; background: var(--accent); cursor: pointer; border: 2px solid var(--bg); }
+
+  /* ── Elevation chart ── */
+  .elev-chart { display: flex; align-items: flex-end; gap: 2px; height: 60px; margin-top: 4px; }
+  .elev-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; height: 100%; justify-content: flex-end; }
+  .elev-bar {
+    width: 100%; border-radius: 2px 2px 0 0; min-height: 1px;
+    background: var(--accent); opacity: 0.7; transition: height 0.4s ease;
+  }
+  .elev-bar.empty { background: rgba(255,255,255,0.06); opacity: 1; height: 100% !important; }
+  .elev-label { font-family: var(--mono); font-size: 7px; color: var(--text-dim); margin-top: 2px; white-space: nowrap; }
+
+  /* ── Season trend ── */
+  .trend-wrap { margin-top: 4px; }
+  .trend-svg { width: 100%; height: 70px; }
+  .trend-line { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  .trend-area { fill: var(--accent-dim); }
+  .trend-dot { fill: var(--accent); }
+  .trend-label-row { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 7px; color: var(--text-dim); margin-top: 1px; }
+
+  /* ── Cursor info bar ── */
+  .cursor-info {
+    position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%);
+    background: var(--panel); backdrop-filter: blur(16px);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 4px 12px; z-index: 10;
+    font-family: var(--mono); font-size: 10px; color: var(--text-muted);
+    white-space: nowrap; pointer-events: none;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    transition: opacity 0.15s;
+  }
+  .cursor-info .elev { color: var(--text); font-weight: 600; }
+  .cursor-info .coords { color: var(--text-dim); margin-left: 8px; }
+
+  /* ── Timeline bar ── */
+  .timeline {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    background: var(--panel); backdrop-filter: blur(20px) saturate(1.4);
+    border-top: 1px solid var(--border);
+    padding: 10px 16px; z-index: 10;
+    display: flex; align-items: center; gap: 12px;
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.3);
+  }
+  .timeline.hidden { display: none; }
+
+  .tl-date {
+    font-family: var(--mono); font-size: 12px; font-weight: 600;
+    color: var(--accent); min-width: 100px; white-space: nowrap;
+  }
+
+  .tl-btn {
+    width: 28px; height: 28px; border-radius: 6px;
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+    color: var(--text-muted); cursor: pointer; font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s; flex-shrink: 0;
+  }
+  .tl-btn:hover { background: rgba(79,195,247,0.1); color: var(--accent); border-color: rgba(79,195,247,0.2); }
+  .tl-btn.active { background: rgba(105,240,174,0.18); color: #69f0ae; border-color: rgba(105,240,174,0.4); box-shadow: 0 0 8px rgba(105,240,174,0.3); }
+  /* Play button gets a subtle pulse when active so the user knows time is moving */
+  @keyframes tl-pulse { 0%, 100% { box-shadow: 0 0 6px rgba(105,240,174,0.25); } 50% { box-shadow: 0 0 12px rgba(105,240,174,0.55); } }
+  #tl-play.active { animation: tl-pulse 1.5s ease-in-out infinite; }
+
+  .tl-slider-wrap { flex: 1; position: relative; }
+  .tl-slider {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 4px;
+    background: rgba(255,255,255,0.06); border-radius: 2px; outline: none;
+  }
+  .tl-slider::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+    background: var(--accent); cursor: pointer;
+    border: 3px solid var(--bg);
+    box-shadow: 0 0 8px rgba(79,195,247,0.3);
+  }
+  .tl-tick-row {
+    position: relative; height: 22px;
+    padding: 0 6px; font-family: var(--mono); font-size: 8px; color: var(--text-dim);
+  }
+
+  /* ── Basemap picker ── */
+  .basemap-picker {
+    position: absolute; top: 12px; right: 56px;
+    z-index: 10; display: flex; gap: 4px;
+  }
+  .bm-btn {
+    width: 40px; height: 40px; border-radius: 8px;
+    border: 2px solid rgba(255,255,255,0.08); cursor: pointer;
+    background-size: cover; background-position: center;
+    opacity: 0.5; transition: all 0.2s;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+    display: flex; align-items: flex-end; justify-content: center;
+    padding-bottom: 3px; position: relative; overflow: hidden;
+  }
+  .bm-btn:hover { opacity: 0.85; border-color: rgba(255,255,255,0.15); }
+  .bm-btn.active { border-color: var(--accent); opacity: 1; box-shadow: 0 0 12px rgba(79,195,247,0.25); }
+  .bm-label {
+    font-family: var(--mono); font-size: 7px; font-weight: 600;
+    color: #fff; text-transform: uppercase; letter-spacing: 0.5px;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+    position: relative; z-index: 1;
+  }
+  .bm-topo { background: linear-gradient(160deg, #1a2332 30%, #2a3a4a 70%, #3a4a3a); }
+  .bm-satellite { background: linear-gradient(160deg, #1a3a1a, #2d4a16 50%, #1a2a0a); }
+  .bm-outdoor { background: linear-gradient(160deg, #c8d8c0, #a0b898 50%, #88a878); }
+
+  /* ── Legend ── */
+  .legend {
+    position: absolute; bottom: 60px; left: 12px;
+    background: var(--panel); backdrop-filter: blur(20px) saturate(1.4);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 6px 12px; z-index: 10; font-size: 10px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    display: flex; gap: 12px;
+  }
+  .legend-item { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+  .legend-swatch { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+  .legend-text { color: var(--text-muted); }
+
+  /* ── Loading ── */
+  .loader-wrap { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 30; text-align: center; }
+  .loader-wrap.hidden { display: none; }
+  .loader-spinner { width: 28px; height: 28px; border: 2.5px solid rgba(79,195,247,0.15); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 10px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loader-text { font-family: var(--mono); font-size: 12px; color: var(--accent); }
+
+  /* ── Popup ── */
+  .mapboxgl-popup-content { border-radius: 10px !important; padding: 12px 14px !important; box-shadow: 0 8px 30px rgba(0,0,0,0.35) !important; background: var(--panel) !important; backdrop-filter: blur(20px) !important; border: 1px solid var(--border) !important; color: var(--text) !important; }
+  .mapboxgl-popup-tip { border-top-color: var(--panel) !important; }
+  .mapboxgl-popup-close-button { color: var(--text-muted) !important; font-size: 16px; padding: 2px 6px; }
+  .popup-name { font-family: var(--mono); font-weight: 600; font-size: 11px; color: var(--accent); margin-bottom: 6px; }
+  .popup-stats { display: flex; flex-direction: column; gap: 3px; }
+  .popup-stat { display: flex; justify-content: space-between; gap: 10px; }
+  .popup-label { font-size: 10px; color: var(--text-muted); }
+  .popup-value { font-family: var(--mono); font-weight: 600; font-size: 11px; }
+  .popup-value.snow { color: var(--accent); }
+
+  /* ── Collapse toggle ── */
+  .panel-toggle {
+    position: absolute; top: 12px; left: 12px;
+    width: 34px; height: 34px; border-radius: 8px;
+    background: var(--panel); backdrop-filter: blur(20px);
+    border: 1px solid var(--border); color: var(--accent); font-size: 16px;
+    cursor: pointer; z-index: 9; display: none;
+    align-items: center; justify-content: center;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  }
+  .panel-toggle.visible { display: flex; }
+
+  /* ── Attribution ── */
+  .attr {
+    position: absolute; bottom: 60px; right: 12px;
+    font-family: var(--mono); font-size: 8px; color: var(--text-dim);
+    z-index: 10; background: var(--panel); padding: 3px 7px;
+    border-radius: 4px; border: 1px solid var(--border);
+  }
+  .attr a { color: var(--text-muted); text-decoration: none; }
+
+  /* ── Range depth dashboard ── */
+  .range-row { margin-bottom: 6px; }
+  .range-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; gap: 8px; }
+  .range-name { font-family: var(--mono); font-size: 10px; color: var(--text-muted); font-weight: 500; flex: 0 0 auto; }
+  .range-trend-box { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+  .range-spark7 { width: 44px; height: 14px; display: block; }
+  .range-spark7 .s7-line { fill: none; stroke: var(--accent); stroke-width: 1; }
+  .range-spark7 .s7-area { fill: rgba(79,195,247,0.18); }
+  .range-delta { font-family: var(--mono); font-size: 9px; font-weight: 600; min-width: 28px; text-align: right; }
+  .range-delta.up { color: #4CAF50; }
+  .range-delta.down { color: #FF5252; }
+  .range-delta.flat { color: var(--text-dim); font-weight: 400; }
+  .range-depth { font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--accent); min-width: 34px; text-align: right; }
+  .range-depth.none { color: var(--text-dim); font-weight: 400; font-size: 9px; }
+  .range-bar { height: 3px; background: rgba(255,255,255,0.04); border-radius: 2px; overflow: hidden; }
+  .range-bar-fill { height: 100%; border-radius: 2px; transition: width 0.4s ease; }
+  .range-chart-wrap { margin-top: 2px; }
+  .range-chart-wrap svg { width: 100%; height: 28px; }
+  .range-area { fill: rgba(79,195,247,0.12); }
+  .range-line { fill: none; stroke: var(--accent); stroke-width: 1; }
+  .range-norm { fill: none; stroke: rgba(255,255,255,0.12); stroke-width: 1; stroke-dasharray: 2,2; }
+  .range-dates { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 7px; color: var(--text-dim); }
+
+  /* Expanded range detail */
+  .range-row { cursor: pointer; padding: 4px; border-radius: 4px; transition: background 0.15s; }
+  .range-row:hover { background: rgba(255,255,255,0.02); }
+  .range-row.collapsed .range-chart-wrap { display: none; }
+  .range-detail { margin: 4px 0 8px; padding: 6px 8px; background: rgba(255,255,255,0.02); border-radius: 6px; border: 1px solid var(--border); }
+  .range-detail.hidden { display: none; }
+  .range-station-line { margin: 4px 0; }
+  .range-station-label { font-family: var(--mono); font-size: 8px; color: var(--text-dim); display: flex; justify-content: space-between; margin-bottom: 1px; }
+  .range-station-label .rs-name { color: var(--text-muted); }
+  .range-station-label .rs-elev { color: var(--text-dim); }
+  .range-station-label .rs-depth { color: var(--accent); font-weight: 600; }
+  .range-detail svg { width: 100%; height: 40px; }
+  .range-detail-dates { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 7px; color: var(--text-dim); margin-top: 1px; }
+
+  /* ── SNOTEL depth chart ── */
+  .depth-chart { margin: 8px 0 4px; }
+  .depth-chart svg { width: 100%; height: 50px; }
+  .depth-line { fill: none; stroke: #4FC3F7; stroke-width: 1.5; }
+  .depth-area { fill: rgba(79,195,247,0.15); }
+  .depth-marker { stroke: #FFB74D; stroke-width: 1; stroke-dasharray: 2,2; }
+  .depth-peak { font-size: 8px; fill: #4FC3F7; font-family: var(--mono); }
+  .depth-loading { font-size: 9px; color: var(--text-dim); font-family: var(--mono); padding: 6px 0; }
+
+  /* ── Webcam popup ── */
+  .webcam-popup { max-width: 320px; }
+  .webcam-popup .cam-name { font-family: var(--mono); font-weight: 600; font-size: 11px; color: var(--accent); margin-bottom: 6px; }
+  .webcam-popup img { width: 100%; border-radius: 6px; margin-bottom: 4px; }
+  .webcam-popup .cam-src { font-size: 8px; color: var(--text-dim); font-family: var(--mono); }
+  .webcam-popup .cam-src a { color: var(--text-muted); }
+
+  /* ── Compass ── */
+  .compass {
+    position: absolute; top: 200px; right: 14px;
+    width: 48px; height: 48px; z-index: 10;
+    cursor: pointer; transition: transform 0.15s;
+  }
+  .compass svg { width: 100%; height: 100%; filter: drop-shadow(0 2px 6px rgba(0,0,0,0.5)); }
+  .compass:hover { transform: scale(1.1); }
+
+  /* ── Feedback box ── */
+  .feedback-toggle {
+    position: absolute; bottom: 60px; right: 12px;
+    background: var(--panel); backdrop-filter: blur(20px);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 14px; z-index: 10; cursor: pointer;
+    font-family: var(--mono); font-size: 10px; color: var(--text-muted);
+    transition: all 0.15s;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  }
+  .feedback-toggle:hover { color: var(--accent); border-color: rgba(79,195,247,0.2); }
+  .feedback-toggle .ft-sub { display: block; font-size: 8px; color: var(--text-dim); margin-top: 2px; }
+
+  .feedback-box {
+    position: absolute; bottom: 60px; right: 12px;
+    background: var(--panel); backdrop-filter: blur(20px) saturate(1.4);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 18px 20px; z-index: 20; width: 340px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    display: none;
+  }
+  .feedback-box.open { display: block; }
+  .feedback-box h4 {
+    font-family: var(--mono); font-size: 13px; font-weight: 600;
+    color: var(--accent); margin-bottom: 6px;
+  }
+  .feedback-box p {
+    font-size: 11px; color: var(--text-muted); line-height: 1.5;
+    margin-bottom: 12px;
+  }
+  .feedback-box p a { color: var(--accent); text-decoration: none; }
+  .feedback-box textarea {
+    width: 100%; height: 100px; resize: vertical;
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px; padding: 10px 12px;
+    font-family: var(--sans); font-size: 13px; color: var(--text);
+    outline: none; transition: border-color 0.15s;
+    line-height: 1.5;
+  }
+  .feedback-box textarea:focus { border-color: rgba(79,195,247,0.3); }
+  .feedback-box textarea::placeholder { color: var(--text-dim); font-size: 12px; }
+  .feedback-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+  .feedback-actions button {
+    font-family: var(--mono); font-size: 11px; padding: 7px 18px;
+    border-radius: 6px; cursor: pointer; border: none; transition: all 0.15s;
+  }
+  .fb-cancel { background: rgba(255,255,255,0.06); color: var(--text-muted); }
+  .fb-cancel:hover { background: rgba(255,255,255,0.1); }
+  .fb-send { background: var(--accent); color: var(--bg); font-weight: 600; }
+  .fb-send:hover { background: #81d4fa; }
+  .fb-send:disabled { opacity: 0.4; cursor: not-allowed; }
+  .fb-status { font-family: var(--mono); font-size: 11px; text-align: center; padding: 16px 0; }
+  .fb-status.success { color: #26c6da; }
+  .fb-status.error { color: #EF5350; }
+
+  /* ── Responsive: bottom sheet on phones ── */
+  @media (max-width: 768px) {
+    /* Panel becomes a bottom sheet covering ~32% of screen by default,
+       expandable to ~80%. Slides up from below the timeline. Drag handle
+       at the top lets the user expand/collapse it. */
+    .panel {
+      top: auto;
+      bottom: 56px;            /* sit above the timeline */
+      left: 0;
+      right: 0;
+      width: 100%;
+      max-width: 100%;
+      max-height: 32vh;
+      border-radius: 14px 14px 0 0;
+      border-left: none;
+      border-right: none;
+      border-bottom: none;
+      padding: 22px 16px 12px;
+      overflow-y: auto;
+      transition: max-height 0.25s ease, opacity 0.3s, transform 0.3s;
+      box-shadow: 0 -8px 24px rgba(0,0,0,0.45);
+    }
+    .panel.expanded { max-height: 80vh; }
+    .panel.collapsed-mobile {
+      max-height: 36px;
+      overflow: hidden;
+      padding-top: 14px;
+      padding-bottom: 0;
+    }
+    /* Drag handle pill at the top of the bottom sheet */
+    .panel::before {
+      content: '';
+      position: absolute;
+      top: 7px; left: 50%;
+      transform: translateX(-50%);
+      width: 38px; height: 4px;
+      background: rgba(255,255,255,0.3);
+      border-radius: 2px;
+      cursor: grab;
+    }
+    .panel.collapsed { display: none; }  /* still works for the X close */
+
+    /* Right-side controls move so they don't fight the bottom sheet */
+    .basemap-picker {
+      top: auto; bottom: calc(32vh + 70px); right: 10px;
+    }
+    /* When the panel expands, push the basemap picker up with it */
+    .panel.expanded ~ .basemap-picker { bottom: calc(80vh + 70px); }
+
+    .legend { flex-wrap: wrap; gap: 6px; right: 12px; bottom: calc(32vh + 12px); }
+    .panel.expanded ~ .legend { bottom: calc(80vh + 12px); }
+
+    /* The layers panel (top-right of map) needs to dodge the basemap picker */
+    .layers-wrap {
+      top: 8px !important; right: 8px !important;
+      width: 140px !important;
+      font-size: 10px !important;
+    }
+
+    /* Smaller webcams panel, smaller text in tabs */
+    .timeline { padding: 6px 10px 4px; gap: 6px; }
+    .tl-date { font-size: 9px; }
+
+    /* Hide the desktop-only "double-click to collapse" hint */
+    .panel-toggle { bottom: 12px; right: 12px; top: auto; }
+  }
+
+  /* ── Mapbox overrides ── */
+  .mapboxgl-ctrl-group { background: var(--panel) !important; border: 1px solid var(--border) !important; border-radius: 8px !important; box-shadow: 0 4px 16px rgba(0,0,0,0.3) !important; }
+  .mapboxgl-ctrl-group button { background: transparent !important; }
+  .mapboxgl-ctrl-group button + button { border-top: 1px solid var(--border) !important; }
+  .mapboxgl-ctrl-group button .mapboxgl-ctrl-icon { filter: invert(1) brightness(0.7); }
+  .mapboxgl-ctrl-attrib { display: none !important; }
+</style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="nav-brand">SNOWLINE</span>
+  <span class="nav-sep">/</span>
+  <div class="nav-links">
+    <a href="/" class="active">Map</a>
+    <a href="/webcam.html">Webcams</a>
+    <a href="/metadata.html">Data</a>
+  </div>
+</nav>
+
+<div class="map-section">
+
+<div class="loader-wrap" id="loader">
+  <div class="loader-spinner"></div>
+  <div class="loader-text">Loading snowline data&hellip;</div>
+</div>
+
+<div id="map"></div>
+
+<!-- Info Panel -->
+<div class="panel collapsed" id="panel">
+  <div class="brand"><h1>SNOWLINE</h1><span class="region">SW Montana</span></div>
+  <div class="scene-date-badge" id="date-badge"></div>
+  <div class="scene-meta" id="meta"></div>
+
+  <!-- Surface coverage section -->
+  <div class="section-label">Satellite Surface Coverage</div>
+  <div style="font-size:8px;color:var(--text-dim);margin:-2px 0 6px;line-height:1.4;font-family:var(--mono)">
+    <strong style="color:#FFB74D">Optical only</strong> &mdash; shows where snow is visible from space, not depth. Cannot see through trees. A dusting and deep snowpack look the same.
+  </div>
+
+  <div class="snow-bar-wrap">
+    <div class="snow-bar-label"><span>AOI Coverage</span><span class="pct" id="coverage-pct" style="color:#FFB74D"></span></div>
+    <div class="snow-bar"><div class="snow-bar-fill" id="coverage-bar-fill" style="background:linear-gradient(90deg,#FFB74D,#FF8A65)"></div></div>
+  </div>
+
+  <div class="snow-bar-wrap">
+    <div class="snow-bar-label"><span>Snow Cover</span><span class="pct" id="snow-pct"></span></div>
+    <div class="snow-bar"><div class="snow-bar-fill" id="snow-bar-fill"></div></div>
+  </div>
+
+  <!-- Recent change callout — auto-generated week-over-week summary
+       comparing the current date's stats to the closest date 5+ days ago.
+       Hidden when there's nothing to compare against. -->
+  <div id="change-callout" style="display:none;margin:10px 0;padding:8px 10px;border-radius:6px;background:rgba(79,195,247,0.06);border-left:2px solid #4FC3F7;font-family:var(--mono);font-size:10px;line-height:1.5;color:var(--text-muted)"></div>
+
+  <!-- Big button to toggle the satellite (truecolor) imagery overlay.
+       This is a prominent CTA because the raw S2 imagery is the most loved
+       feature of the product and the small layer toggle was hard to find. -->
+  <button id="big-s2-btn" type="button"
+    style="width:100%;margin-top:10px;padding:11px 14px;background:linear-gradient(135deg,#26c6da,#0097a7);color:#0a1525;border:none;border-radius:var(--radius);font-family:var(--mono);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;cursor:pointer;box-shadow:0 4px 12px rgba(38,198,218,0.25);transition:transform 0.1s,box-shadow 0.1s">
+    🛰  Hide Satellite Imagery
+  </button>
+
+  <!-- SNOTEL depth section -->
+  <div class="section-label">SNOTEL Ground Measurements</div>
+  <div style="font-size:8px;color:var(--text-dim);margin:-2px 0 6px;line-height:1.4;font-family:var(--mono)">
+    Actual snow depth from ground stations. <span style="color:#FFB74D">Dashed line = 20yr median</span>.
+  </div>
+
+  <div class="card">
+    <h3>Season Snow Depth (region avg)</h3>
+    <div class="trend-wrap">
+      <svg class="trend-svg" id="trend-svg" viewBox="0 0 320 70"></svg>
+      <div class="trend-label-row" id="trend-labels"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Snow Depth by Range</h3>
+    <div style="font-size:8px;color:var(--text-dim);margin:-4px 0 6px;font-family:var(--mono)">
+      Sparkline + <span style="color:#4CAF50">↑</span>/<span style="color:#FF5252">↓</span> delta = last 7 days.
+    </div>
+    <div id="range-depths"></div>
+  </div>
+
+
+</div>
+
+<button class="panel-toggle" id="panel-toggle" title="Show panel">&#9776;</button>
+
+<!-- Right side: basemap + layers -->
+<div style="position:absolute;top:4px;right:56px;z-index:10;font-family:var(--mono);font-size:8px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px">Basemap</div>
+<div class="basemap-picker">
+  <div class="bm-btn bm-topo" data-style="mapbox://styles/mapbox/dark-v11" title="Dark"><span class="bm-label">Dark</span></div>
+  <div class="bm-btn bm-outdoor active" data-style="mapbox://styles/mapbox/outdoors-v12" title="Topo"><span class="bm-label">Topo</span></div>
+  <div class="bm-btn bm-satellite" data-style="mapbox://styles/mapbox/satellite-streets-v12" title="Satellite"><span class="bm-label">Sat</span></div>
+</div>
+
+<!-- Layers panel (right side) -->
+<div class="layers-wrap" style="position:absolute;top:60px;right:12px;z-index:10;background:var(--panel);backdrop-filter:blur(20px) saturate(1.4);border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px;box-shadow:0 4px 16px rgba(0,0,0,0.3);width:170px;font-size:11px">
+  <div style="font-family:var(--mono);font-size:8px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Layers</div>
+  <div class="layers">
+    <label class="layer-row"><input type="checkbox" id="tog-snow" checked><div class="sw"></div><span class="layer-label">Snow</span></label>
+    <div class="opacity-wrap" id="opacity-snow"><label>Opacity</label><input type="range" min="0" max="100" value="45" id="slider-snow"></div>
+    <label class="layer-row"><input type="checkbox" id="tog-s2" checked><div class="sw"></div><span class="layer-label">S2 Imagery</span></label>
+    <div class="opacity-wrap" id="opacity-s2"><label>Opacity</label><input type="range" min="0" max="100" value="90" id="slider-s2"></div>
+    <label class="layer-row"><input type="checkbox" id="tog-historical"><div class="sw"></div><span class="layer-label">Historical</span></label>
+    <div class="opacity-wrap hidden" id="opacity-historical"><label>Opacity</label><input type="range" min="0" max="100" value="50" id="slider-historical"></div>
+    <label class="layer-row"><input type="checkbox" id="tog-forest"><div class="sw"></div><span class="layer-label">Forest</span></label>
+    <label class="layer-row"><input type="checkbox" id="tog-snotel" checked><div class="sw"></div><span class="layer-label">SNOTEL</span></label>
+    <label class="layer-row"><input type="checkbox" id="tog-webcams" checked><div class="sw"></div><span class="layer-label">Webcams</span></label>
+    <label class="layer-row"><input type="checkbox" id="tog-terrain"><div class="sw"></div><span class="layer-label">3D Terrain</span></label>
+  </div>
+</div>
+
+<!-- Legend -->
+<div class="legend" id="legend" style="display:none">
+  <div class="legend-item"><div class="legend-swatch" style="background:#4FC3F7"></div><span class="legend-text">Snow</span></div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#b4b4b4"></div><span class="legend-text">Cloud</span></div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#26c6da; border-radius:50%; width:7px; height:7px; border:1.5px solid #fff"></div><span class="legend-text">SNOTEL</span></div>
+</div>
+
+<div class="compass" id="compass" title="Click to reset north">
+  <svg viewBox="0 0 48 48">
+    <circle cx="24" cy="24" r="22" fill="rgba(11,15,26,0.85)" stroke="rgba(79,195,247,0.2)" stroke-width="1"/>
+    <polygon points="24,4 28,22 24,18 20,22" fill="#EF5350"/>
+    <polygon points="24,44 20,26 24,30 28,26" fill="rgba(255,255,255,0.3)"/>
+    <text x="24" y="14" text-anchor="middle" fill="#EF5350" font-family="var(--mono)" font-size="7" font-weight="700">N</text>
+  </svg>
+</div>
+
+<div class="cursor-info" id="cursor-info" style="display:none">
+  <span class="elev" id="cursor-elev"></span>
+  <span class="coords" id="cursor-coords"></span>
+</div>
+
+<!-- Timeline -->
+<div class="timeline hidden" id="timeline">
+  <button class="tl-btn" id="tl-prev" title="Previous date">&#9664;</button>
+  <span class="tl-date" id="tl-date"></span>
+  <div class="tl-slider-wrap" style="position:relative">
+    <input type="range" class="tl-slider" id="tl-slider" min="0" max="0" value="0" step="1" style="display:none">
+    <div class="tl-tick-row" id="tl-ticks"></div>
+    <div id="tl-marker" style="position:absolute;top:-2px;width:2px;height:12px;background:var(--accent);border-radius:1px;pointer-events:none;transition:left 0.2s"></div>
+  </div>
+  <button class="tl-btn" id="tl-next" title="Next date">&#9654;</button>
+  <button class="tl-btn" id="tl-play" title="Auto-play">&#9654;&#9654;</button>
+</div>
+
+
+<div class="feedback-toggle" id="fb-toggle">
+  Feedback
+  <span class="ft-sub">Open source &middot; Help us improve</span>
+</div>
+
+<div class="feedback-box" id="fb-box">
+  <h4>Help us improve Snowline</h4>
+  <p>Snowline is an open-source project by <a href="https://itogeospatial.com" target="_blank">Ito Geospatial</a>. Tell us what features, data, or improvements would be most useful to you.</p>
+  <textarea id="fb-text" placeholder="What would make this tool more useful? Feature requests, bug reports, data suggestions — anything helps."></textarea>
+  <div class="feedback-actions">
+    <button class="fb-cancel" id="fb-cancel">Cancel</button>
+    <button class="fb-send" id="fb-send">Send Feedback</button>
+  </div>
+</div>
+
+
+</div><!-- end map-section -->
+
+<div class="below-bar">
+  <div class="credit">
+    <a href="https://itogeospatial.com" target="_blank" style="color:var(--text-dim)">Ito Geospatial</a> &middot;
+    <a href="https://github.com/itogeo/snowline" target="_blank" style="color:var(--text-dim)">Open Source</a>
+  </div>
+</div>
+
+<script>
+mapboxgl.accessToken = 'pk.eyJ1IjoiaXRvZ2VvIiwiYSI6ImNta3ByYnA1bzBsYW0zZG9mMnMxdWZwMjUifQ.Q7pwAuAEKdBHD_dqaVBhvw';
+
+// Default to Topo (outdoors-v12) — the contour lines, peak labels, trail
+// names, and wilderness boundaries show through the S2 imagery at ~85%
+// opacity, giving the user geographic context without needing to toggle
+// anything. User can switch to Dark or Satellite via the basemap picker.
+let currentStyle = 'mapbox://styles/mapbox/outdoors-v12';
+
+// Quadrant bounds for tiled data
+const QUAD_BOUNDS = {
+  NW: { west: -112.2, south: 45.7, east: -110.6, north: 46.5 },
+  NE: { west: -110.6, south: 45.7, east: -109.0, north: 46.5 },
+  SW: { west: -112.2, south: 44.9, east: -110.6, north: 45.7 },
+  SE: { west: -110.6, south: 44.9, east: -109.0, north: 45.7 },
+};
+function quadCoords(q) {
+  const b = QUAD_BOUNDS[q];
+  return [[b.west,b.north],[b.east,b.north],[b.east,b.south],[b.west,b.south]];
+}
+
+// Helper: try png first (10m), fall back to webp
+async function snowUrl(dateStr) {
+  const png = `data/${dateStr}/snow.png`;
+  try { const r = await fetch(png, {method:'HEAD'}); if (r.ok) return png; } catch(e) {}
+  return `data/${dateStr}/snow.webp`;
+}
+async function tcUrl(dateStr) {
+  const jpg = `data/${dateStr}/truecolor.jpg`;
+  try { const r = await fetch(jpg, {method:'HEAD'}); if (r.ok) return jpg; } catch(e) {}
+  return `data/${dateStr}/truecolor.webp`;
+}
+
+const map = new mapboxgl.Map({
+  container: 'map',
+  style: currentStyle,
+  center: [-110.6, 45.7],
+  zoom: 8.5,
+  pitch: 0,
+  bearing: 0,
+  antialias: true,
+  maxPitch: 85,
+  dragRotate: true,
+  touchPitch: true,
+});
+
+map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), 'top-right');
+map.addControl(new mapboxgl.FullscreenControl(), 'top-right');
+map.addControl(new mapboxgl.ScaleControl({ maxWidth: 150 }), 'bottom-right');
+
+// ── State ──
+let DATES = [];
+// If today's date is appended to DATES as a "live" position with no
+// processed imagery, it's stored here so other code can detect it.
+let TODAY_VIRTUAL = null;
+let SNOTEL = [];
+let SNOTEL_SEASON = null;  // {stations: [{id, name, lat, lon, elevation_ft, history: [{date, swe_in, depth_in}]}]}
+
+// Build a snapshot of SNOTEL stations for a specific date by looking up
+// each station's history. Returns the same shape as the legacy snotel.json
+// (one reading per station) so it's a drop-in replacement for buildSnotelFeatures.
+function snotelForDate(dateStr) {
+  if (!SNOTEL_SEASON || !SNOTEL_SEASON.stations) return null;
+  return SNOTEL_SEASON.stations.map(s => {
+    const history = s.history || [];
+    // Try exact match first; if today's reading isn't in yet (NRCS lag),
+    // fall back to the most recent reading at-or-before the target date
+    // within the last 7 days.
+    let reading = history.find(r => r.date === dateStr);
+    if (!reading) {
+      for (let i = history.length - 1; i >= 0; i--) {
+        if (history[i].date <= dateStr) {
+          const ageDays = (Date.parse(dateStr) - Date.parse(history[i].date)) / 86400000;
+          if (ageDays <= 7) reading = history[i];
+          break;
+        }
+      }
+    }
+    return {
+      id: s.id,
+      name: s.name,
+      elevation_ft: s.elevation_ft,
+      lat: s.lat,
+      lon: s.lon,
+      swe_in: reading ? reading.swe_in : null,
+      depth_in: reading ? reading.depth_in : null,
+      snow_depth_in: reading ? reading.depth_in : null,  // legacy alias
+    };
+  });
+}
+let CURRENT_DATE = null;
+let CURRENT_DATA = null;
+let layersAdded = false;
+let playInterval = null;
+
+// Cache snowline.json files we've already fetched (used by the change
+// callout to compute week-over-week deltas without re-fetching). Keyed
+// by date string. Each entry is the parsed JSON or null on failure.
+const SNOWLINE_CACHE = {};
+
+async function fetchSnowlineMeta(dateStr) {
+  if (SNOWLINE_CACHE[dateStr] !== undefined) return SNOWLINE_CACHE[dateStr];
+  try {
+    const r = await fetch(`data_10m/${dateStr}/snowline.json`);
+    if (!r.ok) throw new Error('not ok');
+    SNOWLINE_CACHE[dateStr] = await r.json();
+  } catch (e) {
+    SNOWLINE_CACHE[dateStr] = null;
+  }
+  return SNOWLINE_CACHE[dateStr];
+}
+
+// Find the most recent processed date that is at least `minDaysAgo` days
+// older than `fromDate`. Used to pick a comparison anchor for the change
+// callout. Returns null if no suitable date exists.
+function findComparisonDate(fromDate, minDaysAgo) {
+  if (!fromDate) return null;
+  const fromMs = Date.parse(fromDate);
+  // Walk DATES from newest to oldest, skip TODAY_VIRTUAL (no imagery)
+  for (let i = DATES.length - 1; i >= 0; i--) {
+    const d = DATES[i];
+    if (d === TODAY_VIRTUAL) continue;
+    const ageDays = (fromMs - Date.parse(d)) / 86400000;
+    if (ageDays >= minDaysAgo) return d;
+  }
+  return null;
+}
+
+// Build the week-over-week change callout for the current date. Compares
+// snow_cover_pct, coverage_pct, and the average SNOTEL depth across stations
+// against the comparison date. Renders into #change-callout (or hides it
+// if there's nothing to compare against).
+async function renderChangeCallout() {
+  const el = document.getElementById('change-callout');
+  if (!el) return;
+  if (!CURRENT_DATA || CURRENT_DATA.no_imagery) { el.style.display = 'none'; return; }
+
+  // Compare to ~7 days ago (the most recent date that's at least 5 days
+  // older than the current one). Falls back to no-callout if there isn't
+  // one — happens for very early-season dates.
+  const cmpDate = findComparisonDate(CURRENT_DATE, 5);
+  if (!cmpDate) { el.style.display = 'none'; return; }
+
+  const cmpMeta = await fetchSnowlineMeta(cmpDate);
+  if (!cmpMeta) { el.style.display = 'none'; return; }
+
+  const fromMs = Date.parse(CURRENT_DATE);
+  const cmpMs = Date.parse(cmpDate);
+  const days = Math.round((fromMs - cmpMs) / 86400000);
+  const cmpLabel = new Date(cmpDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+  const snowNow = CURRENT_DATA.snow_cover_pct ?? 0;
+  const snowThen = cmpMeta.snow_cover_pct ?? 0;
+  const dSnow = +(snowNow - snowThen).toFixed(1);
+
+  // Average SNOTEL depth change: always compare TODAY's readings (the most
+  // current ground truth) against the comparison date, even when the imagery
+  // is from a different day. This gives the user an up-to-date trend line
+  // regardless of how stale the satellite image is.
+  let snotelDelta = null;
+  let snotelNowAvg = null;
+  const snotelToday = new Date().toISOString().slice(0, 10);
+  if (SNOTEL_SEASON?.stations) {
+    const depthAt = (s, dateStr) => {
+      // Find the most recent reading at-or-before the target date (within 7 days)
+      const h = (s.history || []);
+      let reading = h.find(r => r.date === dateStr);
+      if (!reading) {
+        for (let i = h.length - 1; i >= 0; i--) {
+          if (h[i].date <= dateStr && (Date.parse(dateStr) - Date.parse(h[i].date)) / 86400000 <= 7) {
+            reading = h[i]; break;
+          }
+        }
+      }
+      return reading?.depth_in;
+    };
+    const pairs = SNOTEL_SEASON.stations
+      .map(s => [depthAt(s, snotelToday), depthAt(s, cmpDate)])
+      .filter(([a, b]) => a != null && b != null);
+    if (pairs.length >= 5) {
+      const avg = arr => arr.reduce((x, y) => x + y, 0) / arr.length;
+      snotelNowAvg = avg(pairs.map(p => p[0]));
+      const thenAvg = avg(pairs.map(p => p[1]));
+      snotelDelta = +(snotelNowAvg - thenAvg).toFixed(1);
+    }
+  }
+
+  // Format the message. Up arrow for gain, down for loss, neutral for flat.
+  function fmtDelta(val, unit, gainColor = '#69f0ae', lossColor = '#FFB74D') {
+    if (val == null) return null;
+    const arrow = val > 0.5 ? '↑' : val < -0.5 ? '↓' : '→';
+    const color = val > 0.5 ? gainColor : val < -0.5 ? lossColor : 'var(--text-dim)';
+    const sign = val > 0 ? '+' : '';
+    return `<span style="color:${color};font-weight:600">${arrow} ${sign}${val}${unit}</span>`;
+  }
+
+  const snowMsg = fmtDelta(dSnow, '%');
+  const snotelMsg = snotelDelta != null ? fmtDelta(snotelDelta, '″') : null;
+
+  // Two sections: satellite-derived snow cover (tied to imagery date) and
+  // SNOTEL ground truth (always today's readings vs the comparison date).
+  let html = '';
+  html += `<div style="font-size:8px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Changes vs ${cmpLabel} (${days} days)</div>`;
+  html += `<div>Satellite snow cover: ${snowMsg}</div>`;
+  if (snotelMsg) {
+    html += `<div>SNOTEL avg depth today: ${snotelNowAvg != null ? Math.round(snotelNowAvg) + '″' : '—'} ${snotelMsg}</div>`;
+  }
+
+  el.innerHTML = html;
+  el.style.display = 'block';
+}
+
+// ── Init ──
+async function init() {
+  // Per-tile is the only pipeline now (data_10m/). The legacy data/ mosaic
+  // folders were deleted — that's why this just reads one index.
+  try {
+    const r = await fetch('data_10m/dates.json');
+    if (!r.ok) throw new Error('dates.json not found');
+    const idx = await r.json();
+    DATES = (idx.dates || []).sort();
+  } catch (e) {
+    document.querySelector('.loader-text').textContent = 'Error loading data. Run the pipeline first.';
+    return;
+  }
+
+  if (DATES.length === 0) {
+    document.querySelector('.loader-text').textContent = 'No data available.';
+    return;
+  }
+
+  // Append TODAY as a virtual entry in DATES so the slider, prev/next,
+  // arrow keys, and marker bar all treat it as a first-class timeline
+  // position. loadDate(today) goes through the no_imagery synthetic
+  // path. The dot is rendered in green by buildTimeline() so the user
+  // can spot it. We only add it if today falls past the latest
+  // available date AND inside the season window.
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const seasonEndMs = Date.parse('2026-04-30');
+  const todayMs = Date.parse(todayStr);
+  if (todayMs <= seasonEndMs && todayStr > DATES[DATES.length - 1]) {
+    DATES.push(todayStr);
+    TODAY_VIRTUAL = todayStr;
+  }
+
+  // Load SNOTEL in background — don't block map display
+  fetch('data/snotel.json').then(r => r.ok ? r.json() : []).then(d => { SNOTEL = d; }).catch(() => {});
+  // Load full season SNOTEL (per-station history) — used for date-matched lookups
+  fetch('data/snotel_season.json').then(r => r.ok ? r.json() : null).then(d => { SNOTEL_SEASON = d; }).catch(() => {});
+  loadSnotelNormals(); // fire and forget — don't await
+
+  buildTimeline();
+
+  // Decide what to show on first load.
+  // Per user: load TODAY by default; only show the snowline overlay if the
+  // latest available snowline image is within 3 days. Otherwise the user
+  // can click back through the timeline to find historical snow maps.
+  // The reason: it's confusing when the SNOTEL pins are showing live
+  // conditions but the map is showing a snow image from N days ago.
+  // Always load the most recent PROCESSED date on page open. The user wants
+  // to see the best snow data we have immediately — not an empty TODAY-mode
+  // screen with just SNOTEL dots. The green TODAY tick is still on the
+  // timeline for when they want live conditions without imagery.
+  // "Latest processed" is at length-2 if TODAY_VIRTUAL occupies the last slot.
+  const latestProcessed = TODAY_VIRTUAL ? DATES[DATES.length - 2] : DATES[DATES.length - 1];
+  const initialDate = latestProcessed;
+
+  if (map.loaded()) { await loadDate(initialDate); onMapReady(); }
+  else map.on('load', async () => { await loadDate(initialDate); onMapReady(); });
+}
+
+function onMapReady() {
+  document.getElementById('loader').classList.add('hidden');
+  document.getElementById('panel').classList.remove('collapsed');
+  document.getElementById('legend').style.display = '';
+  document.getElementById('timeline').classList.remove('hidden');
+  // Load SNOTEL range data in background — don't block map display
+  setTimeout(() => loadRangeDepths(), 100);
+  // Speed-up B: warm the browser cache with the most recent dates' snow
+  // tiles so timeline navigation feels instant. Fires 1.5s after the
+  // initial render so it doesn't compete with the visible date's load.
+  setTimeout(() => preloadRecentSnow(), 1500);
+}
+
+// Pre-fetch snow.webp tiles + snowline.json for the last N dates so that
+// when the user clicks them on the timeline, the browser cache is warm
+// and Mapbox can swap sources instantly. We use Image() prefetch instead
+// of fetch() because Mapbox uses the browser's native image cache.
+async function preloadRecentSnow(n = 3) {
+  if (!DATES || DATES.length === 0) return;
+  const recent = DATES.slice(-n);
+  for (const dateStr of recent) {
+    if (dateStr === CURRENT_DATE) continue;  // already loaded
+    try {
+      const r = await fetch(`data_10m/${dateStr}/snowline.json`);
+      if (!r.ok) continue;
+      const meta = await r.json();
+      if (!Array.isArray(meta.tiles)) continue;
+      // Kick off image fetches in parallel; let them race in the cache
+      for (const tile of meta.tiles) {
+        const img = new Image();
+        img.src = `/api/tile/${dateStr}/${tile.file}`;
+      }
+    } catch (e) { /* preload is best-effort */ }
+  }
+}
+
+// ── Load a date ──
+async function loadDate(dateStr) {
+  CURRENT_DATE = dateStr;
+
+  // If this date isn't in the available dates list, we're in "today / no
+  // imagery" mode — synthesize a stub CURRENT_DATA so the panel can render
+  // SNOTEL info but the snow + truecolor overlays stay hidden.
+  // The TODAY_VIRTUAL entry is in DATES but has no processed imagery on
+  // disk — synthesize a stub so the panel can render SNOTEL info while
+  // hiding the snow + truecolor overlays. All other dates fetch their
+  // snowline.json normally.
+  const isTodayVirtual = dateStr === TODAY_VIRTUAL;
+  let data;
+
+  if (isTodayVirtual) {
+    data = {
+      scene_date: dateStr,
+      no_imagery: true,
+      coverage_pct: 0,
+      snow_cover_pct: 0,
+      cloud_cover_pct: 0,
+      scene_ids: [],
+      bounds: { west: -112.2, south: 44.9, east: -109.0, north: 46.5 },
+      tiles: [],
+    };
+  } else {
+    // Per-tile is the only pipeline now — fetch directly from data_10m/.
+    try {
+      const resp = await fetch(`data_10m/${dateStr}/snowline.json`);
+      if (resp.ok) data = await resp.json();
+    } catch (e) { /* ignore */ }
+    if (!data) return;
+  }
+  CURRENT_DATA = data;
+
+  renderPanel();
+  renderSeasonTrend();
+  updateTimelineUI();
+  updateWebcamVisibility();
+
+  if (!layersAdded) {
+    addOverlayLayers();
+    layersAdded = true;
+  } else {
+    // Swap image sources
+    const basePath = (data.chunks || (data.tiles && data.tiles.length > 0)) ? `/api/tile/${dateStr}` : `data/${dateStr}`;
+
+    if (data.no_imagery) {
+      // TODAY mode with no fresh snowline image — clear all per-tile snow
+      // + truecolor layers and hide the legacy single-image overlays.
+      // Leaves SNOTEL + basemap visible.
+      for (const id of currentTileLayerIds) {
+        if (map.getLayer(id)) map.removeLayer(id);
+        const srcId = id.replace('layer-', 'src-');
+        if (map.getSource(srcId)) map.removeSource(srcId);
+      }
+      currentTileLayerIds = [];
+      if (map.getLayer('snow-overlay')) map.setLayoutProperty('snow-overlay', 'visibility', 'none');
+      if (map.getLayer('s2-overlay')) map.setLayoutProperty('s2-overlay', 'visibility', 'none');
+    } else if (data.chunks || (data.tiles && data.tiles.length > 0)) {
+      updateTileLayers(data, basePath);
+    } else {
+      // Single image fallback (old data)
+      const b = data.bounds;
+      const coords = [[b.west, b.north], [b.east, b.north], [b.east, b.south], [b.west, b.south]];
+      if (map.getSource('snow-src')) {
+        map.getSource('snow-src').updateImage({ url: `${basePath}/snow.webp`, coordinates: coords });
+      }
+    }
+
+    // Update SNOTEL from this date's data.
+    // When viewing the latest processed date (the default landing), show
+    // TODAY's SNOTEL readings — the user wants current snowpack conditions
+    // overlaid on the most recent clear image, not stale readings from the
+    // imagery date. When scrolling to older dates, show that date's readings.
+    const latestProcessed = TODAY_VIRTUAL ? DATES[DATES.length - 2] : DATES[DATES.length - 1];
+    const useToday = dateStr === latestProcessed;
+    const snotelDate = useToday ? new Date().toISOString().slice(0, 10) : dateStr;
+    const dateSnotel = (useToday ? snotelForDate(snotelDate) : null)
+      || data.snotel || snotelForDate(dateStr) || SNOTEL;
+    if (dateSnotel && map.getSource('snotel')) {
+      map.getSource('snotel').setData({ type: 'FeatureCollection', features: buildSnotelFeatures(dateSnotel) });
+    }
+
+    // Update historical overlay for this date's DOY
+    if (HISTORICAL_INDEX && document.getElementById('tog-historical').checked) {
+      addHistoricalLayer();
+    }
+
+    // Update nodata polygon for this date's image bounds (skip in TODAY mode)
+    if (!data.no_imagery && data.bounds) {
+      const aoi3 = [-112.2, 45.0, -110.5, 46.2];
+      const aoiR3 = [[aoi3[0],aoi3[3]], [aoi3[2],aoi3[3]], [aoi3[2],aoi3[1]], [aoi3[0],aoi3[1]], [aoi3[0],aoi3[3]]];
+      const bb = data.bounds;
+      const imgR3 = [[bb.west,bb.north], [bb.east,bb.north], [bb.east,bb.south], [bb.west,bb.south], [bb.west,bb.north]];
+      if (map.getSource('nodata-area')) {
+        map.getSource('nodata-area').setData({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [aoiR3, imgR3] }, properties: {} });
+      }
+    }
+
+    // Archive dates: slightly desaturated snow overlay to signal "this is historical"
+    const isOld = CURRENT_DATE !== DATES[DATES.length - 1];
+    if (map.getLayer('snow-overlay')) map.setPaintProperty('snow-overlay', 'raster-saturation', isOld ? -0.3 : 0);
+    if (map.getLayer('s2-overlay')) map.setPaintProperty('s2-overlay', 'raster-saturation', isOld ? -0.5 : 0);
+  }
+}
+
+// ── Panel rendering ──
+function renderPanel() {
+  const d = CURRENT_DATA;
+  const sceneDate = new Date(d.scene_date + 'T00:00:00');
+  const formatted = sceneDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  const age = Math.floor((Date.now() - sceneDate.getTime()) / 86400000);
+  const ageText = age === 0 ? 'today' : age === 1 ? 'yesterday' : `${age} days ago`;
+  const ageClass = age <= 3 ? 'fresh' : age <= 10 ? 'stale' : 'old';
+
+  const isLive = age <= 3;
+  const latestProcessed = TODAY_VIRTUAL ? DATES[DATES.length - 2] : DATES[DATES.length - 1];
+  const isLatestProcessed = CURRENT_DATE === latestProcessed;
+  const modeBadge = isLive
+    ? '<span class="mode-badge live">Live</span>'
+    : isLatestProcessed
+      ? `<span class="mode-badge archive">Latest clear image &middot; ${ageText}</span>`
+      : `<span class="mode-badge archive">${ageText}</span>`;
+
+  document.getElementById('date-badge').innerHTML =
+    `${formatted}${modeBadge}`;
+
+  // TODAY mode (no fresh imagery): show a friendly message instead of
+  // pretending we have a 0% snow cover map. SNOTEL data is still live.
+  if (d.no_imagery) {
+    const latest = DATES[DATES.length - 1];
+    const latestLabel = latest
+      ? new Date(latest + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      : 'unknown';
+    const daysOld = latest ? Math.round((Date.parse(d.scene_date) - Date.parse(latest)) / 86400000) : null;
+    document.getElementById('meta').innerHTML =
+      `Live SNOTEL conditions &middot; <span style="color:#FFB74D">No fresh satellite imagery</span>` +
+      `<br><span style="font-size:9px;color:var(--text-dim)">Latest snow map: ${latestLabel}${daysOld ? ` (${daysOld} days ago)` : ''} — click the timeline to view.</span>`;
+    document.getElementById('coverage-pct').textContent = '—';
+    document.getElementById('coverage-bar-fill').style.width = '0%';
+    document.getElementById('snow-pct').textContent = '—';
+    document.getElementById('snow-bar-fill').style.width = '0%';
+    document.getElementById('panel').classList.remove('archive-mode');
+    document.getElementById('timeline').classList.remove('archive-mode');
+    // Force imagery button off + disabled while in TODAY mode
+    const s2BtnEl = document.getElementById('big-s2-btn');
+    if (s2BtnEl) {
+      s2BtnEl.disabled = true;
+      s2BtnEl.style.opacity = '0.4';
+      s2BtnEl.style.cursor = 'not-allowed';
+      s2BtnEl.title = 'No fresh satellite imagery — click an older date to view';
+    }
+    // Hide the change callout — it doesn't make sense in TODAY mode
+    const cc = document.getElementById('change-callout');
+    if (cc) cc.style.display = 'none';
+    return;
+  }
+
+  const coverage = d.coverage_pct != null ? d.coverage_pct : 100;
+  const coverageNote = coverage < 80 ? ` &middot; <span style="color:#FFB74D">${coverage}% AOI covered</span>` : '';
+  // When viewing the latest processed date: show "imagery from X · SNOTEL live"
+  // so the user knows the snow image is historical but the ground-truth numbers
+  // are current. For other dates: just show the archive info.
+  if (isLatestProcessed && !isLive) {
+    document.getElementById('meta').innerHTML =
+      `Imagery: ${ageText}${coverageNote}<br><span style="color:#69f0ae;font-size:9px">SNOTEL readings: live</span>`;
+  } else {
+    document.getElementById('meta').innerHTML = isLive
+      ? `Sentinel-2 L2A &middot; ${d.cloud_cover_pct}% cloud &middot; ${(d.scene_ids || []).length} tiles${coverageNote}`
+      : `Sentinel-2 L2A &middot; ${d.cloud_cover_pct}% cloud &middot; Archived ${ageText}${coverageNote}`;
+  }
+
+  // Toggle archive mode styling
+  document.getElementById('panel').classList.toggle('archive-mode', !isLive);
+  document.getElementById('timeline').classList.toggle('archive-mode', !isLive);
+
+  // AOI coverage
+  const coveragePct = d.coverage_pct != null ? d.coverage_pct : null;
+  if (coveragePct != null) {
+    document.getElementById('coverage-pct').textContent = coveragePct + '%';
+    document.getElementById('coverage-bar-fill').style.width = Math.max(coveragePct, 1) + '%';
+  } else {
+    document.getElementById('coverage-pct').textContent = 'Unknown';
+    document.getElementById('coverage-bar-fill').style.width = '100%';
+    document.getElementById('coverage-bar-fill').style.opacity = '0.3';
+  }
+
+  // Snow cover (of covered area)
+  document.getElementById('snow-pct').textContent = d.snow_cover_pct + '%';
+  document.getElementById('snow-bar-fill').style.width = Math.max(d.snow_cover_pct, 1) + '%';
+
+  // Week-over-week change callout — fire and forget, async
+  renderChangeCallout();
+
+  // Big S2 imagery button — only enabled when this date has truecolor imagery.
+  // Cases for the underlying data:
+  //   - New per-tile dates: data.tiles[i].truecolor_files (list) present → ENABLED
+  //   - Older per-tile dates: data.tiles[i].truecolor_file (single string) → ENABLED
+  //   - Mosaic dates (legacy data/ pipeline): no data.tiles → mosaic
+  //     truecolor.webp exists → ENABLED via the legacy s2-overlay layer
+  //   - Pruned dates: tiles present but no truecolor fields → DISABLED
+  const firstTile = Array.isArray(d.tiles) && d.tiles.length > 0 ? d.tiles[0] : null;
+  const hasTruecolorTiles = firstTile && (
+    (Array.isArray(firstTile.truecolor_files) && firstTile.truecolor_files.length > 0)
+    || firstTile.truecolor_file
+  );
+  const isMosaic = !d.tiles || d.tiles.length === 0;
+  const hasImagery = hasTruecolorTiles || isMosaic;
+  const s2Btn = document.getElementById('big-s2-btn');
+  if (s2Btn) {
+    s2Btn.disabled = !hasImagery;
+    s2Btn.style.opacity = hasImagery ? '1' : '0.4';
+    s2Btn.style.cursor = hasImagery ? 'pointer' : 'not-allowed';
+    s2Btn.title = hasImagery
+      ? 'Toggle Sentinel-2 satellite imagery for this date'
+      : 'No imagery available for this date';
+    if (!hasImagery) {
+      // Force the toggle off if it was on, so a previous date's imagery
+      // doesn't keep displaying when we switch to a date that lacks it.
+      const cb = document.getElementById('tog-s2');
+      if (cb && cb.checked) {
+        cb.checked = false;
+        cb.dispatchEvent(new Event('change'));
+      }
+    }
+  }
+}
+
+// ── Elevation chart ──
+// ── Season trend ──
+let SEASON_DATA = [];
+
+// Season trend now uses SNOTEL depth (reliable daily data, not satellite coverage)
+async function loadSeasonTrend() {
+  // This is populated by loadRangeDepths() — we aggregate all stations
+  // Just a placeholder; actual rendering happens in renderSeasonTrend()
+}
+
+// Fixed season timeline helpers (same as metadata page)
+const MAP_SEASON_START = '2025-10-01';
+const MAP_SEASON_END = '2026-05-31';
+const MAP_SEASON_DAYS = Math.round((new Date(MAP_SEASON_END) - new Date(MAP_SEASON_START)) / 86400000);
+
+function mapDateToX(dateStr, w, padL) {
+  const d = (new Date(dateStr) - new Date(MAP_SEASON_START)) / 86400000;
+  return padL + (d / MAP_SEASON_DAYS) * (w - padL - 2);
+}
+
+function renderSeasonTrend() {
+  const svg = document.getElementById('trend-svg');
+  const labels = document.getElementById('trend-labels');
+
+  const allByDate = {};
+  for (const [rng, data] of Object.entries(RANGE_SEASON_DATA)) {
+    if (!data?.avg) continue;
+    for (const v of data.avg) {
+      if (!allByDate[v.date]) allByDate[v.date] = [];
+      allByDate[v.date].push(v.value);
+    }
+  }
+
+  const avgValues = Object.entries(allByDate)
+    .map(([date, vals]) => ({ date, value: Math.round(vals.reduce((a,b) => a+b, 0) / vals.length) }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  if (avgValues.length < 5) {
+    svg.innerHTML = '';
+    labels.innerHTML = '<span style="font-size:9px;color:var(--text-dim)">Loading SNOTEL data...</span>';
+    return;
+  }
+
+  const w = 320, h = 70, padL = 20, padT = 2, padB = 12;
+  const ch = h - padT - padB;
+
+  // Include historical peaks in max
+  let maxD = Math.max(10, ...avgValues.map(v => v.value));
+  if (SNOTEL_NORMALS) {
+    for (const [t, norms] of Object.entries(SNOTEL_NORMALS.normals)) {
+      for (const dv of Object.values(norms)) { if (dv.p75 > maxD) maxD = dv.p75; }
+    }
+  }
+  maxD = Math.ceil(maxD / 10) * 10;
+
+  // X axis month labels
+  let xTicks = '';
+  ['Oct','Nov','Dec','Jan','Feb','Mar','Apr','May'].forEach((m, i) => {
+    const months = ['2025-10','2025-11','2025-12','2026-01','2026-02','2026-03','2026-04','2026-05'];
+    const x = mapDateToX(months[i] + '-01', w, padL);
+    xTicks += `<text x="${x}" y="${h-1}" fill="var(--text-dim)" font-size="6" font-family="var(--mono)">${m}</text>`;
+  });
+
+  // Today marker
+  const todayX = mapDateToX(new Date().toISOString().slice(0,10), w, padL);
+  xTicks += `<line x1="${todayX}" y1="${padT}" x2="${todayX}" y2="${h-padB}" stroke="rgba(255,255,255,0.12)" stroke-width="0.5" stroke-dasharray="2,2"/>`;
+
+  // 20yr normal — full Oct-May
+  let normalLine = '';
+  if (SNOTEL_NORMALS) {
+    const normPts = [];
+    const start = new Date(MAP_SEASON_START);
+    for (let d = 0; d <= MAP_SEASON_DAYS; d += 3) {
+      const dt = new Date(start.getTime() + d * 86400000);
+      const md = (dt.getMonth()+1).toString().padStart(2,'0') + '-' + dt.getDate().toString().padStart(2,'0');
+      let sum = 0, cnt = 0;
+      for (const [t, norms] of Object.entries(SNOTEL_NORMALS.normals)) {
+        if (norms[md]) { sum += norms[md].median; cnt++; }
+      }
+      if (cnt > 0) {
+        normPts.push({ x: mapDateToX(dt.toISOString().slice(0,10), w, padL), y: padT + ch - (Math.min(sum/cnt, maxD)/maxD)*ch });
+      }
+    }
+    const smoothed = normPts.map((p, i) => {
+      const win = normPts.slice(Math.max(0,i-2), Math.min(normPts.length,i+3));
+      return { x: p.x, y: win.reduce((a,b) => a+b.y, 0) / win.length };
+    });
+    if (smoothed.length > 5) {
+      normalLine = `<path d="${smoothed.map((p,i) => `${i===0?'M':'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')}" fill="none" stroke="#FFB74D" stroke-width="1.5" stroke-dasharray="4,2" opacity="0.6" pointer-events="none"/>`;
+    }
+  }
+
+  // Per-range lines (hoverable)
+  let rangeLines = '';
+  for (const [rng, rngData] of Object.entries(RANGE_SEASON_DATA)) {
+    if (!rngData?.avg || rngData.avg.length < 10) continue;
+    const color = rangeColor(rng);
+    const rPts = rngData.avg.map(v => {
+      const x = mapDateToX(v.date, w, padL);
+      const y = padT + ch - (Math.min(v.value, maxD) / maxD) * ch;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+    rangeLines += `<polyline points="${rPts.join(' ')}" fill="none" stroke="${color}" stroke-width="0.8" opacity="0.3" pointer-events="none"/>`;
+  }
+
+  // Current season average
+  const points = avgValues.map(v => ({
+    x: mapDateToX(v.date, w, padL),
+    y: padT + ch - (v.value / maxD) * ch,
+  }));
+  const line = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const area = line + ` L${points[points.length-1].x.toFixed(1)},${padT+ch} L${padL},${padT+ch} Z`;
+
+  // Date marker for current view
+  const curIdx = avgValues.findIndex(v => v.date === CURRENT_DATE);
+  let marker = '';
+  if (curIdx >= 0) {
+    marker = `<line x1="${points[curIdx].x.toFixed(1)}" y1="${padT}" x2="${points[curIdx].x.toFixed(1)}" y2="${h-padB}" stroke="#FFB74D" stroke-width="1" stroke-dasharray="2,2"/>`;
+    marker += `<circle cx="${points[curIdx].x.toFixed(1)}" cy="${points[curIdx].y.toFixed(1)}" r="2" fill="var(--accent)"/>`;
+  }
+
+  // % of normal
+  const latestVal = avgValues[avgValues.length - 1].value;
+  let pctText = '';
+  if (SNOTEL_NORMALS) {
+    const md = avgValues[avgValues.length - 1].date.slice(5);
+    const normVals = Object.values(SNOTEL_NORMALS.normals).map(n => n[md]?.median).filter(Boolean);
+    if (normVals.length > 0) {
+      const normAvg = normVals.reduce((a,b) => a+b, 0) / normVals.length;
+      if (normAvg > 0) {
+        const pct = Math.round(latestVal / normAvg * 100);
+        const pctColor = pct >= 90 ? '#26c6da' : pct >= 70 ? '#FFB74D' : '#EF5350';
+        pctText = `<text x="${w-2}" y="${padT+10}" text-anchor="end" fill="${pctColor}" font-family="var(--mono)" font-size="8" font-weight="bold">${pct}% of normal</text>`;
+      }
+    }
+  }
+
+  svg.innerHTML = xTicks + rangeLines + normalLine +
+    `<path d="${area}" fill="rgba(79,195,247,0.08)" pointer-events="none"/>` +
+    `<path d="${line}" fill="none" stroke="#4FC3F7" stroke-width="1.5" pointer-events="none"/>` +
+    marker + pctText;
+
+  labels.innerHTML = `<span style="color:#FFB74D">--- 20yr avg</span><span style="color:var(--accent)">— season</span>`;
+}
+
+// ── SNOTEL features ──
+// Diverging palette used for "relative to region" coloring (matches the
+// /metadata heatmap). Index 0 = lowest, last = highest. Pre-computed and
+// baked into each feature as `rel_color` so the Mapbox circle layer just
+// reads it via ['get', 'rel_color'] without needing per-feature expressions.
+const SNOTEL_REL_PALETTE = ['#FF5252', '#FF8A65', '#FFB74D', '#FFF59D', '#E0F7FA', '#81D4FA', '#26C6DA', '#0288D1'];
+
+function relColor(depth, maxDepth) {
+  if (depth == null || maxDepth <= 0) return '#546e7a';  // gray for no data
+  const t = depth / maxDepth;
+  const idx = Math.min(SNOTEL_REL_PALETTE.length - 1, Math.max(0, Math.floor(t * (SNOTEL_REL_PALETTE.length - 1))));
+  return SNOTEL_REL_PALETTE[idx];
+}
+
+function buildSnotelFeatures(snotel) {
+  // Only show SNTL stations (the ones with season depth data, not USGS/COOP)
+  const stations = snotel.filter(s => s.lat && s.lon && s.id && s.id.endsWith(':SNTL'));
+  // Compute the regional max for THIS snapshot so each station's color
+  // shows where it sits relative to the rest of the region today
+  // (per user: 'color the snotel sites by the relative to area across
+  // the entire region').
+  const maxDepth = Math.max(0, ...stations.map(s => s.snow_depth_in || 0));
+  return stations.map(s => ({
+    type: 'Feature',
+    geometry: { type: 'Point', coordinates: [s.lon, s.lat] },
+    properties: {
+      id: s.id, name: s.name, elevation_ft: s.elevation_ft,
+      swe_in: s.swe_in, snow_depth_in: s.snow_depth_in,
+      has_snow: (s.snow_depth_in || 0) > 0,
+      rel_color: relColor(s.snow_depth_in, maxDepth),
+      rel_max: maxDepth,
+    },
+  }));
+}
+
+// ── Map layers ──
+function addOverlayLayers() {
+  const d = CURRENT_DATA;
+  const b = d.bounds;
+  const coords = [[b.west, b.north], [b.east, b.north], [b.east, b.south], [b.west, b.south]];
+  const basePath = (d.chunks || d.tiles) ? `/api/tile/${d.scene_date}` : `data/${d.scene_date}`;
+
+  // Terrain DEM + hillshade
+  if (!map.getSource('mapbox-dem')) {
+    map.addSource('mapbox-dem', { type: 'raster-dem', url: 'mapbox://mapbox.mapbox-terrain-dem-v1', tileSize: 512, maxzoom: 14 });
+  }
+  // Hillshade layer — makes terrain visible even in dark mode / 2D
+  if (!map.getLayer('hillshade')) {
+    map.addLayer({
+      id: 'hillshade', type: 'hillshade', source: 'mapbox-dem',
+      paint: { 'hillshade-exaggeration': 0.3, 'hillshade-shadow-color': '#000', 'hillshade-highlight-color': '#fff', 'hillshade-accent-color': '#1a2233' },
+    }, map.getStyle().layers.find(l => l.type === 'symbol')?.id);
+  }
+  if (document.getElementById('tog-terrain').checked) {
+    map.setTerrain({ source: 'mapbox-dem', exaggeration: 1.3 });
+  }
+
+  // AOI source
+  const aoi = [-112.2, 44.9, -109.0, 46.5];
+  const aoiRing = [[aoi[0],aoi[3]], [aoi[2],aoi[3]], [aoi[2],aoi[1]], [aoi[0],aoi[1]], [aoi[0],aoi[3]]];
+  if (!map.getSource('aoi')) {
+    map.addSource('aoi', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'Polygon', coordinates: [aoiRing] }, properties: {} }});
+  }
+
+  // AOI outline (dashed white border)
+  if (!map.getLayer('aoi-outline')) {
+    map.addLayer({ id: 'aoi-outline', type: 'line', source: 'aoi', paint: {
+      'line-color': 'rgba(255,255,255,0.2)', 'line-width': 1.5, 'line-dasharray': [4, 3],
+    }});
+  }
+
+  // Sentinel-2 imagery — chunk format uses per-chunk truecolor sources (addTruecolorLayers); skip the legacy single-mosaic source.
+  if (!d.chunks) {
+    if (!map.getSource('s2-src')) {
+      map.addSource('s2-src', { type: 'image', url: `${basePath}/truecolor.webp`, coordinates: coords });
+    }
+    if (!map.getLayer('s2-overlay')) {
+      map.addLayer({ id: 's2-overlay', type: 'raster', source: 's2-src',
+        paint: { 'raster-opacity': 0.9 },
+        layout: { visibility: document.getElementById('tog-s2').checked ? 'visible' : 'none' },
+      });
+    }
+  }
+
+  // Snow overlay
+  if (d.chunks || (d.tiles && d.tiles.length > 0)) {
+    updateTileLayers(d, basePath);
+  } else if (!map.getSource('snow-src')) {
+    map.addSource('snow-src', { type: 'image', url: `${basePath}/snow.webp`, coordinates: coords });
+  }
+  if (!d.chunks && !d.tiles && !map.getLayer('snow-overlay')) {
+    map.addLayer({ id: 'snow-overlay', type: 'raster', source: 'snow-src',
+      paint: { 'raster-opacity': parseFloat(document.getElementById('slider-snow').value) / 100 },
+      layout: { visibility: document.getElementById('tog-snow').checked ? 'visible' : 'none' },
+    });
+  }
+
+  // SNOTEL: prefer the per-date lookup against snotel_season.json for the
+  // currently-selected date so the FIRST render matches whatever date the
+  // user landed on (TODAY by default). Falls back to snotel.json (today's
+  // global snapshot) if season data isn't loaded yet.
+  const initSnotel = snotelForDate(CURRENT_DATE) || SNOTEL;
+  const features = buildSnotelFeatures(initSnotel || []);
+  if (!map.getSource('snotel')) {
+    map.addSource('snotel', { type: 'geojson', data: { type: 'FeatureCollection', features } });
+  }
+
+  const snotelVis = document.getElementById('tog-snotel').checked ? 'visible' : 'none';
+
+  // Dots colored by relative-to-region snow depth (red = lowest in region,
+  // blue = highest right now). Color comes from the pre-computed rel_color
+  // property baked in by buildSnotelFeatures(). Matches the /metadata
+  // heatmap palette so the two views feel like one consistent product.
+  if (!map.getLayer('snotel-circles')) {
+    map.addLayer({ id: 'snotel-circles', type: 'circle', source: 'snotel', layout: { visibility: snotelVis }, paint: {
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 7, 3, 10, 5, 14, 7],
+      'circle-color': ['get', 'rel_color'],
+      'circle-stroke-color': 'rgba(0,0,0,0.6)',
+      'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 7, 0.8, 12, 1.4],
+      'circle-opacity': 0.95,
+    }});
+  }
+
+  // Snow depth label — always visible above stations WITH snow (not bare ones)
+  if (!map.getLayer('snotel-depth')) {
+    map.addLayer({ id: 'snotel-depth', type: 'symbol', source: 'snotel', layout: {
+      visibility: snotelVis,
+      'text-field': ['case',
+        ['get', 'has_snow'],
+        ['concat', ['to-string', ['get', 'snow_depth_in']], '"'],
+        ''],
+      'text-size': ['interpolate', ['linear'], ['zoom'], 7, 8, 10, 10, 14, 13],
+      'text-offset': [0, -1.0], 'text-anchor': 'bottom',
+      'text-font': ['DIN Pro Bold', 'Arial Unicode MS Bold'],
+      'text-allow-overlap': false,
+      'text-padding': 2,
+    }, paint: {
+      'text-color': '#4FC3F7',
+      'text-halo-color': 'rgba(0,0,0,0.8)', 'text-halo-width': 1.5,
+    }});
+  }
+
+  // Station name — only on zoom
+  if (!map.getLayer('snotel-labels')) {
+    map.addLayer({ id: 'snotel-labels', type: 'symbol', source: 'snotel', minzoom: 10.5, layout: {
+      visibility: snotelVis,
+      'text-field': ['get', 'name'],
+      'text-size': ['interpolate', ['linear'], ['zoom'], 10.5, 9, 12, 11, 14, 13],
+      'text-offset': [0, 1.3], 'text-anchor': 'top',
+      'text-font': ['DIN Pro Medium', 'Arial Unicode MS Regular'], 'text-max-width': 8,
+    }, paint: { 'text-color': '#99aabb', 'text-halo-color': 'rgba(0,0,0,0.8)', 'text-halo-width': 1.5 }});
+  }
+
+  // SNOTEL click handler
+  map.off('click', 'snotel-circles', onSnotelClick);
+  map.on('click', 'snotel-circles', onSnotelClick);
+  map.on('mouseenter', 'snotel-circles', () => map.getCanvas().style.cursor = 'pointer');
+  map.on('mouseleave', 'snotel-circles', () => map.getCanvas().style.cursor = '');
+
+  // ── Forest canopy mask ──
+  addForestLayer();
+
+  // ── Historical snow frequency overlay ──
+  addHistoricalLayer();
+
+  // ── Webcams ──
+  addWebcamLayer();
+  updateWebcamVisibility();
+
+  // Apply basemap-aware styling (snow color shift, SNOTEL stroke contrast)
+  // after all overlays are in place. Re-runs on every basemap switch via
+  // the bm-btn click handler.
+  applyBasemapStyling();
+  bringSnotelToTop();
+}
+
+// ── Historical layer ──
+let HISTORICAL_INDEX = null;
+
+async function addHistoricalLayer() {
+  if (!HISTORICAL_INDEX) {
+    try {
+      const r = await fetch('data/historical/historical.json');
+      if (r.ok) HISTORICAL_INDEX = await r.json();
+    } catch (e) { return; }
+  }
+  if (!HISTORICAL_INDEX) return;
+
+  // Find the closest DOY period to the current date being viewed
+  const dateStr = CURRENT_DATE || DATES[DATES.length - 1];
+  const dt = new Date(dateStr + 'T00:00:00');
+  const doy = Math.floor((dt - new Date(dt.getFullYear(), 0, 0)) / 86400000);
+  const closestDoy = Object.keys(HISTORICAL_INDEX.periods)
+    .map(Number)
+    .sort((a, b) => Math.abs(a - doy) - Math.abs(b - doy))[0];
+
+  if (!closestDoy) return;
+  const period = HISTORICAL_INDEX.periods[String(closestDoy)];
+  const b = HISTORICAL_INDEX.bounds;
+  const coords = [[b.west, b.north], [b.east, b.north], [b.east, b.south], [b.west, b.south]];
+
+  if (map.getSource('hist-src')) {
+    map.getSource('hist-src').updateImage({ url: `data/historical/${period.file}`, coordinates: coords });
+  } else {
+    map.addSource('hist-src', { type: 'image', url: `data/historical/${period.file}`, coordinates: coords });
+    const vis = document.getElementById('tog-historical').checked ? 'visible' : 'none';
+    map.addLayer({
+      id: 'hist-overlay', type: 'raster', source: 'hist-src',
+      paint: { 'raster-opacity': 0.5 },
+      layout: { visibility: vis },
+    }, 'snow-overlay'); // insert below snow overlay
+  }
+}
+
+// ── Webcams ──
+const WEBCAMS = [
+  // Bridger Bowl — direct S3 images
+  { name: 'Bridger Bowl - Base', lat: 45.8167, lon: -110.8967, img: 'https://webcam-images.s3-us-west-1.amazonaws.com/parking_lot.jpg', link: 'https://bridgerbowl.com/weather/webcams' },
+  { name: 'Bridger Bowl - Apron', lat: 45.8190, lon: -110.9050, img: 'https://webcam-images.s3-us-west-1.amazonaws.com/apron.jpg', link: 'https://bridgerbowl.com/weather/webcams' },
+  { name: 'Bridger Bowl - Ridge', lat: 45.8200, lon: -110.9060, img: 'https://webcam-images.s3-us-west-1.amazonaws.com/RidgeEast.jpg', link: 'https://bridgerbowl.com/weather/webcams' },
+  { name: 'Bridger Bowl - Alpine', lat: 45.8185, lon: -110.9045, img: 'https://webcam-images.s3-us-west-1.amazonaws.com/alpine_lift.jpg', link: 'https://bridgerbowl.com/weather/webcams' },
+  // Big Sky — YouTube live stream thumbnails
+  { name: 'Big Sky - Lone Peak', lat: 45.2855, lon: -111.4016, img: 'https://img.youtube.com/vi/6iW7bdSavUo/maxresdefault.jpg', link: 'https://bigskyresort.com/the-mountain/web-cams' },
+  { name: 'Big Sky - Everett 8800', lat: 45.2870, lon: -111.3980, img: 'https://img.youtube.com/vi/dMr-Jt_K3Cc/maxresdefault.jpg', link: 'https://bigskyresort.com/the-mountain/web-cams' },
+  // Cooke City — Upper Yellowstone Snowmobile Club live stream above the
+  // Sinclair gas station. The YouTube thumbnail URL only updates with live
+  // frames when the stream is actively broadcasting; off-season it returns
+  // the channel logo (which looks like a broken cam). Use live=true to
+  // mark this as a "watch live" entry — popup shows a button instead of
+  // a static thumbnail and clicking opens the live stream in a new tab.
+  { name: 'Cooke City - UYSC Town Cam', lat: 45.0197, lon: -109.9337, live: 'https://www.youtube.com/watch?v=hzcsPl8MtXU', link: 'https://ridecookecity.com/' },
+  // Yellowstone NPS — proxied through Cloudflare Worker
+  { name: 'West Yellowstone Gate', lat: 44.6573, lon: -111.0946, proxy: 'https://www.nps.gov/webcams-yell/west_gate.jpg', link: 'https://www.nps.gov/yell/learn/photosmultimedia/webcams.htm' },
+  { name: 'Mammoth - Electric Peak', lat: 44.9734, lon: -110.7043, proxy: 'https://www.nps.gov/webcams-yell/mammoth_electric.jpg', link: 'https://www.nps.gov/yell/learn/photosmultimedia/webcams.htm' },
+  { name: 'Mt Washburn', lat: 44.7979, lon: -110.4342, proxy: 'https://www.nps.gov/webcams-yell/washburn_sw.jpg', link: 'https://www.nps.gov/yell/learn/photosmultimedia/webcams.htm' },
+];
+
+function addWebcamLayer() {
+  const features = WEBCAMS.map(c => ({
+    type: 'Feature',
+    geometry: { type: 'Point', coordinates: [c.lon, c.lat] },
+    properties: { name: c.name, link: c.link, img: c.img || '', proxy: c.proxy || '', mdt: c.mdt || '', live: c.live || '' },
+  }));
+
+  if (!map.getSource('webcams')) {
+    map.addSource('webcams', { type: 'geojson', data: { type: 'FeatureCollection', features } });
+  }
+
+  const vis = document.getElementById('tog-webcams').checked ? 'visible' : 'none';
+
+  // Webcam markers — white dot with orange border + "CAM" label
+  if (!map.getLayer('webcam-icons')) {
+    map.addLayer({ id: 'webcam-icons', type: 'circle', source: 'webcams', layout: { visibility: vis }, paint: {
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 7, 5, 12, 8],
+      'circle-color': '#fff',
+      'circle-stroke-color': '#FF7043', 'circle-stroke-width': 2.5,
+    }});
+  }
+  if (!map.getLayer('webcam-text')) {
+    map.addLayer({ id: 'webcam-text', type: 'symbol', source: 'webcams', layout: {
+      visibility: vis,
+      'text-field': 'CAM',
+      'text-size': ['interpolate', ['linear'], ['zoom'], 7, 6, 12, 8],
+      'text-font': ['DIN Pro Bold', 'Arial Unicode MS Bold'],
+      'text-allow-overlap': true,
+    }, paint: { 'text-color': '#FF7043' }});
+  }
+
+  if (!map.getLayer('webcam-labels')) {
+    map.addLayer({ id: 'webcam-labels', type: 'symbol', source: 'webcams', minzoom: 10, layout: {
+      visibility: vis,
+      'text-field': ['get', 'name'],
+      'text-size': 9, 'text-offset': [0, 1.8], 'text-anchor': 'top',
+      'text-font': ['DIN Pro Medium', 'Arial Unicode MS Regular'], 'text-max-width': 8,
+    }, paint: { 'text-color': '#FF7043', 'text-halo-color': 'rgba(0,0,0,0.7)', 'text-halo-width': 1.5 }});
+  }
+
+  // Click: show webcam image in popup
+  map.off('click', 'webcam-icons', onWebcamClick);
+  map.on('click', 'webcam-icons', onWebcamClick);
+  map.on('mouseenter', 'webcam-icons', () => map.getCanvas().style.cursor = 'pointer');
+  map.on('mouseleave', 'webcam-icons', () => map.getCanvas().style.cursor = '');
+}
+
+async function onWebcamClick(e) {
+  const p = e.features[0].properties;
+  const ts = Date.now();
+  let bodyHtml = '';
+
+  // Live-stream-only entries (no static thumbnail) — render a big "Watch Live"
+  // button instead of a broken image. The YouTube live thumbnail trick only
+  // works for actively-broadcasting streams; off-season the URL returns the
+  // channel logo which looks like a broken cam.
+  if (p.live && p.live !== '') {
+    bodyHtml = `<a href="${p.live}" target="_blank" style="display:block;text-align:center;padding:14px;background:linear-gradient(135deg,#4FC3F7,#26c6da);color:#0a1525;border-radius:6px;text-decoration:none;font-family:var(--mono);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;margin:6px 0">▶ Watch Live</a>`;
+  } else {
+    // Build the image URL — Mapbox serializes props as strings so check for non-empty
+    let imgSrc = '';
+    if (p.img && p.img !== '') {
+      imgSrc = p.img + '?t=' + ts;
+    } else if (p.proxy && p.proxy !== '') {
+      imgSrc = '/api/camproxy?url=' + encodeURIComponent(p.proxy) + '&t=' + ts;
+    } else if (p.mdt && p.mdt !== '') {
+      imgSrc = '/api/mdtcam?id=' + p.mdt + '&t=' + ts;
+    }
+    if (imgSrc) {
+      bodyHtml = '<img src="' + imgSrc + '" alt="' + p.name + '" style="width:100%;border-radius:6px;margin:6px 0" onerror="this.style.display=\'none\'">';
+    }
+  }
+
+  new mapboxgl.Popup({ offset: 12, maxWidth: '340px' })
+    .setLngLat(e.features[0].geometry.coordinates)
+    .setHTML(`<div class="webcam-popup">
+      <div class="cam-name">${p.name}</div>
+      <div id="cam-img-${ts}">${bodyHtml}</div>
+      <div class="cam-src"><a href="${p.link}" target="_blank">Source &rarr;</a></div>
+    </div>`)
+    .addTo(map);
+}
+
+// Webcams only show when viewing the most recent date (live conditions)
+function updateWebcamVisibility() {
+  if (!CURRENT_DATE) return;
+  const isLatest = CURRENT_DATE === DATES[DATES.length - 1];
+  const show = isLatest && document.getElementById('tog-webcams').checked;
+  const vis = show ? 'visible' : 'none';
+  ['webcam-icons', 'webcam-text', 'webcam-labels'].forEach(id => {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
+  });
+}
+
+// Build the rich popup body for one station + view date.
+// Returns an HTML string. Uses SNOTEL_SEASON (loaded once) to compute
+// deltas, season peak, percentile-of-normal, and a 7-day sparkline.
+function buildSnotelPopupBody(p, viewDate) {
+  const triplet = p.id || '';
+  const parts = triplet.split(':');
+  const elev = p.elevation_ft ? Number(p.elevation_ft).toLocaleString() + ' ft' : '—';
+  const nrcsUrl = parts.length >= 3 && parts[2] === 'SNTL'
+    ? `https://wcc.sc.egov.usda.gov/nwcc/site?sitenum=${parts[0]}`
+    : `https://wcc.sc.egov.usda.gov/nwcc/rswl?site_no=${parts[0]}&state=${parts[1]}`;
+  const viewLabel = new Date(viewDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+  // Pull the station's full season history from the cached file.
+  // Stations exist in SNOTEL_SEASON whether or not they're SNTL; only
+  // SNTL stations have meaningful history.
+  const station = SNOTEL_SEASON?.stations?.find(s => s.id === triplet);
+  const history = station?.history || [];
+
+  // Find the reading at viewDate (or the most recent reading at-or-before).
+  let viewIdx = -1;
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (history[i].date <= viewDate) { viewIdx = i; break; }
+  }
+  const cur = viewIdx >= 0 ? history[viewIdx] : null;
+  const depth = cur?.depth_in != null ? cur.depth_in : null;
+  const swe = cur?.swe_in != null ? cur.swe_in : null;
+
+  // 3-day delta (compare against the reading 3 days earlier in history)
+  let deltaText = '', deltaArrow = '', deltaColor = 'var(--text-dim)';
+  if (viewIdx >= 3 && depth != null) {
+    const prior = history[viewIdx - 3]?.depth_in;
+    if (prior != null) {
+      const diff = depth - prior;
+      if (diff > 0.5) { deltaArrow = '↑'; deltaColor = '#4FC3F7'; deltaText = `+${diff.toFixed(0)}″`; }
+      else if (diff < -0.5) { deltaArrow = '↓'; deltaColor = '#FFB74D'; deltaText = `${diff.toFixed(0)}″`; }
+      else { deltaArrow = '→'; deltaText = 'flat'; }
+    }
+  }
+
+  // Season peak
+  let peakText = '';
+  if (history.length > 0) {
+    const peak = history.reduce((best, h) =>
+      (h.depth_in != null && (!best || h.depth_in > best.depth_in)) ? h : best, null);
+    if (peak && peak.depth_in > 0) {
+      const peakDate = new Date(peak.date + 'T00:00:00');
+      const peakLabel = peakDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const daysSince = cur ? Math.round((new Date(cur.date) - peakDate) / 86400000) : null;
+      const sinceText = daysSince != null && daysSince > 0 ? ` (${daysSince}d ago)` : '';
+      peakText = `${peak.depth_in.toFixed(0)}″ on ${peakLabel}${sinceText}`;
+    }
+  }
+
+  // % of 20-year normal for this date — relies on the existing
+  // SNOTEL_NORMALS file already loaded by loadSnotelNormals().
+  let normalText = '';
+  if (depth != null && SNOTEL_NORMALS?.normals?.[triplet]) {
+    const md = viewDate.slice(5);  // "MM-DD"
+    const norm = SNOTEL_NORMALS.normals[triplet][md];
+    if (norm && norm.median > 0) {
+      const pct = Math.round(depth / norm.median * 100);
+      const color = pct >= 110 ? '#4FC3F7' : pct >= 90 ? '#26c6da' : pct >= 70 ? '#FFB74D' : '#FF8A65';
+      normalText = `<span style="color:${color}">${pct}%</span> of 20-year median`;
+    }
+  }
+
+  // Full season depth chart — adapted from the existing renderDepthSVG()
+  // helper. Convert the cached SNOTEL_SEASON history into the
+  // [{date, value}, ...] shape that renderDepthSVG expects, then call it
+  // directly. No NRCS fetch needed (instant render).
+  let seasonChartHtml = '';
+  if (history.length >= 5) {
+    const seasonValues = history
+      .filter(h => h.depth_in != null)
+      .map(h => ({ date: h.date, value: h.depth_in }));
+    if (seasonValues.length >= 5) {
+      seasonChartHtml = renderDepthSVG(seasonValues, viewDate, triplet);
+    }
+  }
+
+  // Build HTML
+  const depthStr = depth != null ? `${depth.toFixed(0)}″` : 'No data';
+  const sweStr = swe != null ? `${swe.toFixed(1)}″` : '—';
+  const depthColor = depth != null && depth > 0 ? '#4FC3F7' : 'var(--text-dim)';
+
+  return `<div class="popup-name">${p.name}</div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--text-dim);margin-bottom:6px">${elev} &middot; ${viewLabel}</div>
+    <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px">
+      <div style="font-size:24px;font-weight:600;color:${depthColor};line-height:1">${depthStr}</div>
+      <div style="font-size:11px;color:var(--text-dim)">snow depth</div>
+      ${deltaText ? `<div style="margin-left:auto;font-size:11px;font-family:var(--mono);color:${deltaColor}">${deltaArrow} ${deltaText}<div style="font-size:7px;color:var(--text-dim);text-align:right">3-day</div></div>` : ''}
+    </div>
+    ${normalText ? `<div style="font-size:10px;font-family:var(--mono);margin-top:2px;margin-bottom:4px">${normalText}</div>` : ''}
+    ${seasonChartHtml}
+    <div style="border-top:1px solid var(--border);margin:6px 0;padding-top:6px;display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:10px;font-family:var(--mono)">
+      <span style="color:var(--text-dim)">SWE</span><span>${sweStr}</span>
+      ${peakText ? `<span style="color:var(--text-dim)">Peak</span><span>${peakText}</span>` : ''}
+    </div>
+    <a href="${nrcsUrl}" target="_blank" style="display:block;margin-top:6px;font-size:9px;color:var(--accent);font-family:var(--mono);text-decoration:none;">View on NRCS &rarr;</a>`;
+}
+
+async function onSnotelClick(e) {
+  const p = e.features[0].properties;
+  const viewDate = CURRENT_DATE || DATES[DATES.length - 1];
+
+  new mapboxgl.Popup({ offset: 14, maxWidth: '300px' })
+    .setLngLat(e.features[0].geometry.coordinates)
+    .setHTML(buildSnotelPopupBody(p, viewDate))
+    .addTo(map);
+}
+
+// ── Timeline ──
+function buildTimeline() {
+  const slider = document.getElementById('tl-slider');
+  slider.max = DATES.length - 1;
+  slider.value = DATES.length - 1;
+
+  const tickEl = document.getElementById('tl-ticks');
+  const seasonStart = new Date('2025-10-01').getTime();
+  const seasonEnd = new Date('2026-04-30').getTime();
+  const seasonSpan = seasonEnd - seasonStart;
+
+  function dateToPct(dateStr) {
+    return ((new Date(dateStr).getTime() - seasonStart) / seasonSpan * 100).toFixed(1);
+  }
+
+  let html = '';
+
+  // Month labels at correct positions
+  const months = [
+    ['Oct','2025-10-01'],['Nov','2025-11-01'],['Dec','2025-12-01'],
+    ['Jan','2026-01-01'],['Feb','2026-02-01'],['Mar','2026-03-01'],['Apr','2026-04-01'],
+  ];
+  months.forEach(([label, d]) => {
+    html += `<span style="position:absolute;left:${dateToPct(d)}%;top:12px;font-size:7px;color:var(--text-dim);transform:translateX(-50%)">${label}</span>`;
+    html += `<div style="position:absolute;left:${dateToPct(d)}%;top:0;width:1px;height:10px;background:rgba(255,255,255,0.08)"></div>`;
+  });
+
+  // Date dots at correct positions. The TODAY_VIRTUAL entry (if present)
+  // is just another date in DATES — it gets the same dot but green-colored
+  // so the user can spot the "live now" position. Same size, same vertical
+  // alignment as every other dot, so it visually fits with the rest.
+  DATES.forEach((dateStr, idx) => {
+    const pct = dateToPct(dateStr);
+    const isToday = dateStr === TODAY_VIRTUAL;
+    const label = isToday
+      ? 'Today (live SNOTEL, no imagery yet)'
+      : new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', {month:'short',day:'numeric'});
+    const bg = isToday ? '#69f0ae' : 'var(--accent)';
+    const opacity = isToday ? '0.95' : '0.5';
+    const shadow = isToday ? 'box-shadow:0 0 6px rgba(105,240,174,0.6);' : '';
+    html += `<div data-idx="${idx}" title="${label}" onclick="loadDate(DATES[${idx}])" style="position:absolute;left:${pct}%;top:2px;width:6px;height:6px;border-radius:50%;background:${bg};opacity:${opacity};cursor:pointer;transform:translateX(-3px);${shadow}"></div>`;
+  });
+
+  tickEl.innerHTML = html;
+
+  slider.addEventListener('input', () => {
+    const idx = parseInt(slider.value);
+    loadDate(DATES[idx]);
+  });
+}
+
+function updateTimelineUI() {
+  const idx = DATES.indexOf(CURRENT_DATE);
+  document.getElementById('tl-slider').value = idx >= 0 ? idx : DATES.length - 1;
+
+  // Highlight active dot and move marker. Today (if present in DATES) gets
+  // a green active style; all other dates get the cyan accent.
+  document.querySelectorAll('#tl-ticks div[data-idx]').forEach(dot => {
+    const dotIdx = parseInt(dot.dataset.idx);
+    const dotDate = DATES[dotIdx];
+    const isToday = dotDate === TODAY_VIRTUAL;
+    if (dotIdx === idx) {
+      // Active: bigger, brighter, marker bar on top
+      dot.style.background = isToday ? '#a7ffb8' : '#ffffff';
+      dot.style.opacity = '1';
+      dot.style.width = '9px';
+      dot.style.height = '9px';
+      const marker = document.getElementById('tl-marker');
+      if (marker) marker.style.left = dot.style.left;
+    } else {
+      // Inactive: today stays green, others go to dim cyan
+      dot.style.background = isToday ? '#69f0ae' : 'var(--accent)';
+      dot.style.opacity = isToday ? '0.85' : '0.4';
+      dot.style.width = '5px';
+      dot.style.height = '5px';
+    }
+  });
+
+  const d = new Date(CURRENT_DATE + 'T00:00:00');
+  document.getElementById('tl-date').textContent = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function formatShort(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+// Timeline controls
+document.getElementById('tl-prev').addEventListener('click', () => {
+  const idx = DATES.indexOf(CURRENT_DATE);
+  if (idx > 0) loadDate(DATES[idx - 1]);
+});
+document.getElementById('tl-next').addEventListener('click', () => {
+  const idx = DATES.indexOf(CURRENT_DATE);
+  if (idx < DATES.length - 1) loadDate(DATES[idx + 1]);
+});
+
+let isPlaying = false;
+document.getElementById('tl-play').addEventListener('click', function () {
+  if (isPlaying) {
+    isPlaying = false;
+    this.classList.remove('active');
+    this.innerHTML = '&#9654;&#9654;';
+    this.title = 'Play season';
+    return;
+  }
+  isPlaying = true;
+  this.classList.add('active');
+  this.innerHTML = '&#10074;&#10074;';  // pause icon
+  this.title = 'Pause';
+
+  // Build the playback list — skip TODAY_VIRTUAL since it has no imagery,
+  // would just flash an empty no_imagery state mid-loop and break the
+  // visual flow of the time-lapse.
+  const playable = DATES.filter(d => d !== TODAY_VIRTUAL);
+  if (playable.length === 0) { isPlaying = false; return; }
+
+  // If we're currently on a non-playable date (e.g. TODAY mode), jump
+  // to the start of the playable range first.
+  if (!playable.includes(CURRENT_DATE)) {
+    loadDate(playable[0]);
+  }
+
+  async function playNext() {
+    if (!isPlaying) return;
+    const idx = playable.indexOf(CURRENT_DATE);
+    const nextIdx = idx < playable.length - 1 ? idx + 1 : 0;
+    await loadDate(playable[nextIdx]);
+    if (isPlaying) setTimeout(playNext, 900);
+  }
+  playNext();
+});
+
+// Keyboard nav
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT') return;
+  // Today is in DATES (as a virtual entry) when applicable, so plain
+  // index-based navigation handles it for free.
+  let idx = DATES.indexOf(CURRENT_DATE);
+  if (idx === -1) idx = DATES.length - 1;
+  if (e.key === 'ArrowLeft' && idx > 0) loadDate(DATES[idx - 1]);
+  if (e.key === 'ArrowRight' && idx < DATES.length - 1) loadDate(DATES[idx + 1]);
+});
+
+// ── Layer controls ──
+document.getElementById('tog-snow').addEventListener('change', function () {
+  const vis = this.checked ? 'visible' : 'none';
+  if (map.getLayer('snow-overlay')) map.setLayoutProperty('snow-overlay', 'visibility', vis);
+  // Per-tile snow layers only (skip truecolor layers, which the S2 toggle owns)
+  for (const id of currentTileLayerIds) {
+    if (id.startsWith('layer-snow-') && map.getLayer(id)) {
+      map.setLayoutProperty(id, 'visibility', vis);
+    }
+  }
+  document.getElementById('opacity-snow').classList.toggle('hidden', !this.checked);
+});
+document.getElementById('slider-snow').addEventListener('input', function () {
+  const op = this.value / 100;
+  if (map.getLayer('snow-overlay')) map.setPaintProperty('snow-overlay', 'raster-opacity', op);
+  // Only the snow tile layers — the truecolor layers have their own slider.
+  // (Previous version iterated EVERY tile layer including layer-tc-*, which
+  // made the snow + s2 sliders feel "connected" since moving one affected
+  // the other's opacity.)
+  for (const id of currentTileLayerIds) {
+    if (id.startsWith('layer-snow-') && map.getLayer(id)) {
+      map.setPaintProperty(id, 'raster-opacity', op);
+    }
+  }
+});
+
+document.getElementById('tog-s2').addEventListener('change', function () {
+  const vis = this.checked ? 'visible' : 'none';
+  // First click on a date that hasn't loaded truecolor yet — hydrate now.
+  if (this.checked && !truecolorAdded) {
+    addTruecolorLayers();
+  }
+  if (map.getLayer('s2-overlay')) map.setLayoutProperty('s2-overlay', 'visibility', vis);
+  // Per-tile truecolor layers
+  for (const id of currentTileLayerIds) {
+    if (id.startsWith('layer-tc-') && map.getLayer(id)) {
+      map.setLayoutProperty(id, 'visibility', vis);
+    }
+  }
+  document.getElementById('opacity-s2').classList.toggle('hidden', !this.checked);
+  // Reflect state on the big CTA button
+  const btn = document.getElementById('big-s2-btn');
+  if (btn) {
+    btn.textContent = this.checked ? '🛰  Hide Satellite Imagery' : '🛰  View Satellite Imagery';
+    btn.style.background = this.checked
+      ? 'linear-gradient(135deg,#26c6da,#0097a7)'
+      : 'linear-gradient(135deg,#4FC3F7,#26c6da)';
+  }
+});
+
+// Big CTA button — proxies to the s2 layer toggle so the prominent click
+// in the main left panel does the same thing as the tiny layer checkbox.
+document.getElementById('big-s2-btn').addEventListener('click', function () {
+  const cb = document.getElementById('tog-s2');
+  cb.checked = !cb.checked;
+  cb.dispatchEvent(new Event('change'));
+});
+document.getElementById('slider-s2').addEventListener('input', function () {
+  const op = this.value / 100;
+  if (map.getLayer('s2-overlay')) map.setPaintProperty('s2-overlay', 'raster-opacity', op);
+  for (const id of currentTileLayerIds) {
+    if (id.startsWith('layer-tc-') && map.getLayer(id)) {
+      map.setPaintProperty(id, 'raster-opacity', op);
+    }
+  }
+});
+
+document.getElementById('tog-snotel').addEventListener('change', function () {
+  const vis = this.checked ? 'visible' : 'none';
+  ['snotel-circles', 'snotel-depth', 'snotel-labels'].forEach(id => {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
+  });
+});
+
+document.getElementById('tog-historical').addEventListener('change', function () {
+  if (map.getLayer('hist-overlay')) map.setLayoutProperty('hist-overlay', 'visibility', this.checked ? 'visible' : 'none');
+  document.getElementById('opacity-historical').classList.toggle('hidden', !this.checked);
+  if (this.checked && !HISTORICAL_INDEX) addHistoricalLayer();
+});
+document.getElementById('slider-historical').addEventListener('input', function () {
+  if (map.getLayer('hist-overlay')) map.setPaintProperty('hist-overlay', 'raster-opacity', this.value / 100);
+});
+
+document.getElementById('tog-webcams').addEventListener('change', function () {
+  const vis = this.checked ? 'visible' : 'none';
+  ['webcam-icons', 'webcam-text', 'webcam-labels'].forEach(id => {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
+  });
+});
+
+// 3D Terrain — when toggled ON, enable Mapbox terrain at higher exaggeration,
+// auto-tilt to 60° for dramatic relief, and add a sky layer so the horizon
+// fades into atmosphere. When toggled OFF, restore flat 2D view.
+// Saves the 2D pitch/bearing so toggling back is symmetric.
+let _flatPitch = 0, _flatBearing = 0;
+document.getElementById('tog-terrain').addEventListener('change', function () {
+  if (this.checked) {
+    _flatPitch = map.getPitch();
+    _flatBearing = map.getBearing();
+    map.setTerrain({ source: 'mapbox-dem', exaggeration: 1.6 });
+    // Sky layer — the gradient from horizon to atmosphere top
+    if (!map.getLayer('sky')) {
+      try {
+        map.addLayer({
+          id: 'sky',
+          type: 'sky',
+          paint: {
+            'sky-type': 'atmosphere',
+            'sky-atmosphere-sun': [0.0, 90.0],
+            'sky-atmosphere-sun-intensity': 8,
+          },
+        });
+      } catch (e) { /* style may not support sky on this basemap */ }
+    }
+    map.easeTo({ pitch: 60, bearing: 0, duration: 800 });
+  } else {
+    if (map.getLayer('sky')) map.removeLayer('sky');
+    map.setTerrain(null);
+    map.easeTo({ pitch: _flatPitch, bearing: _flatBearing, duration: 600 });
+  }
+});
+
+// ── Panel collapse + mobile bottom-sheet drag ──
+const panel = document.getElementById('panel');
+const panelToggle = document.getElementById('panel-toggle');
+panel.addEventListener('dblclick', (e) => {
+  if (e.target.tagName === 'INPUT') return;
+  panel.classList.add('collapsed');
+  panelToggle.classList.add('visible');
+});
+panelToggle.addEventListener('click', () => {
+  panel.classList.remove('collapsed');
+  panelToggle.classList.remove('visible');
+});
+
+// On mobile (<768px), the panel is a bottom sheet with a drag handle
+// pill at the top. Tapping or dragging the top region toggles between
+// the collapsed (~32vh) and expanded (~80vh) sizes. Dragging up past
+// the threshold expands; dragging down past it collapses. We listen on
+// the panel itself but only react to touches inside the top 24px (the
+// drag-handle area) to avoid stealing scroll events from the panel
+// content below.
+let dragStartY = null;
+function isMobile() { return window.innerWidth < 768; }
+function panelTopRegion(e) {
+  if (!isMobile()) return false;
+  const rect = panel.getBoundingClientRect();
+  const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+  return y < 24;  // top 24px = drag handle zone
+}
+panel.addEventListener('touchstart', (e) => {
+  if (!panelTopRegion(e)) return;
+  dragStartY = e.touches[0].clientY;
+}, { passive: true });
+panel.addEventListener('touchend', (e) => {
+  if (dragStartY === null) return;
+  const dy = (e.changedTouches[0].clientY) - dragStartY;
+  if (Math.abs(dy) < 8) {
+    // Tap on the handle = toggle expanded state
+    panel.classList.toggle('expanded');
+  } else if (dy < -20) {
+    panel.classList.add('expanded');
+  } else if (dy > 20) {
+    panel.classList.remove('expanded');
+  }
+  dragStartY = null;
+});
+// Also support mouse drag for testing on desktop with narrow window
+panel.addEventListener('click', (e) => {
+  if (!panelTopRegion(e)) return;
+  panel.classList.toggle('expanded');
+});
+
+// ── Basemap switcher ──
+document.querySelectorAll('.bm-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const style = btn.dataset.style;
+    if (style === currentStyle) return;
+    currentStyle = style;
+
+    document.querySelectorAll('.bm-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    map.setStyle(style);
+    layersAdded = false;
+    map.once('style.load', () => {
+      addOverlayLayers();
+      layersAdded = true;
+      applyBasemapStyling();
+    });
+  });
+});
+
+// Push the SNOTEL pins (and their depth labels + station labels) to the
+// top of the layer stack so they're never hidden by snow tiles, truecolor,
+// forest mask, FS roads, or anything else added later. Call this after
+// any function that adds new layers.
+function bringSnotelToTop() {
+  // First: lift ALL basemap symbol layers (place names, road labels, POIs)
+  // above the raster imagery layers. Without this, when S2 truecolor is on
+  // it covers all the text and the user loses geographic context — they
+  // can't tell where Bozeman, Big Sky, or Hyalite are.
+  try {
+    const style = map.getStyle();
+    if (style && style.layers) {
+      const symbolLayers = style.layers.filter(l =>
+        l.type === 'symbol' && !l.id.startsWith('snotel') && !l.id.startsWith('webcam'));
+      symbolLayers.forEach(l => {
+        try { map.moveLayer(l.id); } catch (e) {}
+      });
+    }
+  } catch (e) {}
+
+  // Then: our own interactive layers on top of everything
+  ['snotel-circles', 'snotel-depth', 'snotel-labels', 'webcam-icons', 'webcam-text', 'webcam-labels'].forEach(id => {
+    if (map.getLayer(id)) {
+      try { map.moveLayer(id); } catch (e) {}
+    }
+  });
+}
+
+// Adjust overlay paint properties to match the current basemap. The cyan
+// snow color baked into snow_T*.webp pops on the dark basemap but clashes
+// with the topo basemap's beige/green palette — desaturating the raster
+// pushes it toward white so it reads more like real snow on top of terrain.
+// SNOTEL dot strokes also flip to white outlines on light basemaps so the
+// pins don't disappear into the background.
+function applyBasemapStyling() {
+  const isLight = currentStyle.includes('outdoors') || currentStyle.includes('satellite') || currentStyle.includes('streets');
+  const isTopo = currentStyle.includes('outdoors');
+
+  // Snow tile recolor: on topo, desaturate the cyan snow toward white-gray
+  // so it visually matches the topo map's snowy-mountain palette. On dark
+  // basemaps, leave the cyan as-is.
+  const snowSat = isTopo ? -0.9 : 0;       // -1=grayscale, 0=untouched
+  const snowBrightnessMin = isTopo ? 0.5 : 0;  // floor brightness so gray → near-white
+  for (const id of currentTileLayerIds) {
+    if (id.startsWith('layer-snow-') && map.getLayer(id)) {
+      map.setPaintProperty(id, 'raster-saturation', snowSat);
+      map.setPaintProperty(id, 'raster-brightness-min', snowBrightnessMin);
+    }
+  }
+  if (map.getLayer('snow-overlay')) {
+    map.setPaintProperty('snow-overlay', 'raster-saturation', snowSat);
+    map.setPaintProperty('snow-overlay', 'raster-brightness-min', snowBrightnessMin);
+  }
+
+  // SNOTEL dot strokes — dark on dark basemap, white on light basemaps.
+  // Also bump the stroke width on light basemaps so the pins pop.
+  if (map.getLayer('snotel-circles')) {
+    map.setPaintProperty('snotel-circles', 'circle-stroke-color',
+      isLight ? '#ffffff' : 'rgba(0,0,0,0.6)');
+    map.setPaintProperty('snotel-circles', 'circle-stroke-width',
+      ['interpolate', ['linear'], ['zoom'],
+        7, isLight ? 1.2 : 0.8,
+        12, isLight ? 2.2 : 1.4,
+      ]);
+  }
+
+  // SNOTEL depth labels — switch text color + halo so they read against
+  // the topo background's tan/green tones.
+  if (map.getLayer('snotel-depth')) {
+    map.setPaintProperty('snotel-depth', 'text-color',
+      isLight ? '#0d2438' : '#ffffff');
+    map.setPaintProperty('snotel-depth', 'text-halo-color',
+      isLight ? '#ffffff' : '#000000');
+  }
+}
+
+// ── Mountain range definitions for SNOTEL grouping ──
+// Mountain range bounding boxes chosen to cluster the 30 SNOTEL stations in
+// SNOTEL_NORMALS into their geographically-correct ranges. Verified 2026-04-20.
+const RANGES = {
+  'Gallatin':      { lat: [45.35, 45.60], lon: [-111.00, -110.85], color: '#4FC3F7' },
+  'Bridger':       { lat: [45.80, 46.00], lon: [-111.05, -110.85], color: '#26c6da' },
+  'Madison':       { lat: [44.85, 45.35], lon: [-111.50, -111.05], color: '#81d4fa' },
+  'Gravelly':      { lat: [44.70, 45.15], lon: [-112.10, -111.55], color: '#b39ddb' },
+  'Tobacco Root':  { lat: [45.45, 45.65], lon: [-112.10, -111.80], color: '#b2ebf2' },
+  'Crazy':         { lat: [46.05, 46.25], lon: [-110.55, -110.35], color: '#ffcc80' },
+  'Absaroka':      { lat: [45.00, 45.55], lon: [-110.55, -109.95], color: '#80deea' },
+  'Beartooth':     { lat: [44.40, 45.25], lon: [-110.20, -109.00], color: '#a7ffeb' },
+  'Yellowstone':   { lat: [44.55, 44.80], lon: [-111.13, -110.40], color: '#fff59d' },
+  'Henrys Lake':   { lat: [44.45, 44.65], lon: [-111.55, -111.12], color: '#ffab91' },
+  'Centennial':    { lat: [44.40, 44.70], lon: [-112.20, -111.55], color: '#69f0ae' },
+  'Elkhorn':       { lat: [46.25, 46.50], lon: [-112.30, -111.75], color: '#ce93d8' },
+};
+
+function rangeColor(rng) { return RANGES[rng]?.color || '#4FC3F7'; }
+
+// ── Per-tile snow layer management ──
+let currentTileLayerIds = [];
+// Pending truecolor entries for the current date — stashed but NOT loaded
+// until the user clicks the S2 imagery toggle. Speed-up A: most date
+// clicks never need truecolor (~95 MB), so don't fetch it eagerly.
+let pendingTruecolorTiles = null;  // { basePath, entries: [{tileId, file, bounds}] }
+let truecolorAdded = false;
+
+// data = full snowline.json object (has .chunks for new format, .tiles for legacy)
+function updateTileLayers(data, basePath) {
+  const snowVis = document.getElementById('tog-snow').checked ? 'visible' : 'none';
+  const snowOpacity = parseFloat(document.getElementById('slider-snow').value) / 100;
+
+  for (const id of currentTileLayerIds) {
+    if (map.getLayer(id)) map.removeLayer(id);
+    const srcId = id.replace('layer-', 'src-');
+    if (map.getSource(srcId)) map.removeSource(srcId);
+  }
+  currentTileLayerIds = [];
+  truecolorAdded = false;
+
+  if (data.chunks) {
+    // New 3×2 geographic-chunk format — pure lat/lon rectangles, no UTM artifacts.
+    const tcEntries = data.chunks
+      .filter(c => c.truecolor_file)
+      .map(c => ({ tileId: c.chunk_id, subIdx: 0, file: c.truecolor_file, bounds: c.bounds }));
+    pendingTruecolorTiles = tcEntries.length ? { basePath, entries: tcEntries } : null;
+
+    if (pendingTruecolorTiles) {
+      pendingTruecolorTiles.entries.forEach(e => {
+        const img = new Image();
+        img.src = `${basePath}/${e.file}`;
+      });
+    }
+
+    for (const chunk of data.chunks) {
+      const b = chunk.bounds;
+      const coords = [[b.west, b.north], [b.east, b.north], [b.east, b.south], [b.west, b.south]];
+      const srcId   = 'src-snow-'   + chunk.chunk_id;
+      const layerId = 'layer-snow-' + chunk.chunk_id;
+      map.addSource(srcId, { type: 'image', url: `${basePath}/${chunk.snow_file}`, coordinates: coords });
+      map.addLayer({ id: layerId, type: 'raster', source: srcId,
+        paint: { 'raster-opacity': snowOpacity },
+        layout: { visibility: snowVis },
+      });
+      currentTileLayerIds.push(layerId);
+    }
+  } else {
+    // Legacy per-MGRS-tile format (older dates).
+    const tiles = data.tiles || [];
+    const tcEntries = [];
+    for (const tile of tiles) {
+      const b = tile.bounds;
+      let entries = [];
+      if (Array.isArray(tile.truecolor_files) && tile.truecolor_files.length > 0) {
+        entries = tile.truecolor_files;
+      } else if (tile.truecolor_file) {
+        entries = [{ file: tile.truecolor_file, bounds: b }];
+      }
+      entries.forEach((entry, idx) => {
+        tcEntries.push({ tileId: tile.tile_id, subIdx: idx, file: entry.file, bounds: entry.bounds || b });
+      });
+    }
+    pendingTruecolorTiles = tcEntries.length ? { basePath, entries: tcEntries } : null;
+
+    if (pendingTruecolorTiles) {
+      pendingTruecolorTiles.entries.forEach(e => {
+        const img = new Image();
+        img.src = `${basePath}/${e.file}`;
+      });
+    }
+
+    for (const tile of tiles) {
+      const b = tile.bounds;
+      const coords = [[b.west, b.north], [b.east, b.north], [b.east, b.south], [b.west, b.south]];
+      const srcId   = 'src-snow-'   + tile.tile_id;
+      const layerId = 'layer-snow-' + tile.tile_id;
+      map.addSource(srcId, { type: 'image', url: `${basePath}/${tile.file}`, coordinates: coords });
+      map.addLayer({ id: layerId, type: 'raster', source: srcId,
+        paint: { 'raster-opacity': snowOpacity },
+        layout: { visibility: snowVis },
+      });
+      currentTileLayerIds.push(layerId);
+    }
+  }
+
+  if (document.getElementById('tog-s2').checked) {
+    addTruecolorLayers();
+  }
+  if (typeof applyBasemapStyling === 'function') applyBasemapStyling();
+  bringSnotelToTop();
+}
+
+// Hydrate truecolor sources + layers for the current date's pendingTruecolorTiles.
+// Called either by updateTileLayers (when toggle is already on) or by the
+// S2 toggle's change handler (the first time the user clicks View Imagery).
+function addTruecolorLayers() {
+  if (truecolorAdded || !pendingTruecolorTiles) return;
+  const { basePath, entries } = pendingTruecolorTiles;
+  const s2Vis = 'visible';  // we only call this when becoming visible
+  const opacity = parseFloat(document.getElementById('slider-s2').value) / 100;
+  for (const e of entries) {
+    const eb = e.bounds;
+    const eCoords = [[eb.west, eb.north], [eb.east, eb.north], [eb.east, eb.south], [eb.west, eb.south]];
+    const subId = e.subIdx === 0 ? '' : '-' + e.subIdx;
+    const tcSrcId = 'src-tc-' + e.tileId + subId;
+    const tcLayerId = 'layer-tc-' + e.tileId + subId;
+    if (!map.getSource(tcSrcId)) {
+      map.addSource(tcSrcId, { type: 'image', url: `${basePath}/${e.file}`, coordinates: eCoords });
+    }
+    if (!map.getLayer(tcLayerId)) {
+      map.addLayer({
+        id: tcLayerId, type: 'raster', source: tcSrcId,
+        paint: { 'raster-opacity': opacity },
+        layout: { visibility: s2Vis },
+      });
+    }
+    currentTileLayerIds.push(tcLayerId);
+  }
+  truecolorAdded = true;
+  bringSnotelToTop();
+}
+
+function stationColor(triplet) {
+  const station = SNOTEL_NORMALS?.stations?.[triplet];
+  if (!station) return '#4FC3F7';
+  let rng = 'Other';
+  for (const [r, b] of Object.entries(RANGES)) {
+    if (station.lat >= b.lat[0] && station.lat <= b.lat[1] && station.lon >= b.lon[0] && station.lon <= b.lon[1]) { rng = r; break; }
+  }
+  return RANGES[rng]?.color || '#4FC3F7';
+}
+
+// Season depth data cache
+let RANGE_SEASON_DATA = {};   // { rangeName: { avg: [...], stations: { triplet: [...] } } }
+let RANGE_STATIONS = {};      // { rangeName: [triplets] }
+let expandedRange = null;
+
+async function loadRangeDepths() {
+  if (!SNOTEL_NORMALS) return;
+  const el = document.getElementById('range-depths');
+  if (!el) return;
+
+  // Group SNTL stations by range. Prefer SNOTEL_SEASON (has all 46 SNTLs in the
+  // AOI) over SNOTEL_NORMALS (only 30 — misses the Beartooth/Absaroka east
+  // cluster: Beartooth Lake, Fisher Creek, White Mill, Wolverine, etc).
+  // Each station assigned to the FIRST matching range to avoid duplicates
+  // where range boxes touch at edges.
+  const sntlStations = (SNOTEL_SEASON?.stations || [])
+    .filter(s => s.id.endsWith(':SNTL'));
+  const source = sntlStations.length > 0
+    ? sntlStations.map(s => [s.id, s])
+    : Object.entries(SNOTEL_NORMALS.stations);
+  for (const rng of Object.keys(RANGES)) RANGE_STATIONS[rng] = [];
+  for (const [triplet, info] of source) {
+    for (const [rng, bounds] of Object.entries(RANGES)) {
+      if (info.lat >= bounds.lat[0] && info.lat <= bounds.lat[1] &&
+          info.lon >= bounds.lon[0] && info.lon <= bounds.lon[1]) {
+        RANGE_STATIONS[rng].push(triplet);
+        break;
+      }
+    }
+  }
+
+  el.innerHTML = '<div class="depth-loading">Loading season depth...</div>';
+
+  // Fetch all ranges in parallel
+  const today = new Date().toISOString().slice(0, 10);
+  const fetches = Object.entries(RANGE_STATIONS).map(async ([rng, triplets]) => {
+    if (triplets.length === 0) return;
+    try {
+      const batch = triplets.slice(0, 8).join(',');
+      const r = await fetch(`https://wcc.sc.egov.usda.gov/awdbRestApi/services/v1/data?stationTriplets=${encodeURIComponent(batch)}&elements=SNWD&duration=DAILY&beginDate=2025-10-01&endDate=${today}`);
+      if (!r.ok) return;
+      const data = await r.json();
+
+      // Store per-station and compute average
+      const stationData = {};
+      const byDate = {};
+      for (const rec of data) {
+        const t = rec.stationTriplet;
+        stationData[t] = [];
+        for (const elem of (rec.data || [])) {
+          for (const v of (elem.values || [])) {
+            if (v.value != null) {
+              stationData[t].push(v);
+              if (!byDate[v.date]) byDate[v.date] = [];
+              byDate[v.date].push(v.value);
+            }
+          }
+        }
+      }
+      const avg = Object.entries(byDate)
+        .map(([date, vals]) => ({ date, value: Math.round(vals.reduce((a,b) => a+b, 0) / vals.length) }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+
+      RANGE_SEASON_DATA[rng] = { avg, stations: stationData };
+    } catch (e) { /* skip */ }
+  });
+
+  await Promise.all(fetches);
+  renderRangeDepths();
+  renderSeasonTrend(); // Update overall trend with SNOTEL data
+}
+
+function renderRangeDepths() {
+  const el = document.getElementById('range-depths');
+  let html = '';
+
+  for (const [rng, triplets] of Object.entries(RANGE_STATIONS)) {
+    if (triplets.length === 0) continue;
+    const data = RANGE_SEASON_DATA[rng];
+    const avg = data?.avg;
+    const isExpanded = expandedRange === rng;
+
+    // Use API data if available, otherwise fall back to snotel.json current readings
+    let latestDepth = null;
+    if (avg && avg.length > 0) {
+      latestDepth = avg[avg.length - 1].value;
+    } else {
+      // Fallback: average current depth from snotel.json for stations in this range
+      const currentSnotel = CURRENT_DATA?.snotel || SNOTEL || [];
+      const rangeDepths = triplets
+        .map(t => currentSnotel.find(s => s.id === t))
+        .filter(s => s && s.snow_depth_in != null)
+        .map(s => s.snow_depth_in);
+      if (rangeDepths.length > 0) {
+        latestDepth = Math.round(rangeDepths.reduce((a,b) => a+b, 0) / rangeDepths.length);
+      }
+    }
+    const depthText = latestDepth != null && latestDepth > 0 ? `${latestDepth}"` : latestDepth === 0 ? '0"' : '<span class="none">loading...</span>';
+
+    // 7-day trend (delta + inline sparkline)
+    const trend7 = build7DayTrend(avg);
+
+    // Full-season sparkline (only visible when expanded via CSS)
+    let sparkSvg = '';
+    if (avg && avg.length > 10 && !isExpanded) {
+      sparkSvg = buildRangeSparkline(avg, 280, 28, triplets);
+    }
+
+    html += `<div class="range-row ${isExpanded ? '' : 'collapsed'}" onclick="toggleRange('${rng}')">
+      <div class="range-header">
+        <span class="range-name">${rng} (${triplets.length})</span>
+        <div class="range-trend-box">
+          ${trend7.spark}
+          <span class="range-delta ${trend7.cls}">${trend7.text}</span>
+          <span class="range-depth">${depthText}</span>
+        </div>
+      </div>
+      ${sparkSvg}
+    </div>`;
+
+    // Expanded detail view
+    if (isExpanded && data?.stations) {
+      html += `<div class="range-detail">`;
+      const stationEntries = Object.entries(data.stations)
+        .filter(([t, v]) => v.length > 10)
+        .sort((a, b) => (SNOTEL_NORMALS?.stations?.[b[0]]?.elevation_ft || 0) - (SNOTEL_NORMALS?.stations?.[a[0]]?.elevation_ft || 0));
+
+      // Max including historical
+      let maxAll = Math.max(10, ...stationEntries.flatMap(([t, v]) => v.map(d => d.value)));
+      for (const [t] of stationEntries) {
+        const n = SNOTEL_NORMALS?.normals?.[t];
+        if (n) for (const dv of Object.values(n)) { if (dv.p75 > maxAll) maxAll = dv.p75; }
+      }
+      maxAll = Math.ceil(maxAll / 10) * 10;
+
+      const dw = 280, dh = 50, dPadL = 1, dPadT = 1, dPadB = 10;
+      const dCw = dw - dPadL - 1, dCh = dh - dPadT - dPadB;
+
+      // 20yr normal line (full Oct-May)
+      let normSvg = '';
+      if (SNOTEL_NORMALS) {
+        const normPts = [];
+        const start = new Date(MAP_SEASON_START);
+        for (let d = 0; d <= MAP_SEASON_DAYS; d += 5) {
+          const dt = new Date(start.getTime() + d * 86400000);
+          const md = (dt.getMonth()+1).toString().padStart(2,'0') + '-' + dt.getDate().toString().padStart(2,'0');
+          let sum = 0, cnt = 0;
+          for (const [t] of stationEntries) { const n = SNOTEL_NORMALS.normals?.[t]?.[md]; if (n) { sum += n.median; cnt++; } }
+          if (cnt > 0) normPts.push({ x: mapDateToX(dt.toISOString().slice(0,10), dw, dPadL), y: dPadT + dCh - (Math.min(sum/cnt,maxAll)/maxAll)*dCh });
+        }
+        if (normPts.length > 3) {
+          const sm = normPts.map((p,i) => { const win = normPts.slice(Math.max(0,i-1),Math.min(normPts.length,i+2)); return {x:p.x,y:win.reduce((a,b)=>a+b.y,0)/win.length}; });
+          normSvg = `<path d="${sm.map((p,i)=>`${i===0?'M':'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')}" fill="none" stroke="#FFB74D" stroke-width="1" stroke-dasharray="3,2" opacity="0.5"/>`;
+        }
+      }
+
+      // Station lines + labels
+      let stationSvg = '';
+      stationEntries.forEach(([triplet, values], idx) => {
+        const info = SNOTEL_NORMALS?.stations?.[triplet];
+        const color = stationColor(triplet);
+        const latest = values[values.length - 1];
+        const sLon = info?.lon, sLat = info?.lat;
+
+        const pts = values.map(v => `${mapDateToX(v.date,dw,dPadL).toFixed(1)},${(dPadT+dCh-(Math.min(v.value,maxAll)/maxAll)*dCh).toFixed(1)}`);
+        const todayX = mapDateToX(new Date().toISOString().slice(0,10), dw, dPadL);
+
+        // Click flies to station on map
+        const flyCmd = sLon && sLat ? `map.flyTo({center:[${sLon},${sLat}],zoom:12})` : '';
+
+        stationSvg += `<polyline points="${pts.join(' ')}" fill="none" stroke="transparent" stroke-width="12" style="cursor:pointer" onclick="${flyCmd}"/>`;
+        stationSvg += `<polyline points="${pts.join(' ')}" fill="none" stroke="${color}" stroke-width="1.2" opacity="0.7" pointer-events="none"/>`;
+
+        html += `<div class="range-station-label" style="cursor:pointer" onclick="${flyCmd}">
+          <span class="rs-name" style="color:${color}">${info?.name || triplet}</span>
+          <span class="rs-elev">${info?.elevation_ft?.toLocaleString() || '?'}ft</span>
+          <span class="rs-depth">${latest?.value || 0}"</span>
+        </div>`;
+      });
+
+      // Month labels + date marker
+      let monthTicks = '';
+      ['O','N','D','J','F','M','A','M'].forEach((m,i) => {
+        const ms = ['2025-10','2025-11','2025-12','2026-01','2026-02','2026-03','2026-04','2026-05'];
+        monthTicks += `<text x="${mapDateToX(ms[i]+'-01',dw,dPadL)}" y="${dh-1}" fill="var(--text-dim)" font-size="5" font-family="var(--mono)">${m}</text>`;
+      });
+      let dateMarker = '';
+      if (CURRENT_DATE) {
+        const cx = mapDateToX(CURRENT_DATE, dw, dPadL);
+        dateMarker = `<line x1="${cx}" y1="${dPadT}" x2="${cx}" y2="${dPadT+dCh}" stroke="#FFB74D" stroke-width="0.5" stroke-dasharray="2,2"/>`;
+      }
+
+      html += `<svg viewBox="0 0 ${dw} ${dh}" style="width:100%;height:${dh}px">
+        ${monthTicks}${normSvg}${dateMarker}${stationSvg}
+      </svg></div>`;
+    }
+  }
+
+  el.innerHTML = html || '<div class="depth-loading">No SNOTEL data</div>';
+}
+
+function toggleRange(rng) {
+  expandedRange = expandedRange === rng ? null : rng;
+  renderRangeDepths();
+
+  // Use a SEPARATE highlight source — never touch the main snotel source
+  if (expandedRange && RANGE_STATIONS[expandedRange] && SNOTEL_NORMALS) {
+    const triplets = RANGE_STATIONS[expandedRange];
+
+    // Get current depth data
+    const currentById = {};
+    for (const s of (CURRENT_DATA?.snotel || SNOTEL || [])) {
+      if (s.id) currentById[s.id] = s;
+    }
+
+    // Build highlight features for just this range's stations
+    const hlFeatures = triplets
+      .filter(t => SNOTEL_NORMALS.stations[t])
+      .map(t => {
+        const info = SNOTEL_NORMALS.stations[t];
+        const cur = currentById[t] || {};
+        const depth = cur.snow_depth_in != null ? cur.snow_depth_in : 0;
+        return {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [info.lon, info.lat] },
+          properties: {
+            name: info.name, elevation_ft: info.elevation_ft || 0,
+            depth: depth,
+          },
+        };
+      });
+
+    // Keep regular snotel layers visible — highlights sit on top
+
+    // Add or update the highlight source + layers
+    if (!map.getSource('snotel-hl')) {
+      map.addSource('snotel-hl', { type: 'geojson', data: { type: 'FeatureCollection', features: hlFeatures } });
+      map.addLayer({ id: 'snotel-hl-circle', type: 'circle', source: 'snotel-hl', paint: {
+        'circle-radius': 8, 'circle-color': '#4FC3F7',
+        'circle-stroke-color': '#fff', 'circle-stroke-width': 2,
+      }});
+      map.addLayer({ id: 'snotel-hl-depth', type: 'symbol', source: 'snotel-hl', layout: {
+        'text-field': ['concat', ['to-string', ['get', 'depth']], '"'],
+        'text-size': 14, 'text-offset': [0, -1.8], 'text-anchor': 'bottom',
+        'text-font': ['DIN Pro Bold', 'Arial Unicode MS Bold'],
+        'text-allow-overlap': true, 'text-ignore-placement': true,
+      }, paint: { 'text-color': '#4FC3F7', 'text-halo-color': 'rgba(0,0,0,0.95)', 'text-halo-width': 2.5 }});
+      map.addLayer({ id: 'snotel-hl-label', type: 'symbol', source: 'snotel-hl', layout: {
+        'text-field': ['concat', ['get', 'name'], '  ', ['to-string', ['get', 'elevation_ft']], 'ft'],
+        'text-size': 10, 'text-offset': [0, 2.0], 'text-anchor': 'top',
+        'text-font': ['DIN Pro Medium', 'Arial Unicode MS Regular'],
+        'text-allow-overlap': true, 'text-ignore-placement': true,
+      }, paint: { 'text-color': '#ddd', 'text-halo-color': 'rgba(0,0,0,0.95)', 'text-halo-width': 2 }});
+    } else {
+      map.getSource('snotel-hl').setData({ type: 'FeatureCollection', features: hlFeatures });
+      map.setLayoutProperty('snotel-hl-circle', 'visibility', 'visible');
+      map.setLayoutProperty('snotel-hl-depth', 'visibility', 'visible');
+      map.setLayoutProperty('snotel-hl-label', 'visibility', 'visible');
+    }
+
+  } else {
+    // Hide highlights
+    if (map.getLayer('snotel-hl-circle')) map.setLayoutProperty('snotel-hl-circle', 'visibility', 'none');
+    if (map.getLayer('snotel-hl-depth')) map.setLayoutProperty('snotel-hl-depth', 'visibility', 'none');
+    if (map.getLayer('snotel-hl-label')) map.setLayoutProperty('snotel-hl-label', 'visibility', 'none');
+  }
+}
+
+// Compact 7-day trend: inline sparkline + signed delta vs 7 days ago.
+// `values` is the avg array: [{date, value}, ...] sorted ascending.
+function build7DayTrend(values) {
+  if (!values || values.length < 2) return { spark: '', text: '–', cls: 'flat' };
+  const last7 = values.slice(-7);
+  if (last7.length < 2) return { spark: '', text: '–', cls: 'flat' };
+
+  const latest = last7[last7.length - 1].value;
+  const baseline = last7[0].value;
+  const delta = Math.round(latest - baseline);
+  let cls = 'flat', text;
+  if (delta > 0) { cls = 'up'; text = `↑${delta}"`; }
+  else if (delta < 0) { cls = 'down'; text = `↓${Math.abs(delta)}"`; }
+  else { text = '–'; }
+
+  // Sparkline: 44×14 viewBox, 2px pad
+  const w = 44, h = 14, pad = 2;
+  const vals = last7.map(v => v.value);
+  const vmin = Math.min(...vals), vmax = Math.max(...vals);
+  const range = vmax - vmin || 1;
+  const pts = last7.map((v, i) => {
+    const x = pad + (i / (last7.length - 1)) * (w - 2 * pad);
+    const y = pad + (1 - (v.value - vmin) / range) * (h - 2 * pad);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const line = 'M' + pts.join(' L');
+  const area = line + ` L${(w-pad).toFixed(1)},${(h-pad).toFixed(1)} L${pad},${(h-pad).toFixed(1)} Z`;
+  const spark = `<svg class="range-spark7" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <path class="s7-area" d="${area}"/>
+    <path class="s7-line" d="${line}"/>
+  </svg>`;
+  return { spark, text, cls };
+}
+
+function buildRangeSparkline(values, w, h, triplets) {
+  const padL = 1, padT = 1, padB = 10;
+  const cw = w - padL - 1, ch = h - padT - padB;
+
+  // Include historical peaks
+  let maxD = Math.max(10, ...values.map(v => v.value));
+  if (SNOTEL_NORMALS && triplets) {
+    for (const t of triplets) {
+      const n = SNOTEL_NORMALS?.normals?.[t];
+      if (n) for (const dv of Object.values(n)) { if (dv.p75 > maxD) maxD = dv.p75; }
+    }
+  }
+  maxD = Math.ceil(maxD / 10) * 10;
+
+  const pts = values.map(v => ({
+    x: mapDateToX(v.date, w, padL),
+    y: padT + ch - (v.value / maxD) * ch,
+  }));
+  const line = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const area = line + ` L${pts[pts.length-1].x.toFixed(1)},${padT+ch} L${padL},${padT+ch} Z`;
+
+  // 20yr normal line
+  let normalLine = '';
+  if (SNOTEL_NORMALS && triplets) {
+    const normPts = [];
+    const start = new Date(MAP_SEASON_START);
+    for (let d = 0; d <= MAP_SEASON_DAYS; d += 5) {
+      const dt = new Date(start.getTime() + d * 86400000);
+      const md = (dt.getMonth()+1).toString().padStart(2,'0') + '-' + dt.getDate().toString().padStart(2,'0');
+      let sum = 0, cnt = 0;
+      for (const t of triplets) { const n = SNOTEL_NORMALS.normals?.[t]?.[md]; if (n) { sum += n.median; cnt++; } }
+      if (cnt > 0) normPts.push({ x: mapDateToX(dt.toISOString().slice(0,10), w, padL), y: padT + ch - (Math.min(sum/cnt,maxD)/maxD)*ch });
+    }
+    if (normPts.length > 3) {
+      const sm = normPts.map((p,i) => { const win = normPts.slice(Math.max(0,i-1),Math.min(normPts.length,i+2)); return { x:p.x, y:win.reduce((a,b)=>a+b.y,0)/win.length }; });
+      normalLine = `<path d="${sm.map((p,i)=>`${i===0?'M':'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')}" fill="none" stroke="#FFB74D" stroke-width="1" stroke-dasharray="3,2" opacity="0.5" pointer-events="none"/>`;
+    }
+  }
+
+  // Date marker
+  let marker = '';
+  if (CURRENT_DATE) {
+    const cx = mapDateToX(CURRENT_DATE, w, padL);
+    marker = `<line x1="${cx}" y1="${padT}" x2="${cx}" y2="${padT+ch}" stroke="#FFB74D" stroke-width="0.5" stroke-dasharray="2,2"/>`;
+  }
+
+  // Month ticks
+  let months = '';
+  ['O','N','D','J','F','M','A','M'].forEach((m, i) => {
+    const ms = ['2025-10','2025-11','2025-12','2026-01','2026-02','2026-03','2026-04','2026-05'];
+    months += `<text x="${mapDateToX(ms[i]+'-01',w,padL)}" y="${h-1}" fill="var(--text-dim)" font-size="5" font-family="var(--mono)">${m}</text>`;
+  });
+
+  return `<div class="range-chart-wrap">
+    <svg viewBox="0 0 ${w} ${h}">
+      ${months}${normalLine}
+      <path class="range-area" d="${area}" pointer-events="none"/>
+      <path class="range-line" d="${line}" pointer-events="none"/>
+      ${marker}
+    </svg>
+  </div>`;
+}
+
+// ── Forest mask layer ──
+async function addForestLayer() {
+  try {
+    const r = await fetch('data/forest_mask.json');
+    if (!r.ok) return;
+    const meta = await r.json();
+    const b = meta.bounds;
+    const coords = [[b.west, b.north], [b.east, b.north], [b.east, b.south], [b.west, b.south]];
+
+    if (!map.getSource('forest-src')) {
+      map.addSource('forest-src', { type: 'image', url: 'data/forest_mask.webp', coordinates: coords });
+    }
+    const vis = document.getElementById('tog-forest').checked ? 'visible' : 'none';
+    if (!map.getLayer('forest-overlay')) {
+      // No beforeId — the legacy 'snow-overlay' layer doesn't exist in the
+      // per-tile pipeline so passing it as beforeId silently failed and the
+      // forest layer never got added at all. Now we just append on top and
+      // let bringSnotelToTop() push the SNOTEL pins above it.
+      map.addLayer({ id: 'forest-overlay', type: 'raster', source: 'forest-src',
+        paint: { 'raster-opacity': 0.6 }, layout: { visibility: vis },
+      });
+    }
+    bringSnotelToTop();
+  } catch (e) { /* forest mask not yet built */ }
+}
+
+// nodata toggle removed — stripes baked into snow.webp
+
+document.getElementById('tog-forest').addEventListener('change', function () {
+  if (map.getLayer('forest-overlay')) map.setLayoutProperty('forest-overlay', 'visibility', this.checked ? 'visible' : 'none');
+});
+
+// FS Roads layer was removed. The MVUM data we pulled marks roads as
+// "open year-round" when they're legally authorized for vehicle use, but
+// it doesn't track the physical gates that USFS districts close seasonally
+// (Hyalite, South Cottonwood, etc). That made the layer misleading for
+// real-world planning. The fetch_fs_roads.py script is still in pipeline/
+// in case we come back to it with a hand-curated gate overlay later.
+
+// ── SNOTEL season depth chart (in popup) ──
+// SNOTEL normals (pre-computed 20-year medians)
+let SNOTEL_NORMALS = null;
+async function loadSnotelNormals() {
+  try {
+    const r = await fetch('data/snotel_normals.json');
+    if (r.ok) SNOTEL_NORMALS = await r.json();
+  } catch (e) { /* normals not yet built */ }
+}
+
+async function fetchSeasonDepth(triplet) {
+  const begin = '2025-10-01';
+  const end = new Date().toISOString().slice(0, 10);
+  try {
+    // NRCS API has CORS headers — fetch directly
+    const r = await fetch(`https://wcc.sc.egov.usda.gov/awdbRestApi/services/v1/data?stationTriplets=${encodeURIComponent(triplet)}&elements=SNWD&duration=DAILY&beginDate=${begin}&endDate=${end}`);
+    if (!r.ok) return null;
+    const data = await r.json();
+    if (!data[0] || !data[0].data || !data[0].data[0]) return null;
+    return data[0].data[0].values.filter(v => v.value !== null);
+  } catch (e) { return null; }
+}
+
+function renderDepthSVG(values, currentDate, triplet) {
+  if (!values || values.length < 5) return '<div class="depth-loading">No season data</div>';
+
+  const w = 260, h = 65, padL = 18, padT = 2, padB = 12;
+  const cw = w - padL - 2, ch = h - padT - padB;
+
+  const norms = SNOTEL_NORMALS?.normals?.[triplet];
+  let maxD = Math.max(10, ...values.map(v => v.value));
+  if (norms) for (const dv of Object.values(norms)) { if (dv.p75 > maxD) maxD = dv.p75; }
+  maxD = Math.ceil(maxD / 10) * 10;
+
+  // Month labels
+  let months = '';
+  ['O','N','D','J','F','M','A','M'].forEach((m, i) => {
+    const ms = ['2025-10','2025-11','2025-12','2026-01','2026-02','2026-03','2026-04','2026-05'];
+    months += `<text x="${mapDateToX(ms[i]+'-01',w,padL)}" y="${h-1}" fill="var(--text-dim)" font-size="5" font-family="var(--mono)">${m}</text>`;
+  });
+
+  // Y scale
+  let yTicks = '';
+  [0, Math.round(maxD/2), maxD].forEach(yt => {
+    const y = padT + ch - (yt/maxD)*ch;
+    yTicks += `<text x="${padL-3}" y="${y+3}" text-anchor="end" fill="var(--text-dim)" font-size="5" font-family="var(--mono)">${yt}"</text>`;
+  });
+
+  // 20yr median — full Oct-May
+  let normalLine = '';
+  if (norms) {
+    const normPts = [];
+    const start = new Date(MAP_SEASON_START);
+    for (let d = 0; d <= MAP_SEASON_DAYS; d += 3) {
+      const dt = new Date(start.getTime() + d * 86400000);
+      const md = (dt.getMonth()+1).toString().padStart(2,'0') + '-' + dt.getDate().toString().padStart(2,'0');
+      const n = norms[md];
+      if (n) normPts.push({ x: mapDateToX(dt.toISOString().slice(0,10), w, padL), y: padT + ch - (Math.min(n.median,maxD)/maxD)*ch });
+    }
+    if (normPts.length > 5) {
+      const sm = normPts.map((p,i) => { const win = normPts.slice(Math.max(0,i-1),Math.min(normPts.length,i+2)); return {x:p.x,y:win.reduce((a,b)=>a+b.y,0)/win.length}; });
+      normalLine = `<path d="${sm.map((p,i)=>`${i===0?'M':'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')}" fill="none" stroke="#FFB74D" stroke-width="1" stroke-dasharray="3,2" opacity="0.6"/>`;
+    }
+  }
+
+  // Current season line on fixed timeline
+  const points = values.map(v => ({
+    x: mapDateToX(v.date, w, padL),
+    y: padT + ch - (v.value / maxD) * ch,
+  }));
+  const line = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const area = line + ` L${points[points.length-1].x.toFixed(1)},${padT+ch} L${padL},${padT+ch} Z`;
+
+  // Date marker
+  let marker = '';
+  if (currentDate) {
+    const cx = mapDateToX(currentDate, w, padL);
+    marker = `<line x1="${cx}" y1="${padT}" x2="${cx}" y2="${padT+ch}" stroke="#FFB74D" stroke-width="0.5" stroke-dasharray="2,2"/>`;
+  }
+
+  // Today marker
+  const todayX = mapDateToX(new Date().toISOString().slice(0,10), w, padL);
+  const todayMark = `<line x1="${todayX}" y1="${padT}" x2="${todayX}" y2="${padT+ch}" stroke="rgba(255,255,255,0.1)" stroke-width="0.5" stroke-dasharray="1,2"/>`;
+
+  // % of normal
+  const latest = values[values.length - 1];
+  let pctNormal = '';
+  if (norms) {
+    const md = latest.date.slice(5);
+    const n = norms[md];
+    if (n && n.median > 0) {
+      const pct = Math.round(latest.value / n.median * 100);
+      const color = pct >= 90 ? '#26c6da' : pct >= 70 ? '#FFB74D' : '#EF5350';
+      pctNormal = `<div style="font-family:var(--mono);font-size:9px;color:${color};margin-top:2px">${pct}% of 20yr median</div>`;
+    }
+  }
+
+  return `<div class="depth-chart"><svg viewBox="0 0 ${w} ${h}">
+    ${months}${yTicks}${todayMark}
+    ${normalLine}
+    <path class="depth-area" d="${area}" pointer-events="none"/>
+    <path class="depth-line" d="${line}" pointer-events="none"/>
+    ${marker}
+  </svg>
+  ${pctNormal}</div>`;
+}
+
+// ── Cursor elevation display ──
+map.on('mousemove', (e) => {
+  const { lng, lat } = e.lngLat;
+  const elev = map.queryTerrainElevation(e.lngLat, { exaggerated: false });
+  const el = document.getElementById('cursor-info');
+  if (el && elev != null && !isNaN(elev)) {
+    const ft = Math.round(elev * 3.28084);
+    el.querySelector('.elev').textContent = ft.toLocaleString() + ' ft';
+    el.querySelector('.coords').textContent = lat.toFixed(4) + '\u00b0N, ' + Math.abs(lng).toFixed(4) + '\u00b0W';
+    el.style.display = '';
+  } else if (el) {
+    el.style.display = 'none';
+  }
+});
+map.on('mouseout', () => { const el = document.getElementById('cursor-info'); if (el) el.style.display = 'none'; });
+
+// ── Compass ──
+const compass = document.getElementById('compass');
+map.on('rotate', () => {
+  compass.querySelector('svg').style.transform = `rotate(${-map.getBearing()}deg)`;
+});
+compass.addEventListener('click', () => {
+  map.easeTo({ bearing: 0, pitch: 0, duration: 500 });
+});
+
+// (cursor elevation handled above in the Compass section)
+
+// ── Feedback ──
+document.getElementById('fb-toggle').addEventListener('click', () => {
+  document.getElementById('fb-box').classList.add('open');
+  document.getElementById('fb-toggle').style.display = 'none';
+  document.getElementById('fb-text').focus();
+});
+document.getElementById('fb-cancel').addEventListener('click', closeFeedback);
+
+document.getElementById('fb-send').addEventListener('click', async () => {
+  const textarea = document.getElementById('fb-text');
+  const text = textarea.value.trim();
+  if (!text) return;
+
+  const btn = document.getElementById('fb-send');
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+
+  try {
+    const resp = await fetch('/api/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, date: CURRENT_DATE }),
+    });
+
+    const actions = document.querySelector('.feedback-actions');
+    if (resp.ok) {
+      actions.innerHTML = '<div class="fb-status success">Thanks for your feedback!</div>';
+    } else {
+      throw new Error('api');
+    }
+  } catch (e) {
+    // Fallback: save locally
+    const stored = JSON.parse(localStorage.getItem('snowline_feedback') || '[]');
+    stored.push({ text, date: CURRENT_DATE, ts: new Date().toISOString() });
+    localStorage.setItem('snowline_feedback', JSON.stringify(stored));
+    const actions = document.querySelector('.feedback-actions');
+    actions.innerHTML = '<div class="fb-status success">Feedback saved. Thanks!</div>';
+  }
+
+  setTimeout(closeFeedback, 2500);
+});
+
+function closeFeedback() {
+  document.getElementById('fb-box').classList.remove('open');
+  document.getElementById('fb-toggle').style.display = '';
+  // Reset form
+  const ta = document.getElementById('fb-text');
+  if (ta) ta.value = '';
+  const actions = document.querySelector('.feedback-actions');
+  if (actions && !actions.querySelector('button')) {
+    actions.innerHTML = '<button class="fb-cancel" onclick="closeFeedback()">Cancel</button><button class="fb-send" id="fb-send">Send Feedback</button>';
+  }
+}
+
+
+init();
+</script>
+</body>
+</html>

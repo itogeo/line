@@ -1,0 +1,56 @@
+name: Build Historical Snow Data
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_doy:
+        description: 'Start day-of-year (1-365)'
+        required: true
+        default: '274'
+      end_doy:
+        description: 'End day-of-year (1-365)'
+        required: true
+        default: '365'
+
+jobs:
+  historical:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r pipeline/requirements.txt
+
+      - name: Build historical frequency rasters
+        run: |
+          git config user.name "snowline-bot"
+          git config user.email "bot@snowline"
+
+          START=${{ github.event.inputs.start_doy }}
+          END=${{ github.event.inputs.end_doy }}
+
+          # Process in batches of 10 DOYs, commit after each batch
+          for doy in $(seq $START 5 $END); do
+            batch_end=$((doy + 45))
+            if [ $batch_end -gt $END ]; then batch_end=$END; fi
+
+            echo "=== Processing DOY $doy to $batch_end ==="
+            python pipeline/build_historical.py --start-doy=$doy --end-doy=$batch_end --step=5 || true
+
+            # Commit and push this batch
+            git add site/data/historical/
+            git diff --staged --quiet || git commit -m "Historical: DOY $doy-$batch_end"
+            git pull --rebase origin main || true
+            git push || echo "[WARN] push failed, will retry"
+
+            doy=$batch_end
+          done
+        env:
+          GDAL_HTTP_UNSAFESSL: 'YES'

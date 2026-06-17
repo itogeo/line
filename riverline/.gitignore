@@ -1,0 +1,13 @@
+.env
+*.pyc
+__pycache__/
+.DS_Store
+.venv/
+venv/
+node_modules/
+
+# Model weights — never commit
+models/*.pkl
+models/*.pt
+models/*.h5
+models/*.onnx

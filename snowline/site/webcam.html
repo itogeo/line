@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Snowline — Webcams</title>
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.js"></script>
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0b0f1a;
+    --panel: rgba(11, 15, 26, 0.95);
+    --border: rgba(79, 195, 247, 0.10);
+    --accent: #4FC3F7;
+    --accent-dim: rgba(79, 195, 247, 0.08);
+    --text: #e0e4ec;
+    --text-muted: #6b7689;
+    --text-dim: #4a5468;
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'DM Sans', -apple-system, sans-serif;
+    --radius: 10px;
+    --nav-h: 44px;
+  }
+
+  body { font-family: var(--sans); background: var(--bg); color: var(--text); }
+
+  /* ── Nav ── */
+  .top-nav {
+    height: var(--nav-h);
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center;
+    padding: 0 20px; gap: 10px;
+    position: sticky; top: 0; z-index: 200;
+  }
+  .nav-brand { font-family: var(--mono); font-size: 14px; font-weight: 700; color: var(--accent); letter-spacing: -0.5px; }
+  .nav-sep { color: var(--text-dim); font-size: 12px; }
+  .nav-links { display: flex; gap: 2px; margin-left: 8px; }
+  .nav-links a {
+    font-family: var(--mono); font-size: 10px; font-weight: 600;
+    padding: 4px 10px; border-radius: 4px;
+    text-decoration: none; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.8px;
+    transition: background 0.15s, color 0.15s;
+  }
+  .nav-links a:hover { background: var(--accent-dim); color: var(--accent); }
+  .nav-links a.active { background: rgba(79,195,247,0.12); color: var(--accent); }
+  .nav-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+  .nav-count { font-family: var(--mono); font-size: 9px; color: var(--text-dim); }
+  .refresh-pill {
+    display: flex; align-items: center; gap: 5px;
+    font-family: var(--mono); font-size: 9px; color: var(--text-dim);
+  }
+  .refresh-dot { width: 5px; height: 5px; border-radius: 50%; background: #4CAF50; animation: blink 2s ease-in-out infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.25} }
+
+  /* ── Map ── */
+  #map {
+    width: 100%;
+    height: 52vh;
+    min-height: 280px;
+    max-height: 520px;
+  }
+
+  /* ── Mapbox popup ── */
+  .mapboxgl-popup-content {
+    background: #111827 !important;
+    border: 1px solid rgba(79,195,247,0.18) !important;
+    border-radius: 10px !important;
+    padding: 12px 14px 10px !important;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.7) !important;
+    color: var(--text) !important;
+    max-width: 300px !important;
+    min-width: 220px;
+  }
+  .mapboxgl-popup-close-button { color: var(--text-muted) !important; font-size: 16px !important; right: 8px !important; top: 6px !important; }
+  .mapboxgl-popup-tip { border-top-color: rgba(79,195,247,0.18) !important; }
+  .pop-name { font-family: var(--mono); font-size: 10px; font-weight: 700; color: var(--accent); margin-bottom: 8px; padding-right: 20px; line-height: 1.3; }
+  .pop-img { width: 100%; border-radius: 6px; display: block; background: #1a2035; min-height: 80px; object-fit: cover; }
+  .pop-meta { display: flex; align-items: center; justify-content: space-between; margin-top: 7px; }
+  .pop-group { font-family: var(--mono); font-size: 8px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+  .pop-link { font-family: var(--mono); font-size: 8px; color: var(--accent); text-decoration: none; }
+  .pop-link:hover { text-decoration: underline; }
+  .pop-live-btn {
+    display: block; text-align: center; padding: 10px 14px; margin-top: 4px;
+    background: linear-gradient(135deg,#4FC3F7,#26c6da); color: #0a1525;
+    border-radius: 6px; text-decoration: none;
+    font-family: var(--mono); font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1px;
+  }
+
+  /* ── Cams section ── */
+  .cams-section { padding: 24px 24px 56px; }
+
+  .cams-header {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    margin-bottom: 20px; gap: 16px; flex-wrap: wrap;
+  }
+  .cams-title { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 1px; }
+  .cams-sub { font-size: 11px; color: var(--text-dim); margin-top: 3px; }
+
+  /* Group label */
+  .group-label {
+    grid-column: 1 / -1;
+    font-family: var(--mono); font-size: 9px; font-weight: 700;
+    color: var(--text-muted); text-transform: uppercase; letter-spacing: 1.8px;
+    padding-bottom: 8px; margin-top: 22px;
+    border-bottom: 1px solid var(--border);
+  }
+  .group-label:first-child { margin-top: 0; }
+
+  /* Grid */
+  .cam-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 12px;
+  }
+
+  /* Card */
+  .cam-card {
+    background: rgba(255,255,255,0.022);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color 0.18s, transform 0.14s, box-shadow 0.18s;
+  }
+  .cam-card:hover {
+    border-color: rgba(79,195,247,0.28);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  }
+
+  .cam-img-wrap { position: relative; aspect-ratio: 16/9; background: #0d1220; overflow: hidden; }
+  .cam-img   { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .cam-iframe { width: 100%; height: 100%; border: 0; display: block; background: #0d1220; }
+  .cam-placeholder {
+    position: absolute; inset: 0;
+    display: none; align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: 9px; color: var(--text-dim);
+    background: #0d1220;
+  }
+  /* Live-only cards */
+  .cam-live-wrap {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 10px;
+  }
+  .cam-live-wrap::before {
+    content: ''; position: absolute; inset: 0;
+    background: url('https://img.youtube.com/vi/hzcsPl8MtXU/maxresdefault.jpg') center/cover;
+    opacity: 0.35;
+  }
+  .cam-live-wrap .live-label {
+    position: relative;
+    font-family: var(--mono); font-size: 8px; color: rgba(255,255,255,0.55);
+    text-transform: uppercase; letter-spacing: 1.5px;
+  }
+  .cam-live-wrap a {
+    position: relative;
+    background: linear-gradient(135deg,#4FC3F7,#26c6da); color: #0a1525;
+    border-radius: 5px; padding: 7px 16px; text-decoration: none;
+    font-family: var(--mono); font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1px;
+  }
+  .cam-live-wrap a:hover { opacity: 0.9; }
+
+  .cam-info { padding: 10px 12px; }
+  .cam-name { font-family: var(--mono); font-size: 10px; font-weight: 600; color: var(--text); line-height: 1.3; margin-bottom: 5px; }
+  .cam-footer { display: flex; align-items: center; justify-content: space-between; }
+  .cam-badge {
+    font-family: var(--mono); font-size: 8px; font-weight: 700;
+    padding: 2px 6px; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .b-resort { background: rgba(79,195,247,0.12); color: #4FC3F7; }
+  .b-nps    { background: rgba(129,199,132,0.15); color: #81C784; }
+  .b-mdt    { background: rgba(255,112,67,0.15);  color: #FF7043; }
+  .b-town   { background: rgba(255,183,77,0.12);  color: #FFB74D; }
+
+  .cam-src-link { font-family: var(--mono); font-size: 8px; color: var(--text-dim); text-decoration: none; }
+  .cam-src-link:hover { color: var(--accent); }
+
+  .cam-ts {
+    font-family: var(--mono); font-size: 8px; color: var(--text-dim);
+    margin-bottom: 5px; display: block; letter-spacing: 0.3px;
+  }
+  .cam-ts.fresh { color: #81C784; }
+
+  @media (max-width: 620px) {
+    .cams-section { padding: 16px 12px 32px; }
+    .cam-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+    .top-nav { padding: 0 12px; gap: 6px; }
+  }
+  @media (max-width: 480px) {
+    .nav-count, .refresh-pill { display: none; }
+    .nav-links a { padding: 4px 7px; font-size: 9px; }
+    .cams-sub { display: none; }
+  }
+  @media (max-width: 380px) {
+    .cam-grid { grid-template-columns: 1fr; }
+    .nav-brand { font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="nav-brand">SNOWLINE</span>
+  <span class="nav-sep">/</span>
+  <div class="nav-links">
+    <a href="/">Map</a>
+    <a href="/webcam.html" class="active">Webcams</a>
+    <a href="/metadata.html">Data</a>
+  </div>
+  <div class="nav-right">
+    <span class="nav-count" id="nav-count"></span>
+    <span class="refresh-pill"><span class="refresh-dot"></span>2 min refresh</span>
+  </div>
+</nav>
+
+<div id="map"></div>
+
+<div class="cams-section">
+  <div class="cams-header">
+    <div>
+      <div class="cams-title">Live Cameras</div>
+      <div class="cams-sub">SW Montana · NW Wyoming · Yellowstone — click any card to fly map</div>
+    </div>
+  </div>
+  <div class="cam-grid" id="cam-grid"></div>
+</div>
+
+<script>
+mapboxgl.accessToken = 'pk.eyJ1IjoiaXRvZ2VvIiwiYSI6ImNta3ByYnA1bzBsYW0zZG9mMnMxdWZwMjUifQ.Q7pwAuAEKdBHD_dqaVBhvw';
+
+// bearing = degrees clockwise from north (direction camera is pointing)
+const WEBCAMS = [
+  // ── Bozeman Area ──────────────────────────────────────────────────
+  { name: 'KBZK — Bozeman Stadium',       lat: 45.6655, lon: -111.0620, bearing:   0, type: 'proxy',  src: 'https://mediaassets.kbzk.com/kbzk/bozemanStadium.jpg', link: 'https://www.kbzk.com/weather/weather-cameras-travel-watch', group: 'Bozeman Area' },
+  { name: 'BZN Airport — Taxiway F Live', lat: 45.7775, lon: -111.1527, bearing:  45, type: 'iframe', src: 'https://video.nest.com/embedded/live/6Bfv8C4CVw?autoplay=0', link: 'https://video.nest.com/live/6Bfv8C4CVw', group: 'Bozeman Area' },
+
+  // ── Bridger Bowl ──────────────────────────────────────────────────
+  // Coordinates from OSM lift/parking data; cameras spread base→ridge
+  { name: 'Bridger Bowl — Parking Lot',   lat: 45.8166, lon: -110.8935, bearing: 175, type: 'img',   src: 'https://webcam-images.s3-us-west-1.amazonaws.com/parking_lot.jpg',  link: 'https://bridgerbowl.com/weather/webcams', group: 'Bridger Bowl' },
+  { name: 'Bridger Bowl — Apron',         lat: 45.8177, lon: -110.8977, bearing: 200, type: 'img',   src: 'https://webcam-images.s3-us-west-1.amazonaws.com/apron.jpg',          link: 'https://bridgerbowl.com/weather/webcams', group: 'Bridger Bowl' },
+  { name: 'Bridger Bowl — Ridge East',    lat: 45.8355, lon: -110.8995, bearing: 100, type: 'img',   src: 'https://webcam-images.s3-us-west-1.amazonaws.com/RidgeEast.jpg',      link: 'https://bridgerbowl.com/weather/webcams', group: 'Bridger Bowl' },
+  { name: 'Bridger Bowl — Alpine Lift',   lat: 45.8290, lon: -110.9219, bearing: 215, type: 'img',   src: 'https://webcam-images.s3-us-west-1.amazonaws.com/alpine_lift.jpg',   link: 'https://bridgerbowl.com/weather/webcams', group: 'Bridger Bowl' },
+  { name: 'Bridger Bowl — Red Chair Live', lat: 45.8255, lon: -110.9140, bearing: 200, type: 'iframe', src: 'https://www.youtube.com/embed/playlist?list=PLtlKPoVnCL8k1uFuXB5id3Tvz1BC2yX-B&rel=0&modestbranding=1&playsinline=1', link: 'https://bridgerbowl.com/weather/webcams', group: 'Bridger Bowl' },
+
+  // ── Big Sky ───────────────────────────────────────────────────────
+  { name: 'Big Sky — Lone Peak',          lat: 45.2855, lon: -111.4016, bearing: 185, type: 'img',   src: 'https://img.youtube.com/vi/6iW7bdSavUo/maxresdefault.jpg',            link: 'https://bigskyresort.com/the-mountain/web-cams', group: 'Big Sky' },
+  { name: 'Big Sky — Everett 8800',       lat: 45.2870, lon: -111.3980, bearing: 200, type: 'img',   src: 'https://img.youtube.com/vi/dMr-Jt_K3Cc/maxresdefault.jpg',            link: 'https://bigskyresort.com/the-mountain/web-cams', group: 'Big Sky' },
+
+  // ── Cooke City ────────────────────────────────────────────────────
+  // YouTube thumbnail shown; click ↗ to open live stream
+  { name: 'Cooke City — Town Cam',        lat: 45.0197, lon: -109.9337, bearing: 270, type: 'img',   src: 'https://img.youtube.com/vi/hzcsPl8MtXU/maxresdefault.jpg',            link: 'https://www.youtube.com/watch?v=hzcsPl8MtXU', group: 'Cooke City' },
+
+  // ── Yellowstone NPS ───────────────────────────────────────────────
+  { name: 'West Yellowstone — Gate Out',  lat: 44.6573, lon: -111.0946, bearing: 270, type: 'proxy', src: 'https://www.nps.gov/webcams-yell/west_gate.jpg',                      link: 'https://www.nps.gov/yell/learn/photosmultimedia/webcams.htm', group: 'Yellowstone NPS' },
+  { name: 'West Yellowstone — Into Park', lat: 44.6578, lon: -111.0940, bearing:  90, type: 'proxy', src: 'https://www.nps.gov/webcams-yell/west_into.jpg',                      link: 'https://www.nps.gov/yell/learn/photosmultimedia/webcams.htm', group: 'Yellowstone NPS' },
+  { name: 'Mammoth — Electric Peak',      lat: 44.9734, lon: -110.7043, bearing: 315, type: 'proxy', src: 'https://www.nps.gov/webcams-yell/mammoth_electric.jpg',               link: 'https://www.nps.gov/yell/learn/photosmultimedia/webcams.htm', group: 'Yellowstone NPS' },
+  { name: 'Mammoth — North Arch',         lat: 44.9750, lon: -110.7038, bearing:   0, type: 'proxy', src: 'https://www.nps.gov/webcams-yell/mammoth_arch.jpg',                   link: 'https://www.nps.gov/yell/learn/photosmultimedia/webcams.htm', group: 'Yellowstone NPS' },
+  { name: 'Mammoth — Travertine',         lat: 44.9766, lon: -110.6972, bearing: 180, type: 'proxy', src: 'https://www.nps.gov/webcams-yell/mammoth_parade.jpg',                 link: 'https://www.nps.gov/yell/learn/photosmultimedia/webcams.htm', group: 'Yellowstone NPS' },
+  { name: 'Mt Washburn — SW',             lat: 44.7979, lon: -110.4342, bearing: 225, type: 'proxy', src: 'https://www.nps.gov/webcams-yell/washburn_sw.jpg',                    link: 'https://www.nps.gov/yell/learn/photosmultimedia/webcams.htm', group: 'Yellowstone NPS' },
+  { name: 'Mt Washburn — NE',             lat: 44.8072, lon: -110.4489, bearing:  45, type: 'proxy', src: 'https://www.nps.gov/webcams-yell/washburn_ne.jpg',                    link: 'https://www.nps.gov/yell/learn/photosmultimedia/webcams.htm', group: 'Yellowstone NPS' },
+  { name: 'East Entrance — Out of Park',  lat: 44.3876, lon: -110.0054, bearing:  90, type: 'proxy', src: 'https://www.nps.gov/webcams-yell/east_out.jpg',                       link: 'https://www.nps.gov/yell/learn/photosmultimedia/webcams.htm', group: 'Yellowstone NPS' },
+  { name: 'East Entrance — Into Park',    lat: 44.3880, lon: -110.0050, bearing: 270, type: 'proxy', src: 'https://www.nps.gov/webcams-yell/east_in.jpg',                        link: 'https://www.nps.gov/yell/learn/photosmultimedia/webcams.htm', group: 'Yellowstone NPS' },
+
+  // ── Montana DOT (RWIS) — posId = 564{stationIndex*10 + camIndex} ──
+  { name: 'MDT — Three Forks (I-90)',              lat: 45.8920, lon: -111.5540, bearing: 270, type: 'mdt', src: '564120', link: 'https://app.mdt.mt.gov/travinfo/', group: 'Montana DOT' },
+  { name: 'MDT — Bozeman (I-90)',                  lat: 45.6795, lon: -111.0843, bearing:  90, type: 'mdt', src: '564110', link: 'https://app.mdt.mt.gov/travinfo/', group: 'Montana DOT' },
+  { name: 'MDT — Bozeman Pass (I-90)',             lat: 45.6536, lon: -110.8766, bearing:  90, type: 'mdt', src: '564020', link: 'https://app.mdt.mt.gov/travinfo/', group: 'Montana DOT' },
+  { name: 'MDT — Springdale (I-90)',               lat: 45.7230, lon: -110.0960, bearing:  90, type: 'mdt', src: '564140', link: 'https://app.mdt.mt.gov/travinfo/', group: 'Montana DOT' },
+  { name: 'MDT — Livingston River Hill (I-90)',    lat: 45.6643, lon: -110.6301, bearing: 270, type: 'mdt', src: '564080', link: 'https://app.mdt.mt.gov/travinfo/', group: 'Montana DOT' },
+  { name: 'MDT — East Livingston (I-90)',          lat: 45.6520, lon: -110.4578, bearing:  90, type: 'mdt', src: '564030', link: 'https://app.mdt.mt.gov/travinfo/', group: 'Montana DOT' },
+  { name: 'MDT — Bridger Canyon (MT-86)',          lat: 45.8126, lon: -110.9169, bearing: 180, type: 'mdt', src: '564090', link: 'https://app.mdt.mt.gov/travinfo/', group: 'Montana DOT' },
+  { name: 'MDT — Deep Creek (US-191)',             lat: 45.5896, lon: -111.1450, bearing: 180, type: 'mdt', src: '564050', link: 'https://app.mdt.mt.gov/travinfo/', group: 'Montana DOT' },
+  { name: 'MDT — Karst / Gallatin Canyon (US-191)', lat: 45.2938, lon: -111.2636, bearing: 180, type: 'mdt', src: '564010', link: 'https://app.mdt.mt.gov/travinfo/', group: 'Montana DOT' },
+  { name: 'MDT — Big Sky Road (MT-64)',            lat: 45.2900, lon: -111.3720, bearing: 175, type: 'mdt', src: '564130', link: 'https://app.mdt.mt.gov/travinfo/', group: 'Montana DOT' },
+  { name: 'MDT — Norris Hill (US-287)',            lat: 45.5830, lon: -111.6800, bearing:   0, type: 'mdt', src: '564040', link: 'https://app.mdt.mt.gov/travinfo/', group: 'Montana DOT' },
+  { name: 'MDT — Toston Bridge (US-287)',          lat: 46.1268, lon: -111.4334, bearing:   0, type: 'mdt', src: '564070', link: 'https://app.mdt.mt.gov/travinfo/', group: 'Montana DOT' },
+  { name: 'MDT — Gardiner (US-89)',                lat: 45.0310, lon: -110.7082, bearing: 180, type: 'mdt', src: '564100', link: 'https://app.mdt.mt.gov/travinfo/', group: 'Montana DOT' },
+  { name: 'MDT — Raynolds Pass (MT-87)',           lat: 44.5987, lon: -111.5286, bearing:   0, type: 'mdt', src: '564000', link: 'https://app.mdt.mt.gov/travinfo/', group: 'Montana DOT' },
+];
+
+const BADGE = {
+  'Bozeman Area':    ['b-town',   'Bozeman'],
+  'Bridger Bowl':    ['b-resort', 'Resort'],
+  'Big Sky':         ['b-resort', 'Resort'],
+  'Cooke City':      ['b-town',   'Town'],
+  'Yellowstone NPS': ['b-nps',    'NPS'],
+  'Montana DOT':     ['b-mdt',    'MDT'],
+};
+
+function camSrc(cam, ts) {
+  if (cam.type === 'img')   return cam.src + '?t=' + ts;
+  if (cam.type === 'proxy') return '/api/camproxy?url=' + encodeURIComponent(cam.src) + '&t=' + ts;
+  if (cam.type === 'mdt')   return '/api/mdtcam?id=' + cam.src + '&t=' + ts;
+  return '';
+}
+
+// ── Build grid ──────────────────────────────────────────────────────
+function buildGrid() {
+  const grid = document.getElementById('cam-grid');
+  const ts = Date.now();
+  let lastGroup = null;
+
+  WEBCAMS.forEach((cam, i) => {
+    if (cam.group !== lastGroup) {
+      lastGroup = cam.group;
+      const lbl = document.createElement('div');
+      lbl.className = 'group-label';
+      lbl.textContent = cam.group;
+      grid.appendChild(lbl);
+    }
+
+    const card = document.createElement('div');
+    card.className = 'cam-card';
+    card.dataset.idx = i;
+
+    const [bc, bl] = BADGE[cam.group] || ['b-town', cam.group];
+    let imgOrLive;
+    if (cam.type === 'live') {
+      imgOrLive = `<div class="cam-live-wrap">
+           <span class="live-label">YouTube Live</span>
+           <a href="${cam.src}" target="_blank" rel="noopener">▶ Watch Live</a>
+         </div>`;
+    } else if (cam.type === 'iframe') {
+      imgOrLive = `<iframe class="cam-iframe" src="${cam.src}"
+           frameborder="0" scrolling="no" allowfullscreen
+           title="${cam.name}"></iframe>`;
+    } else {
+      imgOrLive = `<img class="cam-img" data-idx="${i}" src="${camSrc(cam, ts)}" alt="${cam.name}"
+             onload="stampLoad(${i})"
+             onerror="this.style.display='none';this.nextElementSibling.style.display='flex';stampErr(${i})">
+         <div class="cam-placeholder">unavailable</div>`;
+    }
+
+    card.innerHTML = `
+      <div class="cam-img-wrap">${imgOrLive}</div>
+      <div class="cam-info">
+        <div class="cam-name">${cam.name}</div>
+        <span class="cam-ts ${cam.type === 'iframe' ? 'fresh' : ''}" id="ts-${i}">${cam.type === 'iframe' ? 'Live' : 'loading…'}</span>
+        <div class="cam-footer">
+          <span class="cam-badge ${bc}">${bl}</span>
+          <a class="cam-src-link" href="${cam.link}" target="_blank" rel="noopener">↗ source</a>
+        </div>
+      </div>`;
+
+    card.addEventListener('click', e => {
+      if (e.target.tagName === 'A') return;
+      flyToAndPopup(i);
+    });
+    grid.appendChild(card);
+  });
+
+  document.getElementById('nav-count').textContent = WEBCAMS.length + ' cameras';
+}
+
+function fmtTime(d) {
+  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+}
+function stampLoad(i) {
+  const el = document.getElementById('ts-' + i);
+  if (!el) return;
+  el.textContent = 'updated ' + fmtTime(new Date());
+  el.classList.add('fresh');
+  setTimeout(() => el.classList.remove('fresh'), 4000);
+}
+function stampErr(i) {
+  const el = document.getElementById('ts-' + i);
+  if (el) el.textContent = 'unavailable';
+}
+
+function refreshImages() {
+  const ts = Date.now();
+  document.querySelectorAll('.cam-img[data-idx]').forEach(img => {
+    const i = +img.dataset.idx;
+    const cam = WEBCAMS[i];
+    if (!cam) return;
+    img.style.display = '';
+    const el = document.getElementById('ts-' + i);
+    if (el) { el.textContent = 'loading…'; el.classList.remove('fresh'); }
+    img.src = camSrc(cam, ts);
+  });
+}
+setInterval(refreshImages, 120000);
+
+// ── Map ─────────────────────────────────────────────────────────────
+const map = new mapboxgl.Map({
+  container: 'map',
+  style: 'mapbox://styles/mapbox/outdoors-v12',
+  center: [-110.55, 45.35],
+  zoom: 6.8,
+  antialias: true,
+});
+map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
+
+map.on('load', () => {
+  // ── Viewshed icon: tip at bottom-center, fan extends upward (= bearing 0°)
+  // icon-anchor:'bottom' pins the tip to the map coordinate; icon-rotate sweeps the fan.
+  const W = 48, H = 52;
+  const offscreen = document.createElement('canvas');
+  offscreen.width = W; offscreen.height = H;
+  const ctx = offscreen.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  const tipX = W / 2, tipY = H - 5;
+  const fov  = Math.PI / 2.8; // ~64° field of view
+  const len  = H - 10;
+
+  // Fan fill
+  ctx.beginPath();
+  ctx.moveTo(tipX, tipY);
+  const a1 = -Math.PI / 2 - fov / 2;
+  const a2 = -Math.PI / 2 + fov / 2;
+  ctx.arc(tipX, tipY, len, a1, a2);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(255, 112, 67, 0.28)';
+  ctx.fill();
+
+  // Fan outline edges only (no arc stroke — cleaner)
+  ctx.beginPath();
+  ctx.moveTo(tipX + Math.cos(a1) * len, tipY + Math.sin(a1) * len);
+  ctx.lineTo(tipX, tipY);
+  ctx.lineTo(tipX + Math.cos(a2) * len, tipY + Math.sin(a2) * len);
+  ctx.strokeStyle = 'rgba(255, 112, 67, 0.75)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Solid dot at tip (camera position)
+  ctx.beginPath();
+  ctx.arc(tipX, tipY, 4.5, 0, Math.PI * 2);
+  ctx.fillStyle = '#FF7043';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  map.addImage('cam-viewshed', ctx.getImageData(0, 0, W, H));
+
+  // Fallback dot-only icon for cams without bearing
+  const dW = 16, dH = 16;
+  const dc = document.createElement('canvas');
+  dc.width = dW; dc.height = dH;
+  const dctx = dc.getContext('2d');
+  dctx.beginPath();
+  dctx.arc(dW / 2, dH / 2, 5.5, 0, Math.PI * 2);
+  dctx.fillStyle = '#FF7043';
+  dctx.fill();
+  dctx.strokeStyle = 'rgba(0,0,0,0.4)';
+  dctx.lineWidth = 1;
+  dctx.stroke();
+  map.addImage('cam-dot', dctx.getImageData(0, 0, dW, dH));
+
+  const features = WEBCAMS.map((cam, i) => {
+    const props = { idx: i, name: cam.name, group: cam.group, type: cam.type,
+                    hasBearing: cam.bearing != null };
+    if (cam.bearing != null) props.bearing = cam.bearing;
+    return {
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [cam.lon, cam.lat] },
+      properties: props,
+    };
+  });
+
+  map.addSource('cams', {
+    type: 'geojson',
+    data: { type: 'FeatureCollection', features },
+  });
+
+  // Viewshed cones (cams with known bearing)
+  map.addLayer({
+    id: 'cam-viewsheds',
+    type: 'symbol',
+    source: 'cams',
+    filter: ['==', ['get', 'hasBearing'], true],
+    layout: {
+      'icon-image': 'cam-viewshed',
+      'icon-size': ['interpolate', ['linear'], ['zoom'], 5, 0.5, 9, 0.75, 13, 1.1],
+      'icon-anchor': 'bottom',
+      'icon-rotate': ['get', 'bearing'],
+      'icon-rotation-alignment': 'map',
+      'icon-pitch-alignment': 'map',
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
+    },
+  });
+
+  // Plain dot for cams without bearing
+  map.addLayer({
+    id: 'cam-dots-bare',
+    type: 'symbol',
+    source: 'cams',
+    filter: ['==', ['get', 'hasBearing'], false],
+    layout: {
+      'icon-image': 'cam-dot',
+      'icon-size': ['interpolate', ['linear'], ['zoom'], 5, 0.9, 13, 1.4],
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
+    },
+  });
+
+  // Name labels at high zoom
+  map.addLayer({
+    id: 'cam-names',
+    type: 'symbol',
+    source: 'cams',
+    minzoom: 10,
+    layout: {
+      'text-field': ['get', 'name'],
+      'text-size': 9,
+      'text-offset': [0, 0.6],
+      'text-anchor': 'top',
+      'text-font': ['DIN Pro Medium', 'Arial Unicode MS Regular'],
+      'text-max-width': 10,
+    },
+    paint: {
+      'text-color': '#FF7043',
+      'text-halo-color': 'rgba(0,0,0,0.8)',
+      'text-halo-width': 1.5,
+    },
+  });
+
+  ['cam-viewsheds', 'cam-dots-bare'].forEach(layerId => {
+    map.on('click', layerId, e => {
+      const props = e.features[0].properties;
+      const coords = e.features[0].geometry.coordinates;
+      showPopup(props.idx, [coords[0], coords[1]]);
+    });
+    map.on('mouseenter', layerId, () => map.getCanvas().style.cursor = 'pointer');
+    map.on('mouseleave', layerId, () => map.getCanvas().style.cursor = '');
+  });
+});
+
+let activePopup = null;
+
+function showPopup(idx, lngLat) {
+  if (activePopup) { activePopup.remove(); activePopup = null; }
+  const cam = WEBCAMS[idx];
+  const ts = Date.now();
+  const body = (cam.type === 'live' || cam.type === 'iframe')
+    ? `<a class="pop-live-btn" href="${cam.link}" target="_blank" rel="noopener">▶ Watch Live</a>`
+    : `<img class="pop-img" src="${camSrc(cam, ts)}" alt="${cam.name}" onerror="this.style.opacity='0.2';this.alt='Unavailable'">`;
+
+  activePopup = new mapboxgl.Popup({ maxWidth: '300px', offset: 14, closeButton: true })
+    .setLngLat(lngLat)
+    .setHTML(`
+      <div class="pop-name">${cam.name}</div>
+      ${body}
+      <div class="pop-meta">
+        <span class="pop-group">${cam.group}</span>
+        <a class="pop-link" href="${cam.link}" target="_blank" rel="noopener">↗ Source</a>
+      </div>`)
+    .addTo(map);
+}
+
+function flyToAndPopup(idx) {
+  const cam = WEBCAMS[idx];
+  const targetZoom = Math.max(map.getZoom(), 9.5);
+  map.flyTo({ center: [cam.lon, cam.lat], zoom: targetZoom, speed: 1.4, essential: true });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  map.once('moveend', () => showPopup(idx, [cam.lon, cam.lat]));
+}
+
+buildGrid();
+</script>
+</body>
+</html>

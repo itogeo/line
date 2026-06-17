@@ -1,0 +1,46 @@
+# Cloudflare Pages headers — Cache-Control for static assets.
+#
+# Snow tiles, truecolor tiles, and historical MODIS WebPs never change once
+# written (each filename is bound to one date). Mark them immutable so the
+# browser caches them forever and never re-fetches on revisit. Big win for
+# return visitors and timeline scrubbing.
+#
+# JSON metadata files (dates.json, sat_availability.json, snotel_*.json)
+# DO change daily, so they need a short max-age + must-revalidate.
+#
+# Reference: https://developers.cloudflare.com/pages/configuration/headers/
+
+# Per-date snow + truecolor tiles — never change, cache forever
+/data_10m/2*/*.webp
+  Cache-Control: public, max-age=31536000, immutable
+
+# Pre-baked static assets that change rarely (forest mask, MODIS history,
+# AOI nodata pattern). 1-day cache with revalidation is plenty.
+/data/forest_mask.webp
+  Cache-Control: public, max-age=86400, must-revalidate
+/data/historical/*.webp
+  Cache-Control: public, max-age=86400, must-revalidate
+/data/aoi_nodata_pattern.webp
+  Cache-Control: public, max-age=86400, must-revalidate
+
+# Per-date metadata (snowline.json) — also immutable once written
+/data_10m/2*/snowline.json
+  Cache-Control: public, max-age=31536000, immutable
+
+# Daily-refreshed metadata files — short cache, must revalidate
+/data_10m/dates.json
+  Cache-Control: public, max-age=300, must-revalidate
+/data/sat_availability.json
+  Cache-Control: public, max-age=300, must-revalidate
+/data/snotel.json
+  Cache-Control: public, max-age=300, must-revalidate
+/data/snotel_season.json
+  Cache-Control: public, max-age=300, must-revalidate
+/data/snotel_normals.json
+  Cache-Control: public, max-age=86400, must-revalidate
+
+# HTML + JS — short cache so deploys land quickly
+/*.html
+  Cache-Control: public, max-age=300, must-revalidate
+/index.html
+  Cache-Control: public, max-age=300, must-revalidate

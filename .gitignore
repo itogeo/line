@@ -1,0 +1,25 @@
+# Environment — never commit tokens
+.env
+**/.env
+
+# Backed-up nested .git dirs (created during monorepo init)
+**/.git.bak/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Raster data
+*.tif
+*.tiff
+
+# Snowline pipeline scratch space
+snowline/cache/
+
+# Node
+node_modules/
+
+# Data downloads
+riverline/data/

@@ -1,0 +1,44 @@
+name: Build Static Assets
+
+on:
+  workflow_dispatch:
+    inputs:
+      asset:
+        description: 'Asset to build (forest_mask, all)'
+        required: true
+        default: 'all'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r pipeline/requirements.txt
+
+      - name: Build forest mask
+        if: inputs.asset == 'forest_mask' || inputs.asset == 'all'
+        run: python pipeline/build_forest_mask.py
+        env:
+          GDAL_HTTP_UNSAFESSL: 'YES'
+
+      - name: Build SNOTEL normals
+        if: inputs.asset == 'snotel_normals' || inputs.asset == 'all'
+        run: python pipeline/build_snotel_normals.py
+
+      - name: Commit assets
+        run: |
+          git config user.name "snowline-bot"
+          git config user.email "bot@snowline"
+          git add site/data/
+          git diff --staged --quiet || git commit -m "Build static assets: ${{ inputs.asset }}"
+          git pull --rebase origin main || true
+          git push

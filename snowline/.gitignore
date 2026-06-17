@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.env
+*.tif
+*.tiff
+.venv/
+venv/
+node_modules/
+
+# Local band cache populated by fetch_bands.py — temporary scratch space
+# for the two-phase pipeline. process_tiles.py reads from here, then
+# update_date.sh deletes it on success.
+/cache/
