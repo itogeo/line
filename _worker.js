@@ -145,7 +145,8 @@ export default {
       }
 
       // Static assets → rewrite to snowline/site/ prefix
-      const snowPath = path === '/' ? '/snowline/site/index.html' : '/snowline/site' + path;
+      // Use trailing slash for root — ASSETS normalizes /dir/index.html → /dir/ with 308
+      const snowPath = path === '/' ? '/snowline/site/' : '/snowline/site' + path;
       return env.ASSETS.fetch(new Request(new URL(snowPath, url), request));
     }
 
@@ -198,7 +199,7 @@ export default {
       }
 
       // Static assets → rewrite to riverline/site/ prefix
-      const riverPath = path === '/' ? '/riverline/site/index.html' : '/riverline/site' + path;
+      const riverPath = path === '/' ? '/riverline/site/' : '/riverline/site' + path;
       return env.ASSETS.fetch(new Request(new URL(riverPath, url), request));
     }
 
