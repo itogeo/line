@@ -15,6 +15,10 @@ venv/
 *.tif
 *.tiff
 
+# Snowline daily tile WebPs — these live in Cloudflare R2, not git
+# (static baseline WebPs in snowline/site/data/ and data/historical/ are kept)
+snowline/site/data_10m/**/*.webp
+
 # Snowline pipeline scratch space
 snowline/cache/
 

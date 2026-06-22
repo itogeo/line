@@ -3,26 +3,27 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>RiverLine — Gallatin at Gateway</title>
+  <title>River Conditions — Gallatin at Gateway · itogeospatial</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,400&family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #0e1116;
-      --surface: #161a22;
-      --border: #2a3140;
-      --text: #e6e9ef;
-      --dim: #7a8499;
-      --accent: #5eb1ff;
+      --bg: #080f18;
+      --surface: #0e1c2d;
+      --border: #1a2d42;
+      --text: #d4dde8;
+      --dim: #455a70;
+      --accent: #4a8fba;
       --green: #4ade80;
-      --yellow: #facc15;
-      --orange: #fb923c;
-      --red: #f87171;
+      --yellow: #c8973a;
+      --orange: #c05040;
+      --red: #c05040;
       --purple: #c084fc;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body {
       background: var(--bg); color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", system-ui, sans-serif;
+      font-family: 'Inter', -apple-system, sans-serif;
       font-size: 16px; line-height: 1.5;
     }
     a { color: var(--accent); text-decoration: none; }
@@ -35,8 +36,7 @@
       display: flex; align-items: center; justify-content: space-between;
       padding: 20px 0 8px;
     }
-    .brand { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
-    .brand .dim { color: var(--dim); font-weight: 400; }
+    .wordmark { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 400; color: var(--dim); letter-spacing: 0.05em; }
     .live-dot {
       display: flex; align-items: center; gap: 6px;
       font-size: 12px; color: var(--dim);
@@ -52,36 +52,84 @@
 
     /* ── Section headers ── */
     .section-label {
-      font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
-      text-transform: uppercase; color: var(--dim); margin-bottom: 12px;
+      font-family: 'Playfair Display', serif;
+      font-style: italic;
+      font-size: 20px;
+      font-weight: 400;
+      color: var(--accent);
+      margin-bottom: 16px;
+      margin-top: 8px;
     }
 
     /* ── Hero ── */
     #hero {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: 16px; padding: 28px 24px 24px; margin: 12px 0 20px;
+      padding: 28px 0 24px; margin: 12px 0 20px;
+    }
+    .hero-station {
+      font-size: 11px;
+      font-family: 'Inter';
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      color: var(--dim);
+      margin-bottom: 16px;
+    }
+    .hero-divider {
+      height: 1px;
+      background: var(--border);
+      margin: 12px 0;
     }
     .hero-cfs {
-      font-size: 64px; font-weight: 700; letter-spacing: -0.03em;
-      line-height: 1; color: var(--text);
+      font-size: 80px;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      line-height: 1;
+      color: var(--text);
     }
-    .hero-cfs .unit { font-size: 24px; font-weight: 400; color: var(--dim); margin-left: 4px; }
+    .hero-cfs .unit {
+      font-size: 24px;
+      font-weight: 400;
+      color: var(--dim);
+      margin-left: 4px;
+    }
     .hero-trend {
-      font-size: 16px; color: var(--dim); margin-top: 4px;
+      font-size: 16px;
+      color: var(--dim);
+      margin-top: 4px;
     }
     .hero-level {
-      display: inline-block; margin-top: 16px;
-      font-size: 13px; font-weight: 700; letter-spacing: 0.05em;
-      text-transform: uppercase; padding: 4px 12px; border-radius: 999px;
-      background: rgba(94,177,255,0.15); color: var(--accent);
+      display: inline-block;
+      margin-top: 16px;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      padding: 4px 12px;
+      border-radius: 999px;
+      background: rgba(74,143,186,0.15);
+      color: var(--accent);
     }
-    .hero-level.warn { background: rgba(250,204,21,0.15); color: var(--yellow); }
-    .hero-level.alert { background: rgba(248,113,113,0.15); color: var(--red); }
-    .hero-sublevel { font-size: 14px; color: var(--dim); margin-top: 6px; }
+    .hero-level.warn {
+      background: rgba(200,151,58,0.15);
+      color: var(--yellow);
+    }
+    .hero-level.alert {
+      background: rgba(192,80,64,0.15);
+      color: var(--red);
+    }
+    .hero-sublevel {
+      font-size: 14px;
+      color: var(--dim);
+      margin-top: 6px;
+    }
     .hero-meta {
-      display: flex; align-items: center; gap: 16px;
-      margin-top: 16px; font-size: 13px; color: var(--dim);
-      padding-top: 16px; border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-top: 16px;
+      font-size: 13px;
+      color: var(--dim);
     }
     .flood-ok { color: var(--green); }
     .flood-warn { color: var(--yellow); }
@@ -90,8 +138,10 @@
     /* ── Forecast chart ── */
     #forecast { margin-bottom: 20px; }
     .chart-card {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: 16px; padding: 20px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
     }
     .chart-head {
       display: flex; justify-content: space-between; align-items: baseline;
@@ -108,20 +158,43 @@
     /* ── Audience cards ── */
     #audience { margin-bottom: 20px; }
     .card-row {
-      display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
     }
     .audience-card {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: 14px; padding: 16px 14px;
+      display: flex;
+      align-items: center;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      gap: 0;
+    }
+    .audience-card:last-child {
+      border-bottom: none;
     }
     .card-label {
-      font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
-      text-transform: uppercase; color: var(--dim); margin-bottom: 8px;
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--dim);
+      width: 64px;
+      flex-shrink: 0;
     }
     .card-status {
-      font-size: 17px; font-weight: 700; color: var(--text); line-height: 1.2;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+      flex: 1;
     }
-    .card-detail { font-size: 12px; color: var(--dim); margin-top: 4px; }
+    .card-detail {
+      font-size: 13px;
+      color: var(--dim);
+      text-align: right;
+    }
 
     /* ── History chart ── */
     #history { margin-bottom: 20px; }
@@ -203,9 +276,6 @@
 
     @media (max-width: 480px) {
       .hero-cfs { font-size: 52px; }
-      .card-row { grid-template-columns: repeat(3, 1fr); gap: 8px; }
-      .audience-card { padding: 12px 10px; }
-      .card-status { font-size: 15px; }
     }
   </style>
 </head>
@@ -213,7 +283,7 @@
 <div class="page">
 
   <header>
-    <div class="brand">RiverLine <span class="dim">· Gallatin at Gateway</span></div>
+    <div class="wordmark">itogeospatial</div>
     <div class="live-dot" id="live-label">Live</div>
   </header>
 
@@ -365,8 +435,8 @@ function buildForecastChart(canvasId, points, thresholds) {
       labels,
       datasets: [{
         data,
-        borderColor: '#5eb1ff',
-        backgroundColor: 'rgba(94,177,255,0.08)',
+        borderColor: '#4a8fba',
+        backgroundColor: 'rgba(74,143,186,0.08)',
         fill: true,
         tension: 0.3,
         pointRadius: 2,
@@ -386,15 +456,15 @@ function buildForecastChart(canvasId, points, thresholds) {
       scales: {
         x: {
           ticks: {
-            color: '#7a8499', font: { size: 10 },
+            color: '#455a70', font: { size: 10 },
             maxRotation: 45, maxTicksLimit: 8,
           },
-          grid: { color: 'rgba(42,49,64,0.6)' },
+          grid: { color: 'rgba(255,255,255,0.04)' },
         },
         y: {
-          ticks: { color: '#7a8499', font: { size: 11 } },
-          grid: { color: 'rgba(42,49,64,0.6)' },
-          title: { display: true, text: 'Stage (ft)', color: '#7a8499', font: { size: 11 } },
+          ticks: { color: '#455a70', font: { size: 11 } },
+          grid: { color: 'rgba(255,255,255,0.04)' },
+          title: { display: true, text: 'Stage (ft)', color: '#455a70', font: { size: 11 } },
         },
       },
     },
@@ -439,7 +509,7 @@ function buildHistoryChart(canvasId, history, bands, todayDOY) {
           label: 'P90',
           data: p90Data,
           borderColor: 'transparent',
-          backgroundColor: 'rgba(94,177,255,0.08)',
+          backgroundColor: 'rgba(74,143,186,0.08)',
           fill: '+1',
           tension: 0.3,
           pointRadius: 0,
@@ -448,7 +518,7 @@ function buildHistoryChart(canvasId, history, bands, todayDOY) {
           label: 'P10',
           data: p10Data,
           borderColor: 'transparent',
-          backgroundColor: 'rgba(94,177,255,0.08)',
+          backgroundColor: 'rgba(74,143,186,0.08)',
           fill: false,
           tension: 0.3,
           pointRadius: 0,
@@ -456,7 +526,7 @@ function buildHistoryChart(canvasId, history, bands, todayDOY) {
         {
           label: 'Median',
           data: p50Data,
-          borderColor: 'rgba(94,177,255,0.3)',
+          borderColor: 'rgba(74,143,186,0.35)',
           borderWidth: 1,
           borderDash: [3, 3],
           fill: false,
@@ -466,8 +536,8 @@ function buildHistoryChart(canvasId, history, bands, todayDOY) {
         {
           label: 'Flow',
           data: cfsData,
-          borderColor: '#5eb1ff',
-          backgroundColor: 'rgba(94,177,255,0.12)',
+          borderColor: '#4a8fba',
+          backgroundColor: 'rgba(74,143,186,0.12)',
           fill: false,
           tension: 0.2,
           pointRadius: 0,
@@ -490,15 +560,15 @@ function buildHistoryChart(canvasId, history, bands, todayDOY) {
       scales: {
         x: {
           ticks: {
-            color: '#7a8499', font: { size: 10 },
+            color: '#455a70', font: { size: 10 },
             maxTicksLimit: 7,
           },
-          grid: { color: 'rgba(42,49,64,0.6)' },
+          grid: { color: 'rgba(255,255,255,0.04)' },
         },
         y: {
-          ticks: { color: '#7a8499', font: { size: 11 } },
-          grid: { color: 'rgba(42,49,64,0.6)' },
-          title: { display: true, text: 'Flow (cfs)', color: '#7a8499', font: { size: 11 } },
+          ticks: { color: '#455a70', font: { size: 11 } },
+          grid: { color: 'rgba(255,255,255,0.04)' },
+          title: { display: true, text: 'Flow (cfs)', color: '#455a70', font: { size: 11 } },
         },
       },
     },
@@ -565,11 +635,13 @@ async function render() {
   root.innerHTML = `
     <!-- HERO -->
     <section id="hero">
-      <div class="section-label">Current Conditions</div>
+      <div class="hero-station">Gallatin River at Logan</div>
+      <div class="hero-divider"></div>
       <div class="hero-cfs">${Math.round(cfs).toLocaleString()}<span class="unit">cfs</span></div>
       <div class="hero-trend">${trendStr}</div>
       <div class="hero-level ${lvl.cls}">${lvl.badge}</div>
       <div class="hero-sublevel">${lvl.sub}</div>
+      <div class="hero-divider"></div>
       <div class="hero-meta">
         <span>${formatTimeMT(observedAt)}</span>
         <span class="${flood.cls}">${flood.text}</span>
