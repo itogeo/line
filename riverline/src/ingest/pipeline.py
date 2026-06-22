@@ -64,7 +64,11 @@ def build_gateway_snapshot() -> dict:
 
     # 3. SNOTEL — current SWE + %-of-normal for the 4 upstream stations
     print("  → SNOTEL upper Gallatin")
-    snotel_data = snotel.snotel_current(GATEWAY["snotel_triplets"])
+    try:
+        snotel_data = snotel.snotel_current(GATEWAY["snotel_triplets"])
+    except Exception as e:
+        print(f"  ! SNOTEL fetch failed (non-fatal): {e}")
+        snotel_data = {}
     swe_values = []
     pct_values = []
     snotel_summary = []
