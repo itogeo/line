@@ -95,6 +95,7 @@
   .brand .wordmark { font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 500; color: var(--text-muted); letter-spacing: 0.05em; text-transform: lowercase; }
   .brand h1 { font-family: 'Playfair Display', serif; font-size: 22px; font-weight: 700; color: var(--text); letter-spacing: -0.01em; line-height: 1; margin-top: 2px; }
   .brand .region { font-family: var(--mono); font-size: 9px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
+  .data-freshness { font-family: var(--mono); font-size: 9px; color: var(--text-dim); margin-top: 3px; }
 
   .scene-date-badge {
     font-family: var(--mono); font-size: 16px; font-weight: 700;
@@ -504,6 +505,7 @@
   .mapboxgl-ctrl-group button .mapboxgl-ctrl-icon { filter: invert(1) brightness(0.7); }
   .mapboxgl-ctrl-attrib { display: none !important; }
 </style>
+<script src="/shared/freshness.js"></script>
 </head>
 <body>
 
@@ -528,7 +530,7 @@
 
 <!-- Info Panel -->
 <div class="panel collapsed" id="panel">
-  <div class="brand"><span class="wordmark">itogeospatial</span><h1>Snow Cover</h1><span class="region">SW Montana</span></div>
+  <div class="brand"><span class="wordmark">itogeospatial</span><h1>Snow Cover</h1><span class="region">SW Montana</span><span class="data-freshness" id="data-freshness"></span></div>
   <div class="scene-date-badge" id="date-badge"></div>
   <div class="scene-meta" id="meta"></div>
 
@@ -921,7 +923,11 @@ async function init() {
   // Load SNOTEL in background — don't block map display
   fetch('data/snotel.json').then(r => r.ok ? r.json() : []).then(d => { SNOTEL = d; }).catch(() => {});
   // Load full season SNOTEL (per-station history) — used for date-matched lookups
-  fetch('data/snotel_season.json').then(r => r.ok ? r.json() : null).then(d => { SNOTEL_SEASON = d; }).catch(() => {});
+  fetch('data/snotel_season.json').then(r => r.ok ? r.json() : null).then(d => {
+    SNOTEL_SEASON = d;
+    const el = document.getElementById('data-freshness');
+    if (el && d?.generated_at) el.textContent = 'Updated ' + formatAge(d.generated_at);
+  }).catch(() => {});
   loadSnotelNormals(); // fire and forget — don't await
 
   buildTimeline();

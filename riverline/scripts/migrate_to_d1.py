@@ -2,10 +2,11 @@
 
 Usage (run once, from repo root):
   cd repos/line/riverline
-  .venv/bin/python scripts/migrate_to_d1.py
+  /Users/ianvandusen/anaconda3/envs/geodata/bin/python scripts/migrate_to_d1.py
   wrangler d1 execute riverline-db --file=migration.sql --remote
 
-Requires pyarrow (in requirements.txt). Run in .venv, not system Python.
+Schema: site_id + date composite PK supports multi-gauge.
+Only gauges with local parquet files are seeded; others get rows as pipeline runs.
 """
 
 from __future__ import annotations
@@ -18,6 +19,15 @@ import pandas as pd
 
 DATA = Path(__file__).resolve().parents[1] / "data"
 OUT = Path(__file__).resolve().parents[1] / "migration.sql"
+
+# Ordered upstream → downstream (same as BOZEMAN_GAUGES in pipeline.py)
+GAUGES = [
+    "06043120",
+    "06043500",
+    "06048650",
+    "06050000",
+    "06052500",
+]
 
 
 def _val(v, is_float=True):
@@ -37,57 +47,79 @@ def main():
         "-- Run: wrangler d1 execute riverline-db --file=migration.sql --remote",
         "",
         "CREATE TABLE IF NOT EXISTS daily_flow (",
-        "  date TEXT PRIMARY KEY,",
-        "  cfs  REAL NOT NULL",
+        "  site_id TEXT NOT NULL,",
+        "  date    TEXT NOT NULL,",
+        "  cfs     REAL NOT NULL,",
+        "  PRIMARY KEY (site_id, date)",
         ");",
         "",
         "CREATE TABLE IF NOT EXISTS doy_stats (",
-        "  doy  INTEGER PRIMARY KEY,",
-        "  p10  REAL, p25 REAL, p50 REAL, p75 REAL, p90 REAL",
+        "  site_id TEXT    NOT NULL,",
+        "  doy     INTEGER NOT NULL,",
+        "  p10  REAL, p25 REAL, p50 REAL, p75 REAL, p90 REAL,",
+        "  PRIMARY KEY (site_id, doy)",
         ");",
         "",
     ]
 
-    # ── History ──────────────────────────────────────────────────────────────
-    hist_path = DATA / "history/06043500.parquet"
-    hist = pd.read_parquet(hist_path)
-    skipped = 0
-    for _, row in hist.iterrows():
-        d = str(row["date"])[:10]
-        cfs = _val(row["discharge_cfs"])
-        if cfs == "NULL":
-            skipped += 1
-            continue
-        lines.append(f"INSERT OR IGNORE INTO daily_flow VALUES ('{d}', {cfs});")
-    print(f"History: {len(hist)} rows, {skipped} skipped (null cfs)")
+    total_hist = 0
+    total_stats = 0
 
-    lines.append("")
+    for site_id in GAUGES:
+        # ── History ──────────────────────────────────────────────────────────
+        hist_path = DATA / f"history/{site_id}.parquet"
+        if not hist_path.exists():
+            print(f"  [skip] {site_id} — no history parquet at {hist_path.name}")
+        else:
+            hist = pd.read_parquet(hist_path)
+            skipped = 0
+            n = 0
+            for _, row in hist.iterrows():
+                d = str(row["date"])[:10]
+                cfs = _val(row["discharge_cfs"])
+                if cfs == "NULL":
+                    skipped += 1
+                    continue
+                lines.append(
+                    f"INSERT OR IGNORE INTO daily_flow VALUES ('{site_id}', '{d}', {cfs});"
+                )
+                n += 1
+            print(f"  {site_id} history: {n} rows ({skipped} skipped)")
+            total_hist += n
+            lines.append("")
 
-    # ── DOY stats ────────────────────────────────────────────────────────────
-    stats_path = DATA / "stats/06043500.parquet"
-    stats = pd.read_parquet(stats_path)
-    written = 0
-    for _, row in stats.iterrows():
-        try:
-            month = int(float(row["month_nu"]))
-            day = int(float(row["day_nu"]))
-            doy = date(2020, month, day).timetuple().tm_yday  # 2020 = leap year
-        except (ValueError, TypeError):
-            continue
-        p10 = _val(row.get("p10_va"))
-        p25 = _val(row.get("p25_va"))
-        p50 = _val(row.get("p50_va"))
-        p75 = _val(row.get("p75_va"))
-        p90 = _val(row.get("p90_va"))
-        lines.append(
-            f"INSERT OR REPLACE INTO doy_stats VALUES ({doy}, {p10}, {p25}, {p50}, {p75}, {p90});"
-        )
-        written += 1
-    print(f"DOY stats: {written} rows written")
+        # ── DOY stats ────────────────────────────────────────────────────────
+        stats_path = DATA / f"stats/{site_id}.parquet"
+        if not stats_path.exists():
+            print(f"  [skip] {site_id} — no stats parquet at {stats_path.name}")
+        else:
+            stats = pd.read_parquet(stats_path)
+            written = 0
+            for _, row in stats.iterrows():
+                try:
+                    month = int(float(row["month_nu"]))
+                    day = int(float(row["day_nu"]))
+                    doy = date(2020, month, day).timetuple().tm_yday  # 2020 = leap year
+                except (ValueError, TypeError):
+                    continue
+                p10 = _val(row.get("p10_va"))
+                p25 = _val(row.get("p25_va"))
+                p50 = _val(row.get("p50_va"))
+                p75 = _val(row.get("p75_va"))
+                p90 = _val(row.get("p90_va"))
+                lines.append(
+                    f"INSERT OR REPLACE INTO doy_stats VALUES "
+                    f"('{site_id}', {doy}, {p10}, {p25}, {p50}, {p75}, {p90});"
+                )
+                written += 1
+            print(f"  {site_id} DOY stats: {written} rows")
+            total_stats += written
+            lines.append("")
 
     OUT.write_text("\n".join(lines) + "\n")
     total_inserts = sum(1 for ln in lines if ln.startswith("INSERT"))
     print(f"\n✓ Wrote {total_inserts} INSERT statements to {OUT.name}")
+    print(f"  History rows: {total_hist}  DOY-stats rows: {total_stats}")
     print("  Next: wrangler d1 execute riverline-db --file=migration.sql --remote")
 
 

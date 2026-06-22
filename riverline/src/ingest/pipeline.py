@@ -1,15 +1,15 @@
 """RiverLine ingestion pipeline.
 
 Orchestrates all four data sources (USGS / NWPS / SNOTEL / NWS) and produces a single
-canonical `data/current.json` keyed by gauge. This is the file the frontend reads on
-every page load.
+canonical `data/current.json`. This is the file the frontend reads on every page load.
 
 Also refreshes the per-gauge static files (history, stats, NWPS metadata, weather, SNOTEL).
 
-Pilot scope: Gateway only (USGS 06043500 / NWPS GLGM8). When we expand, this is the only
-file that grows — every other module is per-source and parameterized.
+Scope: all active Gallatin gauges through/near Bozeman (upstream → downstream).
+  Primary (full data): 06043500 Gateway — has NWPS forecast + SNOTEL + NWS weather.
+  Secondary (IV only): 4 additional Gallatin gauges for the gauge strip.
 
-Run as a script (this is what the GH Actions cron will call):
+Run as a script:
   python -m src.ingest.pipeline
 """
 
@@ -21,7 +21,7 @@ from pathlib import Path
 
 from . import nwps, nws, snotel, usgs
 
-# Pilot scope — single gauge.
+# Primary gauge — full pipeline: USGS IV/DV + NWPS + SNOTEL + NWS.
 GATEWAY = {
     "usgs_id": "06043500",
     "nwps_lid": "GLGM8",
@@ -31,6 +31,16 @@ GATEWAY = {
     "snotel_triplets": [s["triplet"] for s in snotel.GATEWAY_SNOTEL_STATIONS],
 }
 
+# All active Gallatin gauges — ordered upstream → downstream.
+# IV pulled for all in one USGS call; only site_id / short / name used for the gauge strip.
+BOZEMAN_GAUGES = [
+    {"site_id": "06043120", "short": "Big Sky",    "name": "Gallatin River above Deer Creek nr Big Sky"},
+    {"site_id": "06043500", "short": "Gateway",    "name": "Gallatin River near Gallatin Gateway"},
+    {"site_id": "06048650", "short": "E Gallatin", "name": "East Gallatin River nr Bozeman"},
+    {"site_id": "06050000", "short": "Hyalite",    "name": "Hyalite Creek at Hyalite Reservoir"},
+    {"site_id": "06052500", "short": "Logan",      "name": "Gallatin River at Logan"},
+]
+
 DATA_ROOT = Path(__file__).resolve().parents[2] / "data"
 
 
@@ -39,10 +49,11 @@ def build_gateway_snapshot() -> dict:
     now = datetime.now(timezone.utc).isoformat()
     print(f"[{now}] Building Gateway snapshot...")
 
-    # 1. USGS — current IV reading + verify history files exist
-    print("  → USGS IV snapshot")
-    iv = usgs.nwis_iv_snapshot([GATEWAY["usgs_id"]])
-    iv_data = iv.get(GATEWAY["usgs_id"], {})
+    # 1. USGS — current IV reading for all 5 Bozeman-area gauges in one call
+    print("  → USGS IV snapshot (all 5 gauges)")
+    all_site_ids = [g["site_id"] for g in BOZEMAN_GAUGES]
+    iv_all = usgs.nwis_iv_snapshot(all_site_ids)
+    iv_data = iv_all.get(GATEWAY["usgs_id"], {})  # primary gauge
 
     # 2. NWPS — gauge metadata (rich) + current forecast
     print("  → NWPS gauge info + forecast")
@@ -106,8 +117,21 @@ def build_gateway_snapshot() -> dict:
                 flood_category = cat
                 break
 
+    # Build gauge strip entries from all 5 gauges
+    gauges_list = []
+    for g in BOZEMAN_GAUGES:
+        g_iv = iv_all.get(g["site_id"], {})
+        gauges_list.append({
+            "site_id": g["site_id"],
+            "short": g["short"],
+            "name": g["name"],
+            "discharge_cfs": g_iv.get("discharge_cfs", {}).get("value"),
+            "observed_at": g_iv.get("discharge_cfs", {}).get("timestamp"),
+            "gage_height_ft": g_iv.get("gage_height_ft", {}).get("value"),
+        })
+
     snapshot = {
-        "schema_version": 2,
+        "schema_version": 3,
         "generated_at": now,
         "gauge": {
             "usgs_id": GATEWAY["usgs_id"],
@@ -156,6 +180,7 @@ def build_gateway_snapshot() -> dict:
             "periods": weather["periods"][:8],  # ~4 days, day/night — what the UI shows above the fold
         },
         "historic_crests": nwps_info.get("flood", {}).get("crests", {}).get("historic", [])[:10],
+        "gauges": gauges_list,
     }
 
     return snapshot
@@ -191,6 +216,7 @@ def main() -> None:
     print(f"  Basin avg SWE: {snow['basin_avg_swe_in']} in  ({len(snow['stations'])} stations){pct_str}")
     print(f"  Weather periods: {len(snapshot['weather']['periods'])}")
     print(f"  Historic crests embedded: {len(snapshot['historic_crests'])}")
+    print(f"  Gauges in strip: {[(g['short'], g['discharge_cfs']) for g in snapshot['gauges']]}")
 
 
 if __name__ == "__main__":

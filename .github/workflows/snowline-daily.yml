@@ -57,3 +57,18 @@ jobs:
               git pull --rebase origin main || git rebase --abort
             done
           fi
+
+      - name: 4. Trigger imagery if new clear pass detected
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NEW_DATE=$(python snowline/pipeline/check_new_clear_pass.py 2>/dev/null)
+          if [ -n "$NEW_DATE" ]; then
+            echo "New clear pass: $NEW_DATE — triggering imagery processing"
+            gh workflow run snowline-process-imagery.yml \
+              --repo ${{ github.repository }} \
+              -f date="$NEW_DATE"
+          else
+            echo "No new clear passes — skipping imagery trigger"
+          fi

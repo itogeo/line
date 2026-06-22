@@ -2,7 +2,7 @@
 
 Reads data/current.json (written by pipeline.py) and:
   1. PUTs the whole blob to KV key "gateway:current"
-  2. INSERTs today's CFS into D1 table daily_flow
+  2. INSERTs today's CFS for each gauge in current.gauges into D1 daily_flow
 
 Required env vars (set in GitHub secrets or .env):
   CF_ACCOUNT_ID, CF_KV_NS_ID, CF_D1_DB_ID, CF_API_TOKEN
@@ -47,16 +47,17 @@ def push_kv(account_id: str, ns_id: str, token: str, value: str) -> None:
     print("  ✓ KV gateway:current updated")
 
 
-def push_d1(account_id: str, db_id: str, token: str, date_str: str, cfs: float) -> None:
+def push_d1(account_id: str, db_id: str, token: str,
+            site_id: str, date_str: str, cfs: float) -> None:
     url = f"{CF_BASE}/{account_id}/d1/database/{db_id}/query"
     body = json.dumps({
-        "sql": "INSERT OR REPLACE INTO daily_flow (date, cfs) VALUES (?, ?)",
-        "params": [date_str, cfs],
+        "sql": "INSERT OR REPLACE INTO daily_flow (site_id, date, cfs) VALUES (?, ?, ?)",
+        "params": [site_id, date_str, cfs],
     })
     result = _cf("POST", url, token, body=body)
     if not result.get("success"):
         raise RuntimeError(f"D1 query failed: {result.get('errors')}")
-    print(f"  ✓ D1 daily_flow {date_str} = {cfs} cfs")
+    print(f"  ✓ D1 daily_flow {site_id} {date_str} = {cfs} cfs")
 
 
 def main() -> None:
@@ -78,12 +79,23 @@ def main() -> None:
 
     push_kv(account_id, ns_id, token, current_text)
 
-    cfs = current.get("current", {}).get("discharge_cfs")
-    if cfs is not None:
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        push_d1(account_id, db_id, token, today, float(cfs))
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    # Insert one row per gauge from the gauges strip
+    gauges = current.get("gauges", [])
+    if gauges:
+        for gauge in gauges:
+            cfs = gauge.get("discharge_cfs")
+            site_id = gauge.get("site_id")
+            if cfs is not None and site_id:
+                push_d1(account_id, db_id, token, site_id, today, float(cfs))
     else:
-        print("  ! No discharge_cfs in current.json — skipping D1 write")
+        # Fallback: schema_version 2 — primary gauge only
+        cfs = current.get("current", {}).get("discharge_cfs")
+        if cfs is not None:
+            push_d1(account_id, db_id, token, "06043500", today, float(cfs))
+        else:
+            print("  ! No discharge_cfs in current.json — skipping D1 write")
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>River Conditions — Gallatin at Gateway · itogeospatial</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="/shared/freshness.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,400&family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     :root {
@@ -134,6 +135,36 @@
     .flood-ok { color: var(--green); }
     .flood-warn { color: var(--yellow); }
     .flood-alert { color: var(--red); }
+    .freshness { font-size: 11px; color: var(--dim); }
+
+    /* ── Gauge strip ── */
+    #gauge-strip { margin-bottom: 20px; }
+    .gauge-strip {
+      display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px;
+      scrollbar-width: none;
+    }
+    .gauge-strip::-webkit-scrollbar { display: none; }
+    .gauge-card {
+      flex: 0 0 auto; min-width: 80px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 10px 12px; text-align: center;
+      cursor: pointer; transition: border-color 0.15s, background 0.15s;
+    }
+    .gauge-card:hover { border-color: var(--accent); }
+    .gauge-card.active {
+      border-color: var(--accent); background: rgba(74,143,186,0.12);
+    }
+    .gc-short {
+      font-size: 10px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--dim); margin-bottom: 4px;
+    }
+    .gc-cfs {
+      font-family: 'JetBrains Mono', monospace; font-size: 18px;
+      font-weight: 600; color: var(--text); line-height: 1;
+    }
+    .gc-unit {
+      font-size: 10px; color: var(--dim); margin-top: 2px;
+    }
 
     /* ── Forecast chart ── */
     #forecast { margin-bottom: 20px; }
@@ -591,6 +622,32 @@ function weatherIcon(short) {
   return '🌤';
 }
 
+// ── Gauge selection state ────────────────────────────────────────────────────
+
+let activeGauge = '06043500';
+let _lastChart = null;
+let _lastTodayDOY = null;
+
+async function selectGauge(siteId) {
+  activeGauge = siteId;
+  document.querySelectorAll('.gauge-card').forEach(el => {
+    el.classList.toggle('active', el.dataset.site === siteId);
+  });
+  try {
+    const chart = await fetch('/api/chart?site=' + siteId).then(r => r.json());
+    const histWrap = document.getElementById('historyChart-wrap');
+    if (!histWrap) return;
+    histWrap.innerHTML = '<canvas id="historyChart"></canvas>';
+    if ((chart.history || []).length > 0) {
+      buildHistoryChart('historyChart', chart.history, chart.bands || [], _lastTodayDOY);
+    }
+    const src = document.querySelector('#history .chart-source');
+    if (src) src.textContent = `USGS ${siteId} · Shaded = P10–P90`;
+  } catch (e) {
+    console.warn('selectGauge fetch failed:', e);
+  }
+}
+
 // ── Render ───────────────────────────────────────────────────────────────────
 
 async function render() {
@@ -600,7 +657,7 @@ async function render() {
   try {
     [current, chart] = await Promise.all([
       fetch('/api/current').then(r => r.json()),
-      fetch('/api/chart').then(r => r.json()),
+      fetch('/api/chart?site=' + activeGauge).then(r => r.json()),
     ]);
   } catch (e) {
     root.innerHTML = `<div class="error-banner">Could not load river data. Check back soon.</div>`;
@@ -613,7 +670,7 @@ async function render() {
   const thresholds = current.thresholds ?? {};
   const forecast = current.forecast ?? {};
   const weather = current.weather ?? {};
-  const snotelStations = current.snotel ?? [];
+  const snotelStations = current.snowpack?.stations ?? [];
   const crests = current.historic_crests ?? [];
 
   const lvl = level(cfs);
@@ -622,6 +679,7 @@ async function render() {
 
   // Today's DOY for p50 lookup
   const todayDOY = getDOY(new Date().toISOString().slice(0, 10));
+  _lastTodayDOY = todayDOY;
   const bandMap = {};
   (chart.bands || []).forEach(b => { bandMap[b.doy] = b; });
   const todayBand = bandMap[todayDOY] || {};
@@ -635,7 +693,7 @@ async function render() {
   root.innerHTML = `
     <!-- HERO -->
     <section id="hero">
-      <div class="hero-station">Gallatin River at Logan</div>
+      <div class="hero-station">${current.gauge?.name || 'Gallatin River near Gallatin Gateway'}</div>
       <div class="hero-divider"></div>
       <div class="hero-cfs">${Math.round(cfs).toLocaleString()}<span class="unit">cfs</span></div>
       <div class="hero-trend">${trendStr}</div>
@@ -644,9 +702,28 @@ async function render() {
       <div class="hero-divider"></div>
       <div class="hero-meta">
         <span>${formatTimeMT(observedAt)}</span>
+        ${observedAt ? `<span class="freshness" id="hero-freshness">${formatAge(observedAt)}</span>` : ''}
         <span class="${flood.cls}">${flood.text}</span>
       </div>
     </section>
+
+    <!-- GAUGE STRIP -->
+    ${(current.gauges || []).length > 0 ? `
+    <section id="gauge-strip">
+      <div class="section-label">Bozeman Area</div>
+      <div class="gauge-strip" id="gauge-strip-cards">
+        ${(current.gauges).map(g => `
+          <div class="gauge-card${g.site_id === activeGauge ? ' active' : ''}"
+               data-site="${g.site_id}"
+               onclick="selectGauge('${g.site_id}')">
+            <div class="gc-short">${g.short}</div>
+            <div class="gc-cfs">${g.discharge_cfs != null ? Math.round(g.discharge_cfs).toLocaleString() : '—'}</div>
+            <div class="gc-unit">cfs</div>
+          </div>
+        `).join('')}
+      </div>
+    </section>
+    ` : ''}
 
     <!-- FORECAST -->
     <section id="forecast">
@@ -690,7 +767,7 @@ async function render() {
       <div class="chart-card">
         <div class="chart-head">
           <div class="chart-title">Daily flow vs. historical range</div>
-          <div class="chart-source">USGS 06043500 · Shaded = P10–P90</div>
+          <div class="chart-source" id="history-source">USGS ${activeGauge} · Shaded = P10–P90</div>
         </div>
         <div class="chart-wrap" id="historyChart-wrap">
           <canvas id="historyChart"></canvas>

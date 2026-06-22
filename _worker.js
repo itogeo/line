@@ -144,6 +144,11 @@ export default {
         });
       }
 
+      // Shared freshness utilities
+      if (path === '/shared/freshness.js') {
+        return env.ASSETS.fetch(new Request(new URL('/_shared/freshness.js', url), request));
+      }
+
       // Static assets → rewrite to snowline/site/ prefix
       // Use trailing slash for root — ASSETS normalizes /dir/index.html → /dir/ with 308
       const snowPath = path === '/' ? '/snowline/site/' : '/snowline/site' + path;
@@ -166,16 +171,17 @@ export default {
       }
 
       if (path === '/api/chart') {
+        const site = url.searchParams.get('site') || '06043500';
         const [hist, bands] = await Promise.all([
           env.RIVERLINE_DB.prepare(
-            'SELECT date, cfs FROM daily_flow ORDER BY date DESC LIMIT 90',
-          ).all(),
+            'SELECT date, cfs FROM daily_flow WHERE site_id = ? ORDER BY date DESC LIMIT 90',
+          ).bind(site).all(),
           env.RIVERLINE_DB.prepare(
-            'SELECT doy, p10, p25, p50, p75, p90 FROM doy_stats ORDER BY doy',
-          ).all(),
+            'SELECT doy, p10, p25, p50, p75, p90 FROM doy_stats WHERE site_id = ? ORDER BY doy',
+          ).bind(site).all(),
         ]);
         return new Response(
-          JSON.stringify({ history: hist.results, bands: bands.results }),
+          JSON.stringify({ site, history: hist.results, bands: bands.results }),
           {
             headers: {
               'Content-Type': 'application/json',
@@ -184,6 +190,11 @@ export default {
             },
           },
         );
+      }
+
+      // Shared freshness utilities
+      if (path === '/shared/freshness.js') {
+        return env.ASSETS.fetch(new Request(new URL('/_shared/freshness.js', url), request));
       }
 
       // CORS preflight
