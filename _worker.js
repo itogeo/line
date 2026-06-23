@@ -216,6 +216,154 @@ export default {
         }
       }
 
+      // NOAA NWPS stageflow proxy — NOAA has no CORS headers
+      if (path.startsWith('/api/noaa/') && path.endsWith('/stageflow')) {
+        const parts = path.split('/');
+        const lid = parts[3];
+        if (!/^[A-Z0-9]{3,10}$/i.test(lid)) {
+          return new Response('Invalid lid', { status: 400 });
+        }
+        try {
+          const noaaUrl = `https://api.water.noaa.gov/nwps/v1/gauges/${lid}/stageflow`;
+          const r = await fetch(noaaUrl, { headers: { 'User-Agent': 'riverline/1.0' } });
+          const body = await r.text();
+          return new Response(body, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*',
+              'Cache-Control': 'public, max-age=1800',
+            },
+          });
+        } catch (e) {
+          return new Response(JSON.stringify({ error: 'NOAA API error' }), {
+            status: 502,
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+          });
+        }
+      }
+
+      // DNRC StAGE tsQuery proxy — async GP job pattern, returns 14/30-day discharge JSON
+      if (path.startsWith('/api/dnrc/') && url.searchParams.has('days')) {
+        const locationId = path.split('/')[3] || '';
+        if (!/^[a-f0-9]{32}$/i.test(locationId)) {
+          return new Response('Invalid locationId', { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } });
+        }
+        const days = Math.min(365, Math.max(1, parseInt(url.searchParams.get('days')) || 14));
+        const DNRC_MAP = 'https://gis.dnrc.mt.gov/arcgis/rest/services/WRD/WMB_StAGE/MapServer';
+        const DNRC_GP  = 'https://gis.dnrc.mt.gov/arcgis/rest/services/WRD/WMB_StAGE_GPTools/GPServer/tsQuery';
+
+        async function unzipFirstEntry(buf) {
+          const v = new DataView(buf);
+          if (v.getUint32(0, true) !== 0x04034b50) throw new Error('Not a ZIP');
+          const method = v.getUint16(8, true);
+          const fnLen  = v.getUint16(26, true);
+          const exLen  = v.getUint16(28, true);
+          const dataStart = 30 + fnLen + exLen;
+          if (method === 0) {
+            return new TextDecoder().decode(new Uint8Array(buf, dataStart));
+          }
+          if (method === 8) {
+            const compSize = v.getUint32(18, true);
+            const compressed = new Uint8Array(buf, dataStart, compSize);
+            const ds = new DecompressionStream('deflate-raw');
+            const writer = ds.writable.getWriter();
+            writer.write(compressed);
+            writer.close();
+            const reader = ds.readable.getReader();
+            const chunks = [];
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              if (value) chunks.push(value);
+            }
+            let total = 0; for (const c of chunks) total += c.length;
+            const out = new Uint8Array(total); let pos = 0;
+            for (const c of chunks) { out.set(c, pos); pos += c.length; }
+            return new TextDecoder().decode(out);
+          }
+          throw new Error('Unsupported ZIP compression: ' + method);
+        }
+
+        try {
+          // Step 1 — find real-time discharge SensorID
+          const sensorQ = await fetch(
+            `${DNRC_MAP}/3/query?where=${encodeURIComponent(`LocationID='${locationId}' AND Parameter='QR' AND ComputationPeriod<>'Daily'`)}&outFields=SensorID&f=json`,
+            { headers: { 'User-Agent': 'riverline/1.0' } },
+          );
+          const sensorData = await sensorQ.json();
+          let sensorId = sensorData?.features?.[0]?.attributes?.SensorID;
+          if (!sensorId) {
+            // Fallback to daily if no real-time
+            const fallQ = await fetch(
+              `${DNRC_MAP}/3/query?where=${encodeURIComponent(`LocationID='${locationId}' AND Parameter='QR'`)}&outFields=SensorID&f=json`,
+              { headers: { 'User-Agent': 'riverline/1.0' } },
+            );
+            const fallData = await fallQ.json();
+            sensorId = fallData?.features?.[0]?.attributes?.SensorID;
+          }
+          if (!sensorId) {
+            return new Response(JSON.stringify({ error: 'No discharge sensor' }), {
+              status: 404,
+              headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+            });
+          }
+
+          // Step 2 — submit tsQuery job (dates as Unix ms timestamps)
+          const endMs   = Date.now();
+          const startMs = endMs - days * 24 * 60 * 60 * 1000;
+          const jobResp = await fetch(`${DNRC_GP}/submitJob`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'riverline/1.0' },
+            body: `SensorID=${sensorId}&StartDate=${startMs}&EndDate=${endMs}&OutputType=csv&f=pjson`,
+          });
+          const jobData = await jobResp.json();
+          const jobId   = jobData?.jobId;
+          if (!jobId) throw new Error('No jobId');
+
+          // Step 3 — poll until done (typically 2–4 s)
+          let status = jobData?.jobStatus;
+          for (let i = 0; i < 12 && status !== 'esriJobSucceeded' && status !== 'esriJobFailed'; i++) {
+            await new Promise(r => setTimeout(r, 1500));
+            const poll = await fetch(`${DNRC_GP}/jobs/${jobId}?f=pjson`, { headers: { 'User-Agent': 'riverline/1.0' } });
+            status = (await poll.json())?.jobStatus;
+          }
+          if (status !== 'esriJobSucceeded') throw new Error('Job failed: ' + status);
+
+          // Step 4 — get output file URL
+          const outResp = await fetch(`${DNRC_GP}/jobs/${jobId}/results/OutputFile?f=pjson`, { headers: { 'User-Agent': 'riverline/1.0' } });
+          const outData = await outResp.json();
+          const fileUrl = outData?.value?.url;
+          if (!fileUrl) throw new Error('No output URL');
+
+          // Step 5 — fetch ZIP, unzip, parse CSV
+          const zipResp = await fetch(fileUrl, { headers: { 'User-Agent': 'riverline/1.0' } });
+          const zipBuf  = await zipResp.arrayBuffer();
+          const csv     = await unzipFirstEntry(zipBuf);
+
+          const rows = [];
+          for (const line of csv.trim().split('\n').slice(1)) {
+            const parts = line.split(',');
+            if (parts.length < 2) continue;
+            const dt  = parts[0].trim();
+            const cfs = parseFloat(parts[1]);
+            if (dt && !isNaN(cfs)) rows.push({ dt, cfs });
+          }
+
+          return new Response(JSON.stringify({ rows }), {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*',
+              'Cache-Control': 'public, max-age=900',
+            },
+          });
+        } catch (e) {
+          return new Response(JSON.stringify({ error: 'DNRC API error', detail: e.message }), {
+            status: 502,
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+          });
+        }
+      }
+
       // Shared freshness utilities
       if (path === '/shared/freshness.js') {
         return env.ASSETS.fetch(new Request(new URL('/_shared/freshness.js', url), request));

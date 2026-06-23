@@ -172,7 +172,18 @@
   .cfs-loading { font-family: var(--mono); font-size: 13px; color: var(--muted); padding: 20px 0; }
 
   .section-label { font-family: var(--serif); font-style: italic; font-size: 13px; color: var(--accent); margin-bottom: 8px; }
-  .chart-wrap { height: 120px; position: relative; }
+  .chart-wrap { height: 150px; position: relative; }
+
+  #range-btns { display: flex; gap: 4px; }
+  .range-btn {
+    font-family: var(--mono); font-size: 10px; font-weight: 600;
+    padding: 2px 7px; border-radius: 4px;
+    border: 1px solid var(--border); background: transparent;
+    color: var(--muted); cursor: pointer; transition: all 0.15s; line-height: 1.6;
+  }
+  .range-btn.active, .range-btn:hover {
+    border-color: var(--accent); color: var(--accent); background: rgba(74,143,186,0.08);
+  }
 
   .info-row { display: flex; justify-content: space-between; align-items: baseline; padding: 7px 0; border-bottom: 1px solid var(--border); }
   .info-row:last-child { border-bottom: none; }
@@ -238,7 +249,7 @@
 
 <div id="layer-controls">
   <div class="ctrl-label">LAYERS</div>
-  <div class="layer-toggle on" id="toggle-usgs" data-layers="usgs-clusters,usgs-cluster-count,usgs-points">
+  <div class="layer-toggle on" id="toggle-usgs" data-layers="usgs-points">
     <div class="dot" style="background:var(--accent)"></div>
     <span>USGS gauges</span>
   </div>
@@ -277,7 +288,14 @@
   <div id="panel-body">
     <div class="cfs-hero" id="cfs-hero"><div class="cfs-loading">Loading…</div></div>
     <div id="chart-section" style="display:none">
-      <div class="section-label" id="chart-label">7-Day Flow</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+        <div class="section-label" id="chart-label" style="margin-bottom:0">Flow History</div>
+        <div id="range-btns" style="display:none">
+          <button class="range-btn active" data-range="14">14D</button>
+          <button class="range-btn" data-range="30">30D</button>
+          <button class="range-btn" data-range="365">1Y</button>
+        </div>
+      </div>
       <div class="chart-wrap"><canvas id="flow-chart"></canvas></div>
     </div>
     <div id="info-section"></div>
@@ -304,6 +322,8 @@ function arcgisTile(layerIds) {
 }
 
 let flowChart = null;
+let noaaMap = {};
+let currentSiteId = null;
 
 const panel     = document.getElementById('panel');
 const panelName = document.getElementById('panel-name');
@@ -328,106 +348,238 @@ function openPanel(name, id, badgeClass) {
   panelBadge.textContent = badgeClass.includes('usgs') ? 'USGS' : badgeClass.includes('dnrc') ? 'DNRC' : 'SNOTEL';
   cfsHero.innerHTML = '<div class="cfs-loading">Loading…</div>';
   chartSection.style.display = 'none';
+  document.getElementById('range-btns').style.display = 'none';
   infoSection.innerHTML = '';
   extLink.innerHTML = '';
   panel.classList.add('open');
 }
 
+function nDaysAgo(n) {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
 async function openUsgsPanel(feature) {
   const { id, name } = feature.properties;
+  currentSiteId = id;
   openPanel(name, id, 'badge-usgs');
+  chartSection.style.display = '';
+  document.getElementById('range-btns').style.display = 'flex';
+  document.querySelectorAll('.range-btn').forEach(b => b.classList.toggle('active', b.dataset.range === '14'));
+  await loadUsgsChart(id, 14);
+}
+
+async function loadUsgsChart(siteId, days) {
+  if (flowChart) { flowChart.destroy(); flowChart = null; }
+  cfsHero.innerHTML = '<div class="cfs-loading">Loading…</div>';
+  infoSection.innerHTML = '';
+
   try {
-    const url = `https://waterservices.usgs.gov/nwis/iv/?sites=${id}&parameterCd=00060,00065&format=json&period=P7D`;
-    const data = await fetch(url).then(r => r.json());
-    const series = data?.value?.timeSeries || [];
-    const flowSeries  = series.find(s => s.variable?.variableCode?.[0]?.value === '00060');
-    const stageSeries = series.find(s => s.variable?.variableCode?.[0]?.value === '00065');
+    let flowVals = [], stageVals = [];
 
-    if (!flowSeries) {
-      cfsHero.innerHTML = '<div class="cfs-loading">No streamflow data</div>';
+    if (days <= 30) {
+      const url = `https://waterservices.usgs.gov/nwis/iv/?sites=${siteId}&parameterCd=00060,00065&format=json&period=P${days}D`;
+      const data = await fetch(url).then(r => r.json());
+      const series = data?.value?.timeSeries || [];
+      const flowSeries  = series.find(s => s.variable?.variableCode?.[0]?.value === '00060');
+      const stageSeries = series.find(s => s.variable?.variableCode?.[0]?.value === '00065');
+      flowVals  = flowSeries?.values?.[0]?.value  || [];
+      stageVals = stageSeries?.values?.[0]?.value || [];
     } else {
-      const vals = flowSeries.values?.[0]?.value || [];
-      const current = vals[vals.length - 1];
-      const cfs = current ? parseFloat(current.value) : null;
-      const ts  = current?.dateTime || null;
-      if (cfs !== null && !isNaN(cfs)) {
-        cfsHero.innerHTML = `
-          <div class="cfs-value">${cfs.toLocaleString()}</div>
-          <div class="cfs-unit">cubic feet per second</div>
-          <div class="cfs-ts">${ts ? formatTimestampMT(ts) : ''}</div>`;
-      } else {
-        cfsHero.innerHTML = '<div class="cfs-loading">No current reading</div>';
-      }
-
-      if (vals.length > 1) {
-        const step = Math.max(1, Math.floor(vals.length / 96));
-        const sampled = vals.filter((_, i) => i % step === 0);
-        document.getElementById('chart-label').textContent = '7-Day Flow';
-        chartSection.style.display = '';
-        const ctx = document.getElementById('flow-chart').getContext('2d');
-        flowChart = new Chart(ctx, {
-          type: 'line',
-          data: {
-            labels: sampled.map(v => v.dateTime.slice(5, 10)),
-            datasets: [{
-              data: sampled.map(v => parseFloat(v.value)),
-              borderColor: 'rgba(74,143,186,0.85)', borderWidth: 1.5,
-              fill: true, backgroundColor: 'rgba(74,143,186,0.08)',
-              pointRadius: 0, tension: 0.2,
-            }],
-          },
-          options: {
-            responsive: true, maintainAspectRatio: false, animation: false,
-            plugins: {
-              legend: { display: false },
-              tooltip: {
-                callbacks: { label: c => c.parsed.y.toLocaleString() + ' cfs' },
-                backgroundColor: 'rgba(14,28,45,0.95)', titleColor: '#455a70',
-                bodyColor: '#d4dde8', borderColor: '#1a2f45', borderWidth: 1,
-              },
-            },
-            scales: {
-              x: { display: false },
-              y: {
-                ticks: { color: '#455a70', font: { family: 'JetBrains Mono', size: 10 },
-                  callback: v => v >= 1000 ? (v/1000).toFixed(1)+'k' : v },
-                grid: { color: 'rgba(255,255,255,0.04)' },
-                border: { display: false },
-              },
-            },
-          },
-        });
-      }
+      const url = `https://waterservices.usgs.gov/nwis/dv/?sites=${siteId}&parameterCd=00060&format=json&startDT=${nDaysAgo(days)}`;
+      const data = await fetch(url).then(r => r.json());
+      const series = data?.value?.timeSeries || [];
+      const flowSeries = series.find(s => s.variable?.variableCode?.[0]?.value === '00060');
+      flowVals = flowSeries?.values?.[0]?.value || [];
     }
 
+    if (!flowVals.length) {
+      cfsHero.innerHTML = '<div class="cfs-loading">No streamflow data</div>';
+      extLink.innerHTML = `<a href="https://waterdata.usgs.gov/monitoring-location/${siteId}/" target="_blank" rel="noopener">USGS Water Data ↗</a>`;
+      return;
+    }
+
+    const current = flowVals[flowVals.length - 1];
+    const cfs = parseFloat(current?.value);
+    const ts  = current?.dateTime;
+    if (!isNaN(cfs) && cfs >= 0) {
+      cfsHero.innerHTML = `
+        <div class="cfs-value">${cfs.toLocaleString()}</div>
+        <div class="cfs-unit">cubic feet per second</div>
+        <div class="cfs-ts">${ts ? formatTimestampMT(ts) : ''}</div>`;
+    } else {
+      cfsHero.innerHTML = '<div class="cfs-loading">No current reading</div>';
+    }
+
+    // NOAA forecast if we have a matching LID
+    const noaaLid = noaaMap[siteId.padStart(8, '0')] || noaaMap[siteId];
+    let noaaForecast = [];
+    if (noaaLid) {
+      try {
+        const nd = await fetch(`/api/noaa/${noaaLid}/stageflow`).then(r => r.json());
+        const mult = (nd?.secondaryUnit || '').toLowerCase() === 'kcfs' ? 1000 : 1;
+        noaaForecast = (nd?.forecast?.data || []).map(v => ({
+          validTime: v.validTime, flow: (v.secondary || 0) * mult,
+        }));
+      } catch(_) {}
+    }
+
+    // Downsample observed + forecast for chart
+    const MAX_OBS = 200;
+    const step = Math.max(1, Math.floor(flowVals.length / MAX_OBS));
+    const sampledObs = flowVals.filter((_, i) => i % step === 0);
+    const fcStep = Math.max(1, Math.floor(noaaForecast.length / 40));
+    const sampledFc = noaaForecast.filter((_, i) => i % fcStep === 0);
+
+    // Merge observed + forecast onto single timeline
+    const obsMap = new Map(sampledObs.map(v => [v.dateTime, parseFloat(v.value)]));
+    const fcMap  = new Map(sampledFc.map(v => [v.validTime, v.flow]));
+    const allKeys = [...new Set([...obsMap.keys(), ...fcMap.keys()])].sort((a, b) => new Date(a) - new Date(b));
+
+    const labelEvery = Math.max(1, Math.floor(allKeys.length / 7));
+    const labels = allKeys.map((t, i) => {
+      if (i % labelEvery !== 0) return '';
+      const d = new Date(t);
+      return days >= 365
+        ? `${d.getMonth()+1}/${d.getDate()}/${String(d.getFullYear()).slice(2)}`
+        : `${d.getMonth()+1}/${d.getDate()}`;
+    });
+
+    const obsData = allKeys.map(t => obsMap.has(t) ? obsMap.get(t) : null);
+    const fcData  = allKeys.map(t => fcMap.has(t)  ? fcMap.get(t)  : null);
+
+    const datasets = [{
+      data: obsData,
+      borderColor: 'rgba(74,143,186,0.85)', borderWidth: 1.5,
+      fill: true, backgroundColor: 'rgba(74,143,186,0.08)',
+      pointRadius: 0, tension: 0.2, spanGaps: false,
+    }];
+    if (sampledFc.length) {
+      datasets.push({
+        data: fcData,
+        borderColor: 'rgba(74,143,186,0.5)', borderWidth: 1.5,
+        borderDash: [5, 3],
+        fill: false, pointRadius: 0, tension: 0.3, spanGaps: false,
+      });
+    }
+
+    const ctx = document.getElementById('flow-chart').getContext('2d');
+    flowChart = new Chart(ctx, {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: c => c.parsed.y !== null ? c.parsed.y.toLocaleString() + ' cfs' : '',
+            },
+            backgroundColor: 'rgba(14,28,45,0.95)', titleColor: '#455a70',
+            bodyColor: '#d4dde8', borderColor: '#1a2f45', borderWidth: 1,
+          },
+        },
+        scales: {
+          x: { display: false },
+          y: {
+            ticks: { color: '#455a70', font: { family: 'JetBrains Mono', size: 10 },
+              callback: v => v >= 1000 ? (v/1000).toFixed(1)+'k' : v },
+            grid: { color: 'rgba(255,255,255,0.04)' },
+            border: { display: false },
+          },
+        },
+      },
+    });
+
     const rows = [];
-    const stageVals = stageSeries?.values?.[0]?.value || [];
-    const stageVal = stageVals[stageVals.length - 1];
-    const stageFt = stageVal ? parseFloat(stageVal.value) : null;
-    if (stageFt !== null && !isNaN(stageFt)) rows.push({ lbl: 'Gage height', val: stageFt.toFixed(2) + ' ft' });
-    rows.push({ lbl: 'Site ID', val: id });
+    if (stageVals.length) {
+      const sv = stageVals[stageVals.length - 1];
+      const ft = parseFloat(sv?.value);
+      if (!isNaN(ft)) rows.push({ lbl: 'Gage height', val: ft.toFixed(2) + ' ft' });
+    }
+    if (noaaLid) rows.push({ lbl: 'NOAA site', val: noaaLid + (sampledFc.length ? ' · forecast available' : '') });
+    rows.push({ lbl: 'Site ID', val: siteId });
     infoSection.innerHTML = rows.map(r =>
       `<div class="info-row"><span class="lbl">${r.lbl}</span><span class="val">${r.val}</span></div>`
     ).join('');
-    extLink.innerHTML = `<a href="https://waterdata.usgs.gov/monitoring-location/${id}/" target="_blank" rel="noopener">USGS Water Data ↗</a>`;
+    extLink.innerHTML = `<a href="https://waterdata.usgs.gov/monitoring-location/${siteId}/" target="_blank" rel="noopener">USGS Water Data ↗</a>`;
+
   } catch(e) {
     cfsHero.innerHTML = '<div class="cfs-loading">Fetch error</div>';
-    extLink.innerHTML = `<a href="https://waterdata.usgs.gov/monitoring-location/${id}/" target="_blank" rel="noopener">USGS Water Data ↗</a>`;
+    extLink.innerHTML = `<a href="https://waterdata.usgs.gov/monitoring-location/${siteId}/" target="_blank" rel="noopener">USGS Water Data ↗</a>`;
   }
 }
 
-function openDnrcPanel(feature) {
+async function openDnrcPanel(feature) {
   const { id, name, county, basin } = feature.properties;
   openPanel(name, id, 'badge-dnrc');
-  cfsHero.innerHTML = '';
-  const rows = [];
-  if (basin) rows.push({ lbl: 'Basin', val: basin });
-  if (county) rows.push({ lbl: 'County', val: county });
-  rows.push({ lbl: 'Source', val: 'DNRC StAGE' });
-  infoSection.innerHTML = rows.map(r =>
+  cfsHero.innerHTML = '<div class="cfs-loading">Loading…</div>';
+  chartSection.style.display = 'none';
+  if (flowChart) { flowChart.destroy(); flowChart = null; }
+
+  const infoRows = [];
+  if (basin)  infoRows.push({ lbl: 'Basin',  val: basin });
+  if (county) infoRows.push({ lbl: 'County', val: county });
+  infoRows.push({ lbl: 'Source', val: 'DNRC StAGE' });
+  infoSection.innerHTML = infoRows.map(r =>
     `<div class="info-row"><span class="lbl">${r.lbl}</span><span class="val">${r.val}</span></div>`
   ).join('');
   extLink.innerHTML = `<a href="https://gis.dnrc.mt.gov/apps/stage/gage-report/location/${id}" target="_blank" rel="noopener">DNRC StAGE ↗</a>`;
+
+  try {
+    const data = await fetch(`/api/dnrc/${id}?days=14`).then(r => r.json());
+    const readings = data?.rows || [];
+    if (!readings.length) {
+      cfsHero.innerHTML = '<div class="cfs-loading">No discharge data</div>';
+      return;
+    }
+    const latest = readings[readings.length - 1];
+    const latestCfs = latest.cfs;
+    const latestDt  = latest.dt.slice(0, 16).replace('T', ' ');
+    cfsHero.innerHTML = `
+      <div class="cfs-value" style="color:var(--teal)">${latestCfs >= 1000 ? latestCfs.toLocaleString('en-US', { maximumFractionDigits: 0 }) : latestCfs.toFixed(1)}</div>
+      <div class="cfs-unit">cfs</div>
+      <div class="cfs-ts">${latestDt}</div>`;
+
+    document.getElementById('chart-label').textContent = '14-Day Discharge';
+    chartSection.style.display = '';
+    const ctx = document.getElementById('flow-chart').getContext('2d');
+    flowChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: readings.map(r => r.dt.slice(5, 16).replace('T', ' ')),
+        datasets: [{
+          data: readings.map(r => r.cfs),
+          borderColor: 'rgba(58,171,138,0.85)', borderWidth: 1.5,
+          fill: true, backgroundColor: 'rgba(58,171,138,0.08)',
+          pointRadius: 0, tension: 0.2,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: { label: c => c.parsed.y.toFixed(1) + ' cfs' },
+            backgroundColor: 'rgba(14,28,45,0.95)', titleColor: '#455a70',
+            bodyColor: '#d4dde8', borderColor: '#1a2f45', borderWidth: 1,
+          },
+        },
+        scales: {
+          x: { display: false },
+          y: {
+            ticks: { color: '#455a70', font: { family: 'JetBrains Mono', size: 10 },
+              callback: v => v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v.toFixed(0) },
+            grid: { color: 'rgba(255,255,255,0.04)' },
+            border: { display: false },
+          },
+        },
+      },
+    });
+  } catch (e) {
+    cfsHero.innerHTML = '<div class="cfs-loading">Fetch error</div>';
+  }
 }
 
 async function openSnotelPanel(feature) {
@@ -523,6 +675,14 @@ document.querySelectorAll('.layer-toggle').forEach(btn => {
   });
 });
 
+document.getElementById('range-btns').addEventListener('click', e => {
+  const btn = e.target.closest('.range-btn');
+  if (!btn || !currentSiteId) return;
+  const days = parseInt(btn.dataset.range);
+  document.querySelectorAll('.range-btn').forEach(b => b.classList.toggle('active', b === btn));
+  loadUsgsChart(currentSiteId, days);
+});
+
 function dismissLoading() {
   const el = document.getElementById('loading');
   el.classList.add('hidden');
@@ -538,6 +698,19 @@ async function loadHierarchy(usgsData, snotelData) {
   if (usgsData) for (const f of usgsData.features) gaugeFeatures[f.properties.id] = f;
   const snotelFeatures = {};
   if (snotelData) for (const f of snotelData.features) snotelFeatures[f.properties.triplet] = f;
+
+  // Forward map (gauge → upstream snotel) and reverse map (snotel triplet → downstream gauge IDs)
+  const gaugeData = {};
+  const snotelToGauges = {};
+  for (const river of rivers) {
+    for (const g of river.gauges) {
+      gaugeData[g.id] = g;
+      for (const t of (g.upstream_snotel || [])) {
+        if (!snotelToGauges[t]) snotelToGauges[t] = [];
+        if (!snotelToGauges[t].includes(g.id)) snotelToGauges[t].push(g.id);
+      }
+    }
+  }
 
   map.addSource('usgs-hl-src',   { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
   map.addSource('snotel-hl-src', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
@@ -567,6 +740,19 @@ async function loadHierarchy(usgsData, snotelData) {
 
   let activeRow = null;
   const listEl = document.getElementById('river-list');
+
+  window._highlightGauge  = id      => setHL([id], gaugeData[id]?.upstream_snotel || []);
+  window._highlightSnotel = triplet => setHL(snotelToGauges[triplet] || [], [triplet]);
+  window._openRiverByName = gnisName => {
+    const q = (gnisName || '').toLowerCase().trim();
+    listEl.querySelectorAll('.river-row').forEach(row => {
+      const n = row.querySelector('.river-name')?.textContent?.toLowerCase()?.trim() || '';
+      if (n === q || n.includes(q) || q.startsWith(n.split(' ')[0].toLowerCase())) {
+        row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        if (!row.classList.contains('expanded')) row.querySelector('.river-head').click();
+      }
+    });
+  };
 
   for (const river of rivers) {
     const allSnotel = [...new Set(river.gauges.flatMap(g => g.upstream_snotel))];
@@ -616,7 +802,7 @@ async function loadHierarchy(usgsData, snotelData) {
         const f = gaugeFeatures[el.dataset.gaugeId];
         if (f) openUsgsPanel(f);
         map.flyTo({ center: [+el.dataset.lng, +el.dataset.lat], zoom: 11, duration: 600 });
-        setHL([el.dataset.gaugeId], []);
+        setHL([el.dataset.gaugeId], gaugeData[el.dataset.gaugeId]?.upstream_snotel || []);
       });
     });
 
@@ -626,7 +812,7 @@ async function loadHierarchy(usgsData, snotelData) {
         const f = snotelFeatures[el.dataset.triplet];
         if (f) openSnotelPanel(f);
         map.flyTo({ center: [+el.dataset.lng, +el.dataset.lat], zoom: 11, duration: 600 });
-        setHL([], [el.dataset.triplet]);
+        setHL(snotelToGauges[el.dataset.triplet] || [], [el.dataset.triplet]);
       });
     });
 
@@ -648,18 +834,26 @@ map.on('load', async () => {
     map.addLayer({ id: 'mt-streams', type: 'raster', source: 'src-streams', paint: { 'raster-opacity': 0.5 } });
     map.addLayer({ id: 'huc8-basins', type: 'raster', source: 'src-basins', paint: { 'raster-opacity': 0.35 }, layout: { visibility: 'none' } });
 
-    // Show map immediately — dismiss loading before waiting for gauge data
     dismissLoading();
 
-    const [usgsResult, dnrcResult, snotelResult] = await Promise.allSettled([
-      fetch('/data/usgs_gauges.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
-      fetch('/data/dnrc_gauges.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
-      fetch('/data/snotel_stations.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
-    ]);
+    const [usgsResult, dnrcResult, snotelResult, majBasinsResult, medBasinsResult, riversResult, noaaResult] =
+      await Promise.allSettled([
+        fetch('/data/usgs_gauges.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+        fetch('/data/dnrc_gauges.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+        fetch('/data/snotel_stations.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+        fetch('/data/major_basins.geojson').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+        fetch('/data/medium_basins.geojson').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+        fetch('/data/mt_rivers.geojson').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+        fetch('/data/noaa_gauges.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+      ]);
 
-    const usgsData   = usgsResult.status   === 'fulfilled' ? usgsResult.value   : null;
-    const dnrcData   = dnrcResult.status   === 'fulfilled' ? dnrcResult.value   : null;
-    const snotelData = snotelResult.status === 'fulfilled' ? snotelResult.value : null;
+    const usgsData      = usgsResult.status      === 'fulfilled' ? usgsResult.value      : null;
+    const dnrcData      = dnrcResult.status      === 'fulfilled' ? dnrcResult.value      : null;
+    const snotelData    = snotelResult.status    === 'fulfilled' ? snotelResult.value    : null;
+    const majBasinsData = majBasinsResult.status === 'fulfilled' ? majBasinsResult.value : null;
+    const medBasinsData = medBasinsResult.status === 'fulfilled' ? medBasinsResult.value : null;
+    const riversData    = riversResult.status    === 'fulfilled' ? riversResult.value    : null;
+    noaaMap             = noaaResult.status      === 'fulfilled' ? noaaResult.value      : {};
 
     document.getElementById('usgs-ct').textContent   = usgsData   ? usgsData.features.length   : '—';
     document.getElementById('dnrc-ct').textContent   = dnrcData   ? dnrcData.features.length   : '—';
@@ -669,91 +863,152 @@ map.on('load', async () => {
       document.getElementById('gauge-count').textContent = 'Gauge data unavailable';
     }
 
-  if (usgsData) {
-    map.addSource('usgs-gauges', {
-      type: 'geojson', data: usgsData,
-      cluster: true, clusterMaxZoom: 9, clusterRadius: 40,
-    });
-    map.addLayer({
-      id: 'usgs-clusters', type: 'circle', source: 'usgs-gauges',
-      filter: ['has', 'point_count'],
-      paint: {
-        'circle-color': 'rgba(74,143,186,0.75)',
-        'circle-stroke-color': 'rgba(74,143,186,0.65)',
-        'circle-stroke-width': 1.5,
-        'circle-radius': ['step', ['get', 'point_count'], 16, 10, 22, 30, 28],
-      },
-    });
-    map.addLayer({
-      id: 'usgs-cluster-count', type: 'symbol', source: 'usgs-gauges',
-      filter: ['has', 'point_count'],
-      layout: {
-        'text-field': '{point_count_abbreviated}',
-        'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Bold'],
-        'text-size': 11,
-      },
-      paint: { 'text-color': 'rgba(74,143,186,0.95)' },
-    });
-    map.addLayer({
-      id: 'usgs-points', type: 'circle', source: 'usgs-gauges',
-      filter: ['!', ['has', 'point_count']],
-      paint: {
-        'circle-color': 'rgba(74,143,186,0.85)',
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 4, 10, 7],
-        'circle-stroke-color': 'rgba(255,255,255,0.15)',
-        'circle-stroke-width': 1,
-      },
-    });
-    map.on('click', 'usgs-clusters', e => {
-      const f = map.queryRenderedFeatures(e.point, { layers: ['usgs-clusters'] })[0];
-      map.getSource('usgs-gauges').getClusterExpansionZoom(f.properties.cluster_id, (err, zoom) => {
-        if (!err) map.easeTo({ center: f.geometry.coordinates, zoom, duration: 300 });
+    // Vector watershed polygons — faded fill below all point layers
+    if (majBasinsData) {
+      map.addSource('major-basins', { type: 'geojson', data: majBasinsData });
+      map.addLayer({ id: 'major-basins-fill', type: 'fill', source: 'major-basins', paint: {
+        'fill-color': '#4a8fba',
+        'fill-opacity': ['interpolate', ['linear'], ['zoom'], 4, 0.06, 8, 0.02],
+      }});
+      map.addLayer({ id: 'major-basins-line', type: 'line', source: 'major-basins', paint: {
+        'line-color': '#4a8fba',
+        'line-width': 0.6,
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 4, 0.35, 9, 0.1],
+      }});
+    }
+    if (medBasinsData) {
+      map.addSource('medium-basins', { type: 'geojson', data: medBasinsData });
+      map.addLayer({ id: 'medium-basins-line', type: 'line', source: 'medium-basins',
+        minzoom: 7,
+        paint: {
+          'line-color': '#4a8fba',
+          'line-width': 0.3,
+          'line-opacity': ['interpolate', ['linear'], ['zoom'], 7, 0.2, 11, 0.06],
+        },
       });
-    });
-    map.on('click', 'usgs-points', e => { openUsgsPanel(e.features[0]); });
-    map.on('mouseenter', 'usgs-clusters', () => { map.getCanvas().style.cursor = 'pointer'; });
-    map.on('mouseleave', 'usgs-clusters', () => { map.getCanvas().style.cursor = ''; });
-    map.on('mouseenter', 'usgs-points',   () => { map.getCanvas().style.cursor = 'pointer'; });
-    map.on('mouseleave', 'usgs-points',   () => { map.getCanvas().style.cursor = ''; });
-  }
+    }
 
-  if (dnrcData) {
-    map.addSource('dnrc-gauges', { type: 'geojson', data: dnrcData });
-    map.addLayer({
-      id: 'dnrc-points', type: 'circle', source: 'dnrc-gauges',
-      paint: {
-        'circle-color': 'rgba(58,171,138,0.75)',
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 3.5, 10, 6],
-        'circle-stroke-color': 'rgba(255,255,255,0.12)',
-        'circle-stroke-width': 1,
-      },
-    });
-    map.on('click', 'dnrc-points', e => {
-      const usgs = usgsData ? map.queryRenderedFeatures(e.point, { layers: ['usgs-points'] }) : [];
-      if (!usgs.length) openDnrcPanel(e.features[0]);
-    });
-    map.on('mouseenter', 'dnrc-points', () => { map.getCanvas().style.cursor = 'pointer'; });
-    map.on('mouseleave', 'dnrc-points', () => { map.getCanvas().style.cursor = ''; });
-  }
+    // NHD perennial river lines — data-driven width/color by visibilityfilter tier
+    // visibilityfilter: 0/24000=major, 50000=large, 100000=medium, 250000/500000=smaller, 1M+=creeks
+    if (riversData) {
+      map.addSource('nhd-rivers', { type: 'geojson', data: riversData });
+      map.addLayer({ id: 'nhd-rivers-line', type: 'line', source: 'nhd-rivers',
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: {
+          'line-color': ['match', ['get', 'visibilityfilter'],
+            0,       '#6dbfe8',
+            24000,   '#6dbfe8',
+            50000,   '#4fa5cc',
+            100000,  '#3d82aa',
+            250000,  '#2d6080',
+            500000,  '#2d6080',
+            '#1e3f55',
+          ],
+          'line-width': [
+            'interpolate', ['linear'], ['zoom'],
+            5, ['match', ['get', 'visibilityfilter'],
+              0, 2.0, 24000, 2.0,
+              50000, 1.2,
+              100000, 0.7,
+              250000, 0.4, 500000, 0.4,
+              0.2,
+            ],
+            10, ['match', ['get', 'visibilityfilter'],
+              0, 5.5, 24000, 5.5,
+              50000, 3.5,
+              100000, 2.2,
+              250000, 1.2, 500000, 1.2,
+              0.6,
+            ],
+            14, ['match', ['get', 'visibilityfilter'],
+              0, 9.0, 24000, 9.0,
+              50000, 6.0,
+              100000, 3.8,
+              250000, 2.2, 500000, 2.2,
+              1.0,
+            ],
+          ],
+          'line-opacity': ['match', ['get', 'visibilityfilter'],
+            0, 0.9, 24000, 0.9,
+            50000, 0.8,
+            100000, 0.7,
+            250000, 0.55, 500000, 0.55,
+            0.4,
+          ],
+        },
+      });
+      // Swap: hide raster stream layer — vector is now authoritative
+      map.setLayoutProperty('mt-streams', 'visibility', 'none');
+      const streamToggle = document.getElementById('toggle-streams');
+      if (streamToggle) streamToggle.dataset.layers = 'nhd-rivers-line';
 
-  if (snotelData) {
-    map.addSource('snotel-stations', { type: 'geojson', data: snotelData });
-    map.addLayer({
-      id: 'snotel-points', type: 'circle', source: 'snotel-stations',
-      paint: {
-        'circle-color': 'rgba(212,148,58,0.82)',
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 4.5, 10, 8],
-        'circle-stroke-color': 'rgba(255,255,255,0.18)',
-        'circle-stroke-width': 1.2,
-      },
-    });
-    map.on('click', 'snotel-points', e => {
-      const usgs = usgsData ? map.queryRenderedFeatures(e.point, { layers: ['usgs-points'] }) : [];
-      if (!usgs.length) openSnotelPanel(e.features[0]);
-    });
-    map.on('mouseenter', 'snotel-points', () => { map.getCanvas().style.cursor = 'pointer'; });
-    map.on('mouseleave', 'snotel-points', () => { map.getCanvas().style.cursor = ''; });
-  }
+      map.on('click', 'nhd-rivers-line', e => {
+        const gnisName = e.features[0]?.properties?.gnis_name;
+        if (gnisName && window._openRiverByName) window._openRiverByName(gnisName);
+      });
+      map.on('mouseenter', 'nhd-rivers-line', () => { map.getCanvas().style.cursor = 'pointer'; });
+      map.on('mouseleave', 'nhd-rivers-line', () => { map.getCanvas().style.cursor = ''; });
+    }
+
+    if (usgsData) {
+      map.addSource('usgs-gauges', { type: 'geojson', data: usgsData });
+      map.addLayer({
+        id: 'usgs-points', type: 'circle', source: 'usgs-gauges',
+        paint: {
+          'circle-color': 'rgba(74,143,186,0.85)',
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 4, 10, 7],
+          'circle-stroke-color': 'rgba(255,255,255,0.15)',
+          'circle-stroke-width': 1,
+        },
+      });
+      map.on('click', 'usgs-points', e => {
+        openUsgsPanel(e.features[0]);
+        if (window._highlightGauge) window._highlightGauge(e.features[0].properties.id);
+      });
+      map.on('mouseenter', 'usgs-points', () => { map.getCanvas().style.cursor = 'pointer'; });
+      map.on('mouseleave', 'usgs-points', () => { map.getCanvas().style.cursor = ''; });
+    }
+
+    if (dnrcData) {
+      map.addSource('dnrc-gauges', { type: 'geojson', data: dnrcData });
+      map.addLayer({
+        id: 'dnrc-points', type: 'circle', source: 'dnrc-gauges',
+        paint: {
+          'circle-color': 'rgba(58,171,138,0.75)',
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 3.5, 10, 6],
+          'circle-stroke-color': 'rgba(255,255,255,0.12)',
+          'circle-stroke-width': 1,
+        },
+      });
+      map.on('click', 'dnrc-points', e => {
+        const usgs = usgsData ? map.queryRenderedFeatures(e.point, { layers: ['usgs-points'] }) : [];
+        if (!usgs.length) openDnrcPanel(e.features[0]);
+      });
+      map.on('mouseenter', 'dnrc-points', () => { map.getCanvas().style.cursor = 'pointer'; });
+      map.on('mouseleave', 'dnrc-points', () => { map.getCanvas().style.cursor = ''; });
+    }
+
+    if (snotelData) {
+      map.addSource('snotel-stations', { type: 'geojson', data: snotelData });
+      map.addLayer({
+        id: 'snotel-points', type: 'circle', source: 'snotel-stations',
+        paint: {
+          'circle-color': 'rgba(212,148,58,0.82)',
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 4.5, 10, 8],
+          'circle-stroke-color': 'rgba(255,255,255,0.18)',
+          'circle-stroke-width': 1.2,
+        },
+      });
+      map.on('click', 'snotel-points', e => {
+        const usgs = usgsData ? map.queryRenderedFeatures(e.point, { layers: ['usgs-points'] }) : [];
+        if (!usgs.length) {
+          openSnotelPanel(e.features[0]);
+          if (window._highlightSnotel) window._highlightSnotel(e.features[0].properties.triplet);
+        }
+      });
+      map.on('mouseenter', 'snotel-points', () => { map.getCanvas().style.cursor = 'pointer'; });
+      map.on('mouseleave', 'snotel-points', () => { map.getCanvas().style.cursor = ''; });
+    }
 
     await loadHierarchy(usgsData, snotelData);
   } catch(e) {
