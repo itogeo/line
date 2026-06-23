@@ -380,6 +380,7 @@ function closePanel() {
   if (cv) cv.style.display = 'none';
   if (window._clearBasinHighlight) window._clearBasinHighlight();
   if (window._clearRiverHighlight) window._clearRiverHighlight();
+  if (window._clearStationHighlight) window._clearStationHighlight();
 }
 
 function openPanel(name, id, badgeClass) {
@@ -1064,9 +1065,10 @@ async function loadHierarchy(usgsData, snotelData) {
   let activeRow = null;
   const listEl = document.getElementById('river-list');
 
-  window._highlightGauge  = id      => setHL([id], gaugeData[id]?.upstream_snotel || []);
-  window._highlightSnotel = triplet => setHL(snotelToGauges[triplet] || [], [triplet]);
-  window._highlightDnrc   = dnrcId  => setHL([], (dnrcSnotelLinks[dnrcId] || []).map(s => s.triplet));
+  window._highlightGauge       = id      => setHL([id], gaugeData[id]?.upstream_snotel || []);
+  window._highlightSnotel      = triplet => setHL(snotelToGauges[triplet] || [], [triplet]);
+  window._highlightDnrc        = dnrcId  => setHL([], (dnrcSnotelLinks[dnrcId] || []).map(s => s.triplet));
+  window._clearStationHighlight = ()     => setHL([], []);
   window._openRiverByName = gnisName => {
     const q = (gnisName || '').toLowerCase().trim();
     listEl.querySelectorAll('.river-row').forEach(row => {
@@ -1484,7 +1486,7 @@ map.on('load', async () => {
         if (!usgs.length) {
           selectStation('snotel', e.features[0]);
           if (window._highlightSnotel) window._highlightSnotel(e.features[0].properties.triplet);
-          highlightDownstreamPath(e.features[0].geometry.coordinates);
+          highlightDirectBasin(e.features[0].geometry.coordinates);
           if (window._clearRiverHighlight) window._clearRiverHighlight();
         }
       });
