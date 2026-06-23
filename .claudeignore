@@ -1,0 +1,27 @@
+# Sat imagery cache (Snowline) — many GB
+snowline/cache/
+snowline/pipeline/**/output/
+
+# Riverline data pulls
+riverline/data/
+riverline/models/
+riverline/notebooks/.ipynb_checkpoints/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# Geospatial
+*.geojson
+*.gpkg
+*.tif
+*.tiff
+*.parquet
+*.pmtiles
+
+# Site builds
+**/site/node_modules/
+**/site/dist/

@@ -165,11 +165,27 @@
   #panel-body::-webkit-scrollbar-track { background: transparent; }
   #panel-body::-webkit-scrollbar-thumb { background: var(--dim); border-radius: 2px; }
 
-  .cfs-hero { text-align: center; padding: 12px 0; }
-  .cfs-value { font-family: var(--mono); font-size: 56px; font-weight: 600; color: var(--text); line-height: 1; }
-  .cfs-unit { font-size: 13px; color: var(--muted); margin-top: 4px; }
-  .cfs-ts { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 6px; }
+  .cfs-hero { text-align: center; padding: 8px 0; }
+  .cfs-reading { display: flex; align-items: baseline; justify-content: center; gap: 6px; }
+  .cfs-value { font-family: var(--mono); font-size: 40px; font-weight: 600; color: var(--text); line-height: 1; }
+  .cfs-unit { font-size: 13px; color: var(--muted); font-weight: 400; }
+  .cfs-ts { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 5px; }
   .cfs-loading { font-family: var(--mono); font-size: 13px; color: var(--muted); padding: 20px 0; }
+
+  /* Compare mode */
+  #compare-view { display: flex; flex-direction: column; gap: 8px; }
+  #single-view { display: flex; flex-direction: column; gap: 16px; }
+  #station-cards { display: flex; flex-direction: column; gap: 10px; }
+  .station-card { background: var(--base); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .card-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px 6px; border-bottom: 1px solid var(--border); }
+  .card-name { flex: 1; font-size: 12px; color: var(--text); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card-remove { background: none; border: none; color: var(--muted); font-size: 16px; cursor: pointer; padding: 0 2px; line-height: 1; border-radius: 3px; }
+  .card-remove:hover { color: var(--text); }
+  .card-value-wrap { padding: 6px 10px 4px; }
+  .card-value { font-family: var(--mono); font-size: 24px; font-weight: 600; color: var(--text); }
+  .card-value-unit { font-size: 12px; color: var(--muted); margin-left: 4px; }
+  .compare-chart-wrap { height: 90px; padding: 0 4px 6px; }
+  #compare-range-btns { display: flex; gap: 4px; }
 
   .section-label { font-family: var(--serif); font-style: italic; font-size: 13px; color: var(--accent); margin-bottom: 8px; }
   .chart-wrap { height: 150px; position: relative; }
@@ -290,20 +306,26 @@
     <button id="panel-close" title="Close">×</button>
   </div>
   <div id="panel-body">
-    <div class="cfs-hero" id="cfs-hero"><div class="cfs-loading">Loading…</div></div>
-    <div id="chart-section" style="display:none">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-        <div class="section-label" id="chart-label" style="margin-bottom:0">Flow History</div>
-        <div id="range-btns" style="display:none">
-          <button class="range-btn active" data-range="14">14D</button>
-          <button class="range-btn" data-range="30">30D</button>
-          <button class="range-btn" data-range="365">1Y</button>
-        </div>
-      </div>
-      <div class="chart-wrap"><canvas id="flow-chart"></canvas></div>
+    <div id="compare-view" style="display:none">
+      <div id="compare-range-btns"></div>
+      <div id="station-cards"></div>
     </div>
-    <div id="info-section"></div>
-    <div class="ext-link" id="ext-link"></div>
+    <div id="single-view">
+      <div class="cfs-hero" id="cfs-hero"><div class="cfs-loading">Loading…</div></div>
+      <div id="chart-section" style="display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+          <div class="section-label" id="chart-label" style="margin-bottom:0">Flow History</div>
+          <div id="range-btns" style="display:none">
+            <button class="range-btn active" data-range="14">14D</button>
+            <button class="range-btn" data-range="30">30D</button>
+            <button class="range-btn" data-range="365">1Y</button>
+          </div>
+        </div>
+        <div class="chart-wrap"><canvas id="flow-chart"></canvas></div>
+      </div>
+      <div id="info-section"></div>
+      <div class="ext-link" id="ext-link"></div>
+    </div>
   </div>
 </div>
 
@@ -327,9 +349,15 @@ function arcgisTile(layerIds) {
 
 let flowChart = null;
 let noaaMap = {};
+let dnrcSnotelLinks = {};
+let snotelFeaturesMap = {};
 let currentSiteId = null;
 let currentPanelType = null;
 let currentSnotelFeature = null;
+let selectedStations = [];
+const MAX_SELECTED = 3;
+let compareGeneration = 0;
+let compareDays = 14;
 
 const panel     = document.getElementById('panel');
 const panelName = document.getElementById('panel-name');
@@ -344,12 +372,24 @@ document.getElementById('panel-close').addEventListener('click', closePanel);
 function closePanel() {
   panel.classList.remove('open');
   if (flowChart) { flowChart.destroy(); flowChart = null; }
+  selectedStations.forEach(s => { if (s.chart) { s.chart.destroy(); s.chart = null; } });
+  selectedStations = [];
+  const sv = document.getElementById('single-view');
+  const cv = document.getElementById('compare-view');
+  if (sv) sv.style.display = '';
+  if (cv) cv.style.display = 'none';
   if (window._clearBasinHighlight) window._clearBasinHighlight();
   if (window._clearRiverHighlight) window._clearRiverHighlight();
 }
 
 function openPanel(name, id, badgeClass) {
   if (flowChart) { flowChart.destroy(); flowChart = null; }
+  selectedStations.forEach(s => { if (s.chart) { s.chart.destroy(); s.chart = null; } });
+  const sv = document.getElementById('single-view');
+  const cv = document.getElementById('compare-view');
+  if (sv) sv.style.display = '';
+  if (cv) cv.style.display = 'none';
+  panelBadge.style.display = '';
   panelName.textContent = name;
   panelId.textContent = id;
   panelBadge.className = 'source-badge ' + badgeClass;
@@ -404,7 +444,7 @@ async function loadUsgsChart(siteId, days) {
       const data = await fetch(url).then(r => r.json());
       const series = data?.value?.timeSeries || [];
       const flowSeries = series.find(s => s.variable?.variableCode?.[0]?.value === '00060');
-      flowVals = flowSeries?.values?.[0]?.value || [];
+      flowVals = (flowSeries?.values?.[0]?.value || []).filter(v => parseFloat(v.value) >= 0);
     }
 
     if (!flowVals.length) {
@@ -418,8 +458,10 @@ async function loadUsgsChart(siteId, days) {
     const ts  = current?.dateTime;
     if (!isNaN(cfs) && cfs >= 0) {
       cfsHero.innerHTML = `
-        <div class="cfs-value">${cfs.toLocaleString()}</div>
-        <div class="cfs-unit">cubic feet per second</div>
+        <div class="cfs-reading">
+          <span class="cfs-value">${cfs.toLocaleString()}</span>
+          <span class="cfs-unit">cfs</span>
+        </div>
         <div class="cfs-ts">${ts ? formatTimestampMT(ts) : ''}</div>`;
     } else {
       cfsHero.innerHTML = '<div class="cfs-loading">No current reading</div>';
@@ -573,9 +615,28 @@ async function openDnrcPanel(feature) {
   if (basin)  infoRows.push({ lbl: 'Basin',  val: basin });
   if (county) infoRows.push({ lbl: 'County', val: county });
   infoRows.push({ lbl: 'Source', val: 'DNRC StAGE' });
-  infoSection.innerHTML = infoRows.map(r =>
+  let infoHtml = infoRows.map(r =>
     `<div class="info-row"><span class="lbl">${r.lbl}</span><span class="val">${r.val}</span></div>`
   ).join('');
+  const linkedSnotel = dnrcSnotelLinks[id] || [];
+  if (linkedSnotel.length) {
+    infoHtml += `<div class="info-row" style="margin-top:6px"><span class="lbl" style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim)">Upstream Snowpack</span></div>`;
+    infoHtml += linkedSnotel.slice(0, 6).map(s =>
+      `<div class="info-row snotel-link-item" data-triplet="${s.triplet}" style="cursor:pointer;transition:background .1s">` +
+      `<span class="lbl" style="color:var(--gold)">${s.name}</span>` +
+      `<span class="val" style="font-family:'JetBrains Mono',monospace;font-size:10px">${s.dist_km} km · ${s.elevation_ft.toLocaleString()} ft</span></div>`
+    ).join('');
+  }
+  infoSection.innerHTML = infoHtml;
+  infoSection.querySelectorAll('.snotel-link-item').forEach(el => {
+    el.addEventListener('mouseenter', () => { el.style.background = 'rgba(212,148,58,0.07)'; });
+    el.addEventListener('mouseleave', () => { el.style.background = ''; });
+    el.addEventListener('click', () => {
+      const f = snotelFeaturesMap[el.dataset.triplet];
+      if (f) selectStation('snotel', f);
+    });
+  });
+  if (window._highlightDnrc) window._highlightDnrc(id);
   extLink.innerHTML = `<a href="https://gis.dnrc.mt.gov/apps/stage/gage-report/location/${id}" target="_blank" rel="noopener">DNRC StAGE ↗</a>`;
 
   try {
@@ -589,8 +650,10 @@ async function openDnrcPanel(feature) {
     const latestCfs = latest.cfs;
     const latestDt  = latest.dt.slice(0, 16).replace('T', ' ');
     cfsHero.innerHTML = `
-      <div class="cfs-value" style="color:var(--teal)">${latestCfs >= 1000 ? latestCfs.toLocaleString('en-US', { maximumFractionDigits: 0 }) : latestCfs.toFixed(1)}</div>
-      <div class="cfs-unit">cfs</div>
+      <div class="cfs-reading">
+        <span class="cfs-value" style="color:var(--teal)">${latestCfs >= 1000 ? latestCfs.toLocaleString('en-US', { maximumFractionDigits: 0 }) : latestCfs.toFixed(1)}</span>
+        <span class="cfs-unit">cfs</span>
+      </div>
       <div class="cfs-ts">${latestDt}</div>`;
 
     document.getElementById('chart-label').textContent = '14-Day Discharge';
@@ -680,8 +743,10 @@ async function loadSnotelChart(feature, days) {
 
     if (swe !== null) {
       cfsHero.innerHTML = `
-        <div class="cfs-value" style="color:var(--gold)">${swe.value.toFixed(1)}</div>
-        <div class="cfs-unit">inches SWE</div>
+        <div class="cfs-reading">
+          <span class="cfs-value" style="color:var(--gold)">${swe.value.toFixed(1)}</span>
+          <span class="cfs-unit">in SWE</span>
+        </div>
         <div class="cfs-ts">${swe.date}</div>`;
     } else {
       cfsHero.innerHTML = '<div class="cfs-loading">No SWE data</div>';
@@ -777,6 +842,170 @@ document.getElementById('range-btns').addEventListener('click', e => {
   }
 });
 
+function selectStation(type, feature) {
+  const id = type === 'snotel' ? feature.properties.triplet : feature.properties.id;
+  const idx = selectedStations.findIndex(s => s.type === type && s.id === id);
+  if (idx >= 0) {
+    const [removed] = selectedStations.splice(idx, 1);
+    if (removed.chart) { removed.chart.destroy(); removed.chart = null; }
+    if (!selectedStations.length) { closePanel(); return; }
+  } else {
+    if (selectedStations.length >= MAX_SELECTED) {
+      const removed = selectedStations.shift();
+      if (removed.chart) { removed.chart.destroy(); removed.chart = null; }
+    }
+    selectedStations.push({ type, id, feature, name: feature.properties.name || id, chart: null });
+  }
+  if (selectedStations.length === 1) {
+    const s = selectedStations[0];
+    if (s.type === 'usgs') openUsgsPanel(s.feature);
+    else if (s.type === 'snotel') openSnotelPanel(s.feature);
+    else if (s.type === 'dnrc') openDnrcPanel(s.feature);
+  } else {
+    renderCompareMode();
+  }
+}
+
+function removeStation(idx) {
+  const removed = selectedStations.splice(idx, 1)[0];
+  if (removed && removed.chart) { removed.chart.destroy(); removed.chart = null; }
+  if (!selectedStations.length) { closePanel(); return; }
+  if (selectedStations.length === 1) {
+    const s = selectedStations[0];
+    if (s.type === 'usgs') openUsgsPanel(s.feature);
+    else if (s.type === 'snotel') openSnotelPanel(s.feature);
+    else if (s.type === 'dnrc') openDnrcPanel(s.feature);
+  } else {
+    renderCompareMode();
+  }
+}
+
+function renderCompareMode() {
+  if (flowChart) { flowChart.destroy(); flowChart = null; }
+  selectedStations.forEach(s => { if (s.chart) { s.chart.destroy(); s.chart = null; } });
+  const sv = document.getElementById('single-view');
+  const cv = document.getElementById('compare-view');
+  if (sv) sv.style.display = 'none';
+  if (cv) cv.style.display = '';
+  panelBadge.style.display = 'none';
+  panelName.textContent = `${selectedStations.length} Stations`;
+  panelId.textContent = 'Compare';
+  panel.classList.add('open');
+  const cmpRange = document.getElementById('compare-range-btns');
+  cmpRange.innerHTML = `
+    <button class="range-btn ${compareDays===14?'active':''}" data-range="14">14D</button>
+    <button class="range-btn ${compareDays===30?'active':''}" data-range="30">30D</button>
+    <button class="range-btn ${compareDays===365?'active':''}" data-range="365">1Y</button>`;
+  cmpRange.querySelectorAll('.range-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      compareDays = parseInt(btn.dataset.range);
+      cmpRange.querySelectorAll('.range-btn').forEach(b => b.classList.toggle('active', b === btn));
+      renderStationCards();
+    });
+  });
+  renderStationCards();
+}
+
+function renderStationCards() {
+  selectedStations.forEach(s => { if (s.chart) { s.chart.destroy(); s.chart = null; } });
+  compareGeneration++;
+  const gen = compareGeneration;
+  const container = document.getElementById('station-cards');
+  container.innerHTML = '';
+  selectedStations.forEach((s, idx) => {
+    const badgeClass = s.type === 'usgs' ? 'badge-usgs' : s.type === 'dnrc' ? 'badge-dnrc' : 'badge-snotel';
+    const badgeText = s.type.toUpperCase();
+    const canvasId = `compare-chart-${idx}`;
+    const card = document.createElement('div');
+    card.className = 'station-card';
+    card.innerHTML = `
+      <div class="card-head">
+        <span class="source-badge ${badgeClass}">${badgeText}</span>
+        <span class="card-name">${s.name}</span>
+        <button class="card-remove" aria-label="Remove">×</button>
+      </div>
+      <div class="card-value-wrap" id="card-val-${idx}"><span class="cfs-loading" style="font-size:11px;padding:6px 0">Loading…</span></div>
+      <div class="compare-chart-wrap"><canvas id="${canvasId}"></canvas></div>`;
+    container.appendChild(card);
+    card.querySelector('.card-remove').addEventListener('click', () => removeStation(idx));
+    loadCompareChart(s, idx, canvasId, compareDays, gen);
+  });
+}
+
+async function loadCompareChart(station, idx, canvasId, days, gen) {
+  const valWrap = document.getElementById(`card-val-${idx}`);
+  const noData = msg => { if (valWrap && gen === compareGeneration) valWrap.innerHTML = `<span class="cfs-loading" style="font-size:11px;padding:6px 0">${msg}</span>`; };
+  try {
+    if (station.type === 'usgs') {
+      const url = days <= 30
+        ? `https://waterservices.usgs.gov/nwis/iv/?sites=${station.id}&parameterCd=00060&format=json&period=P${days}D`
+        : `https://waterservices.usgs.gov/nwis/dv/?sites=${station.id}&parameterCd=00060&format=json&startDT=${nDaysAgo(days)}`;
+      const data = await fetch(url).then(r => r.json());
+      if (gen !== compareGeneration) return;
+      const series = data?.value?.timeSeries || [];
+      const flowSeries = series.find(s => s.variable?.variableCode?.[0]?.value === '00060');
+      const flowVals = (flowSeries?.values?.[0]?.value || []).filter(v => parseFloat(v.value) >= 0);
+      if (!flowVals.length) { noData('No data'); return; }
+      const cur = flowVals[flowVals.length - 1];
+      const cfs = parseFloat(cur.value);
+      if (valWrap && gen === compareGeneration) valWrap.innerHTML = `<span class="card-value">${cfs.toLocaleString()}<span class="card-value-unit">cfs</span></span>`;
+      const step = Math.max(1, Math.floor(flowVals.length / 120));
+      const sampled = flowVals.filter((_, i) => i % step === 0);
+      const labels = sampled.map(v => { const d = new Date(v.dateTime); return `${d.getMonth()+1}/${d.getDate()}`; });
+      const values = sampled.map(v => parseFloat(v.value));
+      const ctx = document.getElementById(canvasId)?.getContext('2d');
+      if (ctx && gen === compareGeneration) station.chart = new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets: [{ data: values, borderColor: 'rgba(74,143,186,0.85)', borderWidth: 1.5, fill: true, backgroundColor: 'rgba(74,143,186,0.08)', pointRadius: 0, tension: 0.2 }] },
+        options: compactChartOptions(),
+      });
+    } else if (station.type === 'snotel') {
+      const rawArr = await fetch(`/api/snotel?triplet=${encodeURIComponent(station.id)}&days=${days}`).then(r => r.json());
+      if (gen !== compareGeneration) return;
+      const blocks = rawArr?.[0]?.data || [];
+      const sweBlock = blocks.find(x => x.stationElement?.elementCode === 'WTEQ');
+      const sweVals = (sweBlock?.values || []).filter(v => v.value != null);
+      if (!sweVals.length) { noData('No SWE data'); return; }
+      const last = sweVals[sweVals.length - 1];
+      if (valWrap && gen === compareGeneration) valWrap.innerHTML = `<span class="card-value" style="color:var(--gold)">${parseFloat(last.value).toFixed(1)}<span class="card-value-unit">in SWE</span></span>`;
+      const labels = sweVals.map(v => { const d = new Date(v.date); return `${d.getMonth()+1}/${d.getDate()}`; });
+      const values = sweVals.map(v => parseFloat(v.value));
+      const ctx = document.getElementById(canvasId)?.getContext('2d');
+      if (ctx && gen === compareGeneration) station.chart = new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets: [{ data: values, borderColor: 'rgba(212,148,58,0.85)', borderWidth: 1.5, fill: true, backgroundColor: 'rgba(212,148,58,0.08)', pointRadius: 0, tension: 0.2 }] },
+        options: compactChartOptions(),
+      });
+    } else if (station.type === 'dnrc') {
+      noData('No data available');
+    }
+  } catch(_) { noData('Error'); }
+}
+
+function compactChartOptions() {
+  return {
+    responsive: true, maintainAspectRatio: false, animation: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        mode: 'index', intersect: false,
+        backgroundColor: 'rgba(14,28,45,0.95)', titleColor: '#455a70',
+        bodyColor: '#d4dde8', borderColor: '#1a2f45', borderWidth: 1,
+      },
+    },
+    scales: {
+      x: {
+        ticks: { color: '#455a70', font: { family: 'JetBrains Mono', size: 8 }, maxTicksLimit: 4, maxRotation: 0 },
+        grid: { display: false }, border: { display: false },
+      },
+      y: {
+        ticks: { color: '#455a70', font: { family: 'JetBrains Mono', size: 8 }, callback: v => v >= 1000 ? (v/1000).toFixed(1)+'k' : v },
+        grid: { color: 'rgba(255,255,255,0.04)' }, border: { display: false },
+      },
+    },
+  };
+}
+
 function dismissLoading() {
   const el = document.getElementById('loading');
   el.classList.add('hidden');
@@ -837,6 +1066,7 @@ async function loadHierarchy(usgsData, snotelData) {
 
   window._highlightGauge  = id      => setHL([id], gaugeData[id]?.upstream_snotel || []);
   window._highlightSnotel = triplet => setHL(snotelToGauges[triplet] || [], [triplet]);
+  window._highlightDnrc   = dnrcId  => setHL([], (dnrcSnotelLinks[dnrcId] || []).map(s => s.triplet));
   window._openRiverByName = gnisName => {
     const q = (gnisName || '').toLowerCase().trim();
     listEl.querySelectorAll('.river-row').forEach(row => {
@@ -894,7 +1124,7 @@ async function loadHierarchy(usgsData, snotelData) {
       el.addEventListener('click', e => {
         e.stopPropagation();
         const f = gaugeFeatures[el.dataset.gaugeId];
-        if (f) openUsgsPanel(f);
+        if (f) selectStation('usgs', f);
         map.flyTo({ center: [+el.dataset.lng, +el.dataset.lat], zoom: 11, duration: 600 });
         setHL([el.dataset.gaugeId], gaugeData[el.dataset.gaugeId]?.upstream_snotel || []);
       });
@@ -904,7 +1134,7 @@ async function loadHierarchy(usgsData, snotelData) {
       el.addEventListener('click', e => {
         e.stopPropagation();
         const f = snotelFeatures[el.dataset.triplet];
-        if (f) openSnotelPanel(f);
+        if (f) selectStation('snotel', f);
         map.flyTo({ center: [+el.dataset.lng, +el.dataset.lat], zoom: 11, duration: 600 });
         setHL(snotelToGauges[el.dataset.triplet] || [], [el.dataset.triplet]);
       });
@@ -948,7 +1178,7 @@ map.on('load', async () => {
 
     dismissLoading();
 
-    const [usgsResult, dnrcResult, snotelResult, basinsResult, riversResult, noaaResult, lakesResult] =
+    const [usgsResult, dnrcResult, snotelResult, basinsResult, riversResult, noaaResult, lakesResult, dnrcSnotelResult] =
       await Promise.allSettled([
         fetch('/data/usgs_gauges.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
         fetch('/data/dnrc_gauges.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
@@ -957,15 +1187,18 @@ map.on('load', async () => {
         fetch('/data/mt_rivers.geojson').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
         fetch('/data/noaa_gauges.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
         fetch('/data/mt_lakes.geojson').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+        fetch('/data/dnrc_snotel_links.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
       ]);
 
-    const usgsData    = usgsResult.status    === 'fulfilled' ? usgsResult.value    : null;
-    const dnrcData    = dnrcResult.status    === 'fulfilled' ? dnrcResult.value    : null;
-    const snotelData  = snotelResult.status  === 'fulfilled' ? snotelResult.value  : null;
-    const basinsData  = basinsResult.status  === 'fulfilled' ? basinsResult.value  : null;
-    const riversData  = riversResult.status  === 'fulfilled' ? riversResult.value  : null;
-    noaaMap           = noaaResult.status    === 'fulfilled' ? noaaResult.value    : {};
-    const lakesData   = lakesResult.status   === 'fulfilled' ? lakesResult.value   : null;
+    const usgsData    = usgsResult.status       === 'fulfilled' ? usgsResult.value       : null;
+    const dnrcData    = dnrcResult.status       === 'fulfilled' ? dnrcResult.value       : null;
+    const snotelData  = snotelResult.status     === 'fulfilled' ? snotelResult.value     : null;
+    const basinsData  = basinsResult.status     === 'fulfilled' ? basinsResult.value     : null;
+    const riversData  = riversResult.status     === 'fulfilled' ? riversResult.value     : null;
+    noaaMap           = noaaResult.status       === 'fulfilled' ? noaaResult.value       : {};
+    const lakesData   = lakesResult.status      === 'fulfilled' ? lakesResult.value      : null;
+    dnrcSnotelLinks   = dnrcSnotelResult.status === 'fulfilled' ? dnrcSnotelResult.value : {};
+    if (snotelData) for (const f of snotelData.features) snotelFeaturesMap[f.properties.triplet] = f;
 
     document.getElementById('usgs-ct').textContent   = usgsData   ? usgsData.features.length   : '—';
     document.getElementById('dnrc-ct').textContent   = dnrcData   ? dnrcData.features.length   : '—';
@@ -997,7 +1230,7 @@ map.on('load', async () => {
       map.addSource('basin-hl-src', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       map.addLayer({ id: 'basin-hl-fill', type: 'fill', source: 'basin-hl-src', paint: {
         'fill-color': '#4a8fba',
-        'fill-opacity': 0.18,
+        'fill-opacity': ['case', ['has', 'hop'], ['interpolate', ['linear'], ['get', 'hop'], 0, 0.42, 8, 0.05], 0.18],
       }});
       map.addLayer({ id: 'basin-hl-line', type: 'line', source: 'basin-hl-src', paint: {
         'line-color': '#4a8fba',
@@ -1068,6 +1301,40 @@ map.on('load', async () => {
       if (map.getSource('basin-hl-src')) map.getSource('basin-hl-src').setData({ type: 'FeatureCollection', features: [] });
     }
     window._clearBasinHighlight = clearBasinHighlight;
+
+    function highlightDirectBasin(coords) {
+      if (!basinsData || !map.getSource('basin-hl-src')) return;
+      const containing = basinsData.features.find(f => ptInFeature(coords, f));
+      if (!containing) { clearBasinHighlight(); return; }
+      const feature = { ...containing, properties: { ...containing.properties, hop: 0 } };
+      map.getSource('basin-hl-src').setData({ type: 'FeatureCollection', features: [feature] });
+    }
+
+    function highlightDownstreamPath(coords, maxHops) {
+      if (!basinsData || !map.getSource('basin-hl-src')) return;
+      maxHops = maxHops || 8;
+      const all = basinsData.features;
+      const containing = all.find(f => ptInFeature(coords, f));
+      if (!containing) { clearBasinHighlight(); return; }
+
+      const downMap = new Map();
+      for (const f of all) {
+        const p = f.properties.pfaf8, n = f.properties.next_pfaf8;
+        if (p && n) downMap.set(p, n);
+      }
+      const pfaf8Index = new Map(all.map(f => [f.properties.pfaf8, f]));
+
+      const highlighted = [];
+      let cur = containing.properties.pfaf8;
+      for (let hop = 0; hop <= maxHops && cur; hop++) {
+        const f = pfaf8Index.get(cur);
+        if (!f) break;
+        highlighted.push({ ...f, properties: { ...f.properties, hop } });
+        cur = downMap.get(cur);
+        if (!cur) break;
+      }
+      map.getSource('basin-hl-src').setData({ type: 'FeatureCollection', features: highlighted });
+    }
 
     // Named lakes — fill polygons below river lines
     if (lakesData) {
@@ -1169,7 +1436,7 @@ map.on('load', async () => {
         },
       });
       map.on('click', 'usgs-points', e => {
-        openUsgsPanel(e.features[0]);
+        selectStation('usgs', e.features[0]);
         if (window._highlightGauge) window._highlightGauge(e.features[0].properties.id);
         highlightUpstreamBasins(e.features[0].geometry.coordinates);
         if (window._highlightRiver) window._highlightRiver(e.features[0].properties.name);
@@ -1192,8 +1459,8 @@ map.on('load', async () => {
       map.on('click', 'dnrc-points', e => {
         const usgs = usgsData ? map.queryRenderedFeatures(e.point, { layers: ['usgs-points'] }) : [];
         if (!usgs.length) {
-          openDnrcPanel(e.features[0]);
-          highlightUpstreamBasins(e.features[0].geometry.coordinates);
+          selectStation('dnrc', e.features[0]);
+          highlightDirectBasin(e.features[0].geometry.coordinates);
           if (window._highlightRiver) window._highlightRiver(e.features[0].properties.name);
         }
       });
@@ -1215,9 +1482,9 @@ map.on('load', async () => {
       map.on('click', 'snotel-points', e => {
         const usgs = usgsData ? map.queryRenderedFeatures(e.point, { layers: ['usgs-points'] }) : [];
         if (!usgs.length) {
-          openSnotelPanel(e.features[0]);
+          selectStation('snotel', e.features[0]);
           if (window._highlightSnotel) window._highlightSnotel(e.features[0].properties.triplet);
-          highlightUpstreamBasins(e.features[0].geometry.coordinates);
+          highlightDownstreamPath(e.features[0].geometry.coordinates);
           if (window._clearRiverHighlight) window._clearRiverHighlight();
         }
       });

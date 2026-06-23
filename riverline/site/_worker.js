@@ -54,6 +54,25 @@ export default {
       }
     }
 
+    if (url.pathname.startsWith('/api/noaa/')) {
+      // Proxy to NOAA NWPS — e.g. /api/noaa/GLGM8/stageflow
+      const noaaPath = url.pathname.slice('/api/noaa'.length);  // /GLGM8/stageflow
+      const noaaUrl = `https://api.water.noaa.gov/nwps/v1/gauges${noaaPath}`;
+      try {
+        const r = await fetch(noaaUrl, { headers: { 'User-Agent': 'RiverLine/1.0 (Ito Geospatial)' } });
+        const body = await r.text();
+        return new Response(body, {
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'public, max-age=1800',
+          },
+        });
+      } catch (_) {
+        return new Response('{}', { status: 502, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } });
+      }
+    }
+
     if (url.pathname.startsWith('/api/') && request.method === 'OPTIONS') {
       return new Response(null, {
         headers: {
