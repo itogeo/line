@@ -978,17 +978,22 @@ map.on('load', async () => {
     // HUC8 watershed polygons — dashed outlines, subtle fill, clearly visible on dark basemap
     if (basinsData) {
       map.addSource('mt-basins', { type: 'geojson', data: basinsData });
-      map.addLayer({ id: 'mt-basins-fill', type: 'fill', source: 'mt-basins', paint: {
-        'fill-color': '#4a8fba',
-        'fill-opacity': ['interpolate', ['linear'], ['zoom'], 4, 0.07, 9, 0.03],
-      }});
-      map.addLayer({ id: 'mt-basins-line', type: 'line', source: 'mt-basins', paint: {
-        'line-color': '#6ab0d8',
-        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1.0, 8, 0.6],
-        'line-opacity': ['interpolate', ['linear'], ['zoom'], 4, 0.7, 9, 0.4],
-        'line-dasharray': [5, 3],
-      }});
-      // Upstream highlight overlay — blue, drawn above the base basin layer
+      // Basin outlines default hidden — toggle to show; minzoom 6 prevents state-level clutter
+      map.addLayer({ id: 'mt-basins-fill', type: 'fill', source: 'mt-basins', minzoom: 6,
+        layout: { visibility: 'none' },
+        paint: {
+          'fill-color': '#4a8fba',
+          'fill-opacity': ['interpolate', ['linear'], ['zoom'], 6, 0.06, 10, 0.03],
+        }});
+      map.addLayer({ id: 'mt-basins-line', type: 'line', source: 'mt-basins', minzoom: 6,
+        layout: { visibility: 'none' },
+        paint: {
+          'line-color': '#6ab0d8',
+          'line-width': ['interpolate', ['linear'], ['zoom'], 6, 0.8, 10, 0.5],
+          'line-opacity': ['interpolate', ['linear'], ['zoom'], 6, 0.6, 10, 0.35],
+          'line-dasharray': [4, 3],
+        }});
+      // Upstream highlight overlay — always visible when data is set, sits above basin outlines
       map.addSource('basin-hl-src', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       map.addLayer({ id: 'basin-hl-fill', type: 'fill', source: 'basin-hl-src', paint: {
         'fill-color': '#4a8fba',
@@ -999,8 +1004,7 @@ map.on('load', async () => {
         'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1.4, 8, 0.9],
         'line-opacity': 0.9,
       }});
-      const basinsToggle = document.getElementById('toggle-basins');
-      if (basinsToggle) basinsToggle.classList.add('on');
+      // basins toggle stays OFF by default — no classList.add('on')
     }
 
     // Point-in-polygon helpers (ray casting) for upstream basin lookup
@@ -1177,10 +1181,10 @@ map.on('load', async () => {
     if (dnrcData) {
       map.addSource('dnrc-gauges', { type: 'geojson', data: dnrcData });
       map.addLayer({
-        id: 'dnrc-points', type: 'circle', source: 'dnrc-gauges',
+        id: 'dnrc-points', type: 'circle', source: 'dnrc-gauges', minzoom: 7,
         paint: {
           'circle-color': 'rgba(58,171,138,0.75)',
-          'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 3.5, 10, 6],
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 7, 3, 10, 6],
           'circle-stroke-color': 'rgba(255,255,255,0.12)',
           'circle-stroke-width': 1,
         },

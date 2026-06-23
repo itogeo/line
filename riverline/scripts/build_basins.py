@@ -47,8 +47,8 @@ DATA = ROOT / "riverline" / "site" / "data"
 BBOX = (-116.5, 44.0, -103.5, 49.2)
 
 # Simplification tolerances (degrees, ~111km per degree at lat 47°)
-PRE_SIMPLIFY  = 0.003   # ~330m before dissolve — reduces vertex count without visible distortion
-POST_SIMPLIFY = 0.005   # ~550m after dissolve — light smoothing only
+PRE_SIMPLIFY  = 0.001   # ~110m before dissolve — minimal vertex reduction, preserves shape
+POST_SIMPLIFY = 0.002   # ~220m after dissolve — very light smoothing only
 
 
 def load_shp() -> gpd.GeoDataFrame:
