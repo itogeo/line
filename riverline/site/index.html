@@ -215,6 +215,12 @@
   }
   .ext-link a:hover { background: rgba(74,143,186,0.1); border-color: var(--accent); }
 
+  .condition-badge {
+    display: inline-block; font-family: var(--mono); font-size: 10px;
+    font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 3px 9px; border-radius: 10px;
+  }
+
   /* Mapbox overrides */
   .mapboxgl-ctrl-logo, .mapboxgl-ctrl-attrib { display: none !important; }
   .mapboxgl-ctrl-group { background: var(--surface) !important; border: 1px solid var(--border) !important; border-radius: 8px !important; box-shadow: none !important; }
@@ -468,16 +474,28 @@ async function loadUsgsChart(siteId, days) {
       cfsHero.innerHTML = '<div class="cfs-loading">No current reading</div>';
     }
 
-    // NOAA forecast if we have a matching LID
+    // NOAA forecast + gauge metadata (flood stages) fetched in parallel
     const noaaLid = noaaMap[siteId.padStart(8, '0')] || noaaMap[siteId];
-    let noaaForecast = [];
+    let noaaForecast = [], noaaFloodStages = {};
     if (noaaLid) {
       try {
-        const nd = await fetch(`/api/noaa/${noaaLid}/stageflow`).then(r => r.json());
+        const [nd, nm] = await Promise.all([
+          fetch(`/api/noaa/${noaaLid}/stageflow`).then(r => r.json()),
+          fetch(`/api/noaa/${noaaLid}`).then(r => r.json()),
+        ]);
         const mult = (nd?.secondaryUnit || '').toLowerCase() === 'kcfs' ? 1000 : 1;
         noaaForecast = (nd?.forecast?.data || []).map(v => ({
           validTime: v.validTime, flow: (v.secondary || 0) * mult,
         }));
+        // NOAA NWPS API field paths vary by version — try several
+        const fc = nm?.floodCategories || nm?.flooding || nm?.floods || (nm?.action != null ? nm : {});
+        const getStage = obj => typeof obj === 'number' ? obj : (obj?.stage ?? null);
+        noaaFloodStages = {
+          action:   getStage(fc.action)   ?? getStage(fc.actionStage)   ?? null,
+          flood:    getStage(fc.flood)    ?? getStage(fc.floodStage)    ?? getStage(fc.minor) ?? null,
+          moderate: getStage(fc.moderate) ?? getStage(fc.moderateStage) ?? null,
+          major:    getStage(fc.major)    ?? getStage(fc.majorStage)    ?? null,
+        };
       } catch(_) {}
     }
 
@@ -503,8 +521,8 @@ async function loadUsgsChart(siteId, days) {
     const obsData = allKeys.map(t => obsMap.has(t) ? obsMap.get(t) : null);
     const fcData  = allKeys.map(t => fcMap.has(t)  ? fcMap.get(t)  : null);
 
-    // Fetch USGS historical mean by day-of-year for the average overlay
-    let avgData = [];
+    // Fetch USGS historical stats (mean overlay + P10/P25/P75/P90 for condition badge)
+    let avgData = [], flowCondition = null;
     try {
       const statsUrl = `https://waterservices.usgs.gov/nwis/stat/?format=json&sites=${siteId}&parameterCd=00060&statReportType=daily&statYearType=calendar`;
       const statsJson = await fetch(statsUrl).then(r => r.json());
@@ -524,6 +542,27 @@ async function loadUsgsChart(siteId, days) {
           const mmdd = new Date(t).toISOString().slice(5, 10);
           return doyMap.has(mmdd) ? doyMap.get(mmdd) : null;
         });
+      }
+      // Extract today's percentile thresholds to classify current CFS
+      if (!isNaN(cfs) && cfs >= 0) {
+        const today = new Date().toISOString().slice(5, 10); // "MM-DD"
+        const pctBands = {};
+        for (const code of ['P10', 'P25', 'P75', 'P90']) {
+          const ps = allSeries.find(s => (s?.variable?.options?.option || []).some(o => o.name === 'statType' && o.value === code));
+          if (ps) {
+            const m = (ps?.values?.[0]?.value || []).find(v => (v.dateTime || '').slice(5, 10) === today);
+            if (m && m.value !== '-999999') pctBands[code] = parseFloat(m.value);
+          }
+        }
+        if (Object.keys(pctBands).length >= 2) {
+          let label, color;
+          if (pctBands.P90 !== undefined && cfs > pctBands.P90)      { label = 'Exceptionally high'; color = '#c05040'; }
+          else if (pctBands.P75 !== undefined && cfs > pctBands.P75) { label = 'Above normal';       color = '#4a8fba'; }
+          else if (pctBands.P25 !== undefined && cfs > pctBands.P25) { label = 'Normal range';       color = '#3aab8a'; }
+          else if (pctBands.P10 !== undefined && cfs > pctBands.P10) { label = 'Below normal';       color = '#c8973a'; }
+          else                                                         { label = 'Exceptionally low';  color = '#c05040'; }
+          flowCondition = { label, color };
+        }
       }
     } catch(_) {}
 
@@ -586,18 +625,38 @@ async function loadUsgsChart(siteId, days) {
       },
     });
 
+    // Update hero with flow condition badge once stats are loaded
+    if (flowCondition && !isNaN(cfs) && cfs >= 0) {
+      cfsHero.innerHTML = `
+        <div class="cfs-reading">
+          <span class="cfs-value">${cfs.toLocaleString()}</span>
+          <span class="cfs-unit">cfs</span>
+        </div>
+        <div class="cfs-ts">${ts ? formatTimestampMT(ts) : ''}</div>
+        <div style="margin-top:5px"><span class="condition-badge" style="background:${flowCondition.color}22;color:${flowCondition.color};border:1px solid ${flowCondition.color}55">${flowCondition.label}</span></div>`;
+    }
+
     const rows = [];
     if (stageVals.length) {
       const sv = stageVals[stageVals.length - 1];
       const ft = parseFloat(sv?.value);
       if (!isNaN(ft)) rows.push({ lbl: 'Gage height', val: ft.toFixed(2) + ' ft' });
     }
-    if (noaaLid) rows.push({ lbl: 'NOAA site', val: noaaLid + (sampledFc.length ? ' · forecast available' : '') });
+    if (noaaFloodStages.action   != null) rows.push({ lbl: 'Action stage',   val: noaaFloodStages.action.toFixed(1)   + ' ft', color: '#c8973a' });
+    if (noaaFloodStages.flood    != null) rows.push({ lbl: 'Flood stage',    val: noaaFloodStages.flood.toFixed(1)    + ' ft', color: '#c05040' });
+    if (noaaFloodStages.moderate != null) rows.push({ lbl: 'Moderate flood', val: noaaFloodStages.moderate.toFixed(1) + ' ft', color: '#c05040' });
+    if (noaaFloodStages.major    != null) rows.push({ lbl: 'Major flood',    val: noaaFloodStages.major.toFixed(1)    + ' ft', color: '#c05040' });
+    if (noaaLid) rows.push({ lbl: 'NOAA site', val: noaaLid + (sampledFc.length ? ' · forecast active' : '') });
     rows.push({ lbl: 'Site ID', val: siteId });
     infoSection.innerHTML = rows.map(r =>
-      `<div class="info-row"><span class="lbl">${r.lbl}</span><span class="val">${r.val}</span></div>`
+      `<div class="info-row"><span class="lbl">${r.lbl}</span><span class="val"${r.color ? ` style="color:${r.color}"` : ''}>${r.val}</span></div>`
     ).join('');
-    extLink.innerHTML = `<a href="https://waterdata.usgs.gov/monitoring-location/${siteId}/" target="_blank" rel="noopener">USGS Water Data ↗</a>`;
+    const extLinks = [
+      `<a href="https://waterdata.usgs.gov/monitoring-location/${siteId}/" target="_blank" rel="noopener">USGS Data ↗</a>`,
+      `<a href="https://waterdata.usgs.gov/monitoring-location/${siteId}/statistical-graphs/" target="_blank" rel="noopener">Statistics ↗</a>`,
+    ];
+    if (noaaLid) extLinks.push(`<a href="https://water.noaa.gov/gauges/${noaaLid.toLowerCase()}" target="_blank" rel="noopener">NOAA Forecast ↗</a>`);
+    extLink.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center">${extLinks.join('')}</div>`;
 
   } catch(e) {
     cfsHero.innerHTML = '<div class="cfs-loading">Fetch error</div>';
@@ -727,7 +786,10 @@ async function loadSnotelChart(feature, days) {
   cfsHero.innerHTML = '<div class="cfs-loading">Loading…</div>';
   const { triplet, elevation_ft, county } = feature.properties;
   try {
-    const rawArr = await fetch(`/api/snotel?triplet=${encodeURIComponent(triplet)}&days=${days}`).then(r => r.json());
+    const [rawArr, normArr] = await Promise.all([
+      fetch(`/api/snotel?triplet=${encodeURIComponent(triplet)}&days=${days}`).then(r => r.json()),
+      fetch(`/api/nrcs/normals?triplet=${encodeURIComponent(triplet)}`).then(r => r.json()).catch(() => []),
+    ]);
     const blocks = rawArr?.[0]?.data || [];
 
     function latestVal(code) {
@@ -742,13 +804,33 @@ async function loadSnotelChart(feature, days) {
     const depth = latestVal('SNWD');
     const tobs  = latestVal('TOBS');
 
+    // Compute % of normal SWE from NRCS period-of-record monthly medians
+    let pctNormal = null, medianSwe = null;
+    if (swe !== null) {
+      try {
+        const stats = normArr?.[0]?.data?.[0]?.statistics || [];
+        const curMonth = new Date().getMonth() + 1; // 1–12
+        const ms = stats.find(s => s.periodBeginMonth === curMonth && s.periodEndMonth === curMonth);
+        if (ms?.median != null && ms.median > 0.1) {
+          medianSwe = ms.median;
+          pctNormal = Math.round((swe.value / ms.median) * 100);
+        }
+      } catch(_) {}
+    }
+
+    let condBadge = '';
+    if (pctNormal !== null) {
+      const nc = pctNormal < 75 ? '#c05040' : pctNormal < 90 ? '#c8973a' : pctNormal > 125 ? '#4a8fba' : '#3aab8a';
+      condBadge = `<div style="margin-top:5px"><span class="condition-badge" style="background:${nc}22;color:${nc};border:1px solid ${nc}55">${pctNormal}% of normal</span></div>`;
+    }
+
     if (swe !== null) {
       cfsHero.innerHTML = `
         <div class="cfs-reading">
           <span class="cfs-value" style="color:var(--gold)">${swe.value.toFixed(1)}</span>
           <span class="cfs-unit">in SWE</span>
         </div>
-        <div class="cfs-ts">${swe.date}</div>`;
+        <div class="cfs-ts">${swe.date}</div>${condBadge}`;
     } else {
       cfsHero.innerHTML = '<div class="cfs-loading">No SWE data</div>';
     }
@@ -809,6 +891,7 @@ async function loadSnotelChart(feature, days) {
     const rows = [];
     if (depth) rows.push({ lbl: 'Snow depth', val: depth.value.toFixed(0) + ' in' });
     if (tobs)  rows.push({ lbl: 'Air temp',   val: tobs.value.toFixed(0) + '°F' });
+    if (medianSwe !== null) rows.push({ lbl: 'Median SWE (month)', val: medianSwe.toFixed(1) + ' in' });
     if (elevation_ft) rows.push({ lbl: 'Elevation', val: parseInt(elevation_ft).toLocaleString() + ' ft' });
     if (county) rows.push({ lbl: 'County', val: county });
     rows.push({ lbl: 'Network', val: 'NRCS SNOTEL' });

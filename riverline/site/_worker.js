@@ -54,6 +54,39 @@ export default {
       }
     }
 
+    if (url.pathname.startsWith('/api/nrcs/normals')) {
+      const triplet = url.searchParams.get('triplet');
+      if (!triplet) return new Response('Bad request', { status: 400 });
+      const awdbUrl = `https://wcc.sc.egov.usda.gov/awdbRestApi/services/v1/stationStatistics?stationTriplets=${encodeURIComponent(triplet)}&elements=WTEQ&periodType=MONTHLY`;
+      try {
+        const r = await fetch(awdbUrl, { headers: { 'User-Agent': 'RiverLine/1.0 (Ito Geospatial)' } });
+        const body = await r.text();
+        return new Response(body, {
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'public, max-age=86400' },
+        });
+      } catch (_) {
+        return new Response('[]', { status: 502, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } });
+      }
+    }
+
+    if (url.pathname.startsWith('/api/nrcs/forecast')) {
+      const triplet = url.searchParams.get('triplet');
+      if (!triplet) return new Response('Bad request', { status: 400 });
+      const end = new Date();
+      const start = new Date(+end - 365 * 86400000);
+      const fmt = d => d.toISOString().slice(0, 10);
+      const awdbUrl = `https://wcc.sc.egov.usda.gov/awdbRestApi/services/v1/data?stationTriplets=${encodeURIComponent(triplet)}&elements=SRVO&duration=MONTHLY&beginDate=${fmt(start)}&endDate=${fmt(end)}&periodRef=END`;
+      try {
+        const r = await fetch(awdbUrl, { headers: { 'User-Agent': 'RiverLine/1.0 (Ito Geospatial)' } });
+        const body = await r.text();
+        return new Response(body, {
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'public, max-age=3600' },
+        });
+      } catch (_) {
+        return new Response('[]', { status: 502, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } });
+      }
+    }
+
     if (url.pathname.startsWith('/api/noaa/')) {
       // Proxy to NOAA NWPS — e.g. /api/noaa/GLGM8/stageflow
       const noaaPath = url.pathname.slice('/api/noaa'.length);  // /GLGM8/stageflow
