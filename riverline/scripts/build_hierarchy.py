@@ -12,6 +12,14 @@ Usage (takes 2–5 min on the 160 MB shapefile):
 Output:
   riverline/site/data/river_hierarchy.json
 """
+import os
+# Must be set before geopandas/pyproj import — fixes PROJ db path conflict
+# between base conda PROJ and the geodata env's PROJ.
+_PROJ_DATA = '/Users/ianvandusen/anaconda3/envs/geodata/share/proj'
+if os.path.isdir(_PROJ_DATA):
+    os.environ['PROJ_DATA'] = _PROJ_DATA
+    os.environ['PROJ_LIB']  = _PROJ_DATA
+
 import json
 import re
 import zipfile
