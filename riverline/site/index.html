@@ -516,6 +516,7 @@ async function loadUsgsChart(siteId, days) {
         plugins: {
           legend: { display: false },
           tooltip: {
+            mode: 'index', intersect: false,
             callbacks: {
               label: c => c.datasetIndex === 1 && avgData.length ? (c.parsed.y !== null ? c.parsed.y.toLocaleString() + ' cfs avg' : '') : (c.parsed.y !== null ? c.parsed.y.toLocaleString() + ' cfs' : ''),
             },
@@ -614,6 +615,7 @@ async function openDnrcPanel(feature) {
         plugins: {
           legend: { display: false },
           tooltip: {
+            mode: 'index', intersect: false,
             callbacks: { label: c => c.parsed.y.toFixed(1) + ' cfs' },
             backgroundColor: 'rgba(14,28,45,0.95)', titleColor: '#455a70',
             bodyColor: '#d4dde8', borderColor: '#1a2f45', borderWidth: 1,
@@ -712,6 +714,7 @@ async function loadSnotelChart(feature, days) {
           plugins: {
             legend: { display: false },
             tooltip: {
+              mode: 'index', intersect: false,
               callbacks: { label: c => c.parsed.y.toFixed(1) + ' in SWE' },
               backgroundColor: 'rgba(14,28,45,0.95)', titleColor: '#455a70',
               bodyColor: '#d4dde8', borderColor: '#1a2f45', borderWidth: 1,
@@ -985,16 +988,16 @@ map.on('load', async () => {
         'line-opacity': ['interpolate', ['linear'], ['zoom'], 4, 0.7, 9, 0.4],
         'line-dasharray': [5, 3],
       }});
-      // Upstream highlight overlay — orange, drawn above the base basin layer
+      // Upstream highlight overlay — blue, drawn above the base basin layer
       map.addSource('basin-hl-src', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       map.addLayer({ id: 'basin-hl-fill', type: 'fill', source: 'basin-hl-src', paint: {
-        'fill-color': '#d4943a',
-        'fill-opacity': 0.22,
+        'fill-color': '#4a8fba',
+        'fill-opacity': 0.18,
       }});
       map.addLayer({ id: 'basin-hl-line', type: 'line', source: 'basin-hl-src', paint: {
-        'line-color': '#e8a84a',
+        'line-color': '#4a8fba',
         'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1.4, 8, 0.9],
-        'line-opacity': 0.85,
+        'line-opacity': 0.9,
       }});
       const basinsToggle = document.getElementById('toggle-basins');
       if (basinsToggle) basinsToggle.classList.add('on');

@@ -46,9 +46,9 @@ DATA = ROOT / "riverline" / "site" / "data"
 # Montana bbox — slightly inset to trim border noise
 BBOX = (-116.5, 44.0, -103.5, 49.2)
 
-# Simplification tolerances (degrees)
-PRE_SIMPLIFY  = 0.025   # before dissolve — fast, reduces vertex count
-POST_SIMPLIFY = 0.04    # after dissolve — smooths dissolved boundaries
+# Simplification tolerances (degrees, ~111km per degree at lat 47°)
+PRE_SIMPLIFY  = 0.003   # ~330m before dissolve — reduces vertex count without visible distortion
+POST_SIMPLIFY = 0.005   # ~550m after dissolve — light smoothing only
 
 
 def load_shp() -> gpd.GeoDataFrame:
