@@ -27,12 +27,12 @@ MT_BBOX   = "-116.5,44.0,-103.5,49.2"   # xmin,ymin,xmax,ymax
 
 def fetch_page(offset: int) -> list:
     params = {
-        "where": "states LIKE '%MT%'",
+        "where": "1=1",
         "geometry": MT_BBOX,
         "geometryType": "esriGeometryEnvelope",
         "inSR": "4326",
         "spatialRel": "esriSpatialRelIntersects",
-        "outFields": "huc8,name,states,areasqkm,tohuc",
+        "outFields": "huc8,name,areasqkm",
         "returnGeometry": "true",
         "outSR": "4326",
         "f": "geojson",
@@ -90,7 +90,6 @@ def main():
             "geometry": {"type": gtype, "coordinates": new_coords},
             "properties": {
                 "huc8":     props.get("huc8", ""),
-                "tohuc":    props.get("tohuc", ""),
                 "name":     props.get("name", ""),
                 "areasqkm": props.get("areasqkm", 0),
             },

@@ -345,6 +345,7 @@ function closePanel() {
   panel.classList.remove('open');
   if (flowChart) { flowChart.destroy(); flowChart = null; }
   if (window._clearBasinHighlight) window._clearBasinHighlight();
+  if (window._clearRiverHighlight) window._clearRiverHighlight();
 }
 
 function openPanel(name, id, badgeClass) {
@@ -1114,6 +1115,40 @@ map.on('load', async () => {
       });
       map.on('mouseenter', 'nhd-rivers-line', () => { map.getCanvas().style.cursor = 'pointer'; });
       map.on('mouseleave', 'nhd-rivers-line', () => { map.getCanvas().style.cursor = ''; });
+
+      // River highlight overlay (sits above nhd-rivers-line, below gauge dots)
+      map.addSource('river-hl-src', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addLayer({ id: 'river-hl-line', type: 'line', source: 'river-hl-src',
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: {
+          'line-color': '#e8c060',
+          'line-width': ['interpolate', ['linear'], ['zoom'], 4, 2.5, 8, 5, 12, 9],
+          'line-opacity': 0.92,
+          'line-blur': 1,
+        },
+      });
+
+      function extractRiverName(gaugeName) {
+        const s = (gaugeName || '').toLowerCase();
+        const m = s.match(/^(.*?)\s+(?:at|nr|near|ab|bl|above|below|blw|div|diversion)\b/);
+        return m ? m[1].trim() : s.replace(/,.*$/, '').replace(/\s+mt\s*$/, '').trim();
+      }
+      function highlightRiver(gaugeName) {
+        if (!map.getSource('river-hl-src')) return;
+        const query = extractRiverName(gaugeName);
+        if (!query) { window._clearRiverHighlight && window._clearRiverHighlight(); return; }
+        const features = riversData.features.filter(f => {
+          const rname = (f.properties.name || '').toLowerCase();
+          const q = query.toLowerCase();
+          return rname === q || rname.startsWith(q + ' ') || q.startsWith(rname);
+        });
+        map.getSource('river-hl-src').setData({ type: 'FeatureCollection', features });
+      }
+      function clearRiverHighlight() {
+        if (map.getSource('river-hl-src')) map.getSource('river-hl-src').setData({ type: 'FeatureCollection', features: [] });
+      }
+      window._clearRiverHighlight = clearRiverHighlight;
+      window._highlightRiver = highlightRiver;
     }
 
     if (usgsData) {
@@ -1131,6 +1166,7 @@ map.on('load', async () => {
         openUsgsPanel(e.features[0]);
         if (window._highlightGauge) window._highlightGauge(e.features[0].properties.id);
         highlightUpstreamBasins(e.features[0].geometry.coordinates);
+        if (window._highlightRiver) window._highlightRiver(e.features[0].properties.name);
       });
       map.on('mouseenter', 'usgs-points', () => { map.getCanvas().style.cursor = 'pointer'; });
       map.on('mouseleave', 'usgs-points', () => { map.getCanvas().style.cursor = ''; });
@@ -1152,6 +1188,7 @@ map.on('load', async () => {
         if (!usgs.length) {
           openDnrcPanel(e.features[0]);
           highlightUpstreamBasins(e.features[0].geometry.coordinates);
+          if (window._highlightRiver) window._highlightRiver(e.features[0].properties.name);
         }
       });
       map.on('mouseenter', 'dnrc-points', () => { map.getCanvas().style.cursor = 'pointer'; });
@@ -1175,11 +1212,19 @@ map.on('load', async () => {
           openSnotelPanel(e.features[0]);
           if (window._highlightSnotel) window._highlightSnotel(e.features[0].properties.triplet);
           highlightUpstreamBasins(e.features[0].geometry.coordinates);
+          if (window._clearRiverHighlight) window._clearRiverHighlight();
         }
       });
       map.on('mouseenter', 'snotel-points', () => { map.getCanvas().style.cursor = 'pointer'; });
       map.on('mouseleave', 'snotel-points', () => { map.getCanvas().style.cursor = ''; });
     }
+
+    // Click on empty space → close panel and clear all highlights
+    map.on('click', e => {
+      const interactive = ['usgs-points', 'dnrc-points', 'snotel-points', 'nhd-rivers-line'].filter(id => map.getLayer(id));
+      const hit = map.queryRenderedFeatures(e.point, { layers: interactive });
+      if (!hit.length) closePanel();
+    });
 
     await loadHierarchy(usgsData, snotelData);
   } catch(e) {
