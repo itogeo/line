@@ -32,7 +32,7 @@ def fetch_page(offset: int) -> list:
         "geometryType": "esriGeometryEnvelope",
         "inSR": "4326",
         "spatialRel": "esriSpatialRelIntersects",
-        "outFields": "huc8,name,states,areasqkm",
+        "outFields": "huc8,name,states,areasqkm,tohuc",
         "returnGeometry": "true",
         "outSR": "4326",
         "f": "geojson",
@@ -90,6 +90,7 @@ def main():
             "geometry": {"type": gtype, "coordinates": new_coords},
             "properties": {
                 "huc8":     props.get("huc8", ""),
+                "tohuc":    props.get("tohuc", ""),
                 "name":     props.get("name", ""),
                 "areasqkm": props.get("areasqkm", 0),
             },

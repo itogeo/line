@@ -1014,14 +1014,47 @@ map.on('load', async () => {
       const polys = g.type === 'Polygon' ? [g.coordinates] : g.coordinates;
       return polys.some(poly => ptInRing(pt, poly[0]) && !poly.slice(1).some(h => ptInRing(pt, h)));
     }
+    // Build upstream lookup once basinsData is ready: huc8 → set of huc8s that drain into it
+    let _upstreamGraph = null;
+    function buildUpstreamGraph(features) {
+      // tohuc maps each HUC8 to its downstream HUC. Invert: downstream → [upstream, ...]
+      const downTo = new Map();  // tohuc → [huc8, ...]
+      for (const f of features) {
+        const { huc8, tohuc } = f.properties;
+        if (!huc8 || !tohuc) continue;
+        if (!downTo.has(tohuc)) downTo.set(tohuc, []);
+        downTo.get(tohuc).push(huc8);
+      }
+      return downTo;
+    }
+    function getUpstreamSet(startHuc8) {
+      if (!_upstreamGraph) _upstreamGraph = buildUpstreamGraph(basinsData.features);
+      const visited = new Set();
+      const queue = [startHuc8];
+      while (queue.length) {
+        const cur = queue.shift();
+        if (visited.has(cur)) continue;
+        visited.add(cur);
+        const parents = _upstreamGraph.get(cur) || [];
+        for (const p of parents) if (!visited.has(p)) queue.push(p);
+      }
+      return visited;
+    }
     function highlightUpstreamBasins(coords) {
       if (!basinsData || !map.getSource('basin-hl-src')) return;
       const all = basinsData.features;
       const containing = all.find(f => ptInFeature(coords, f));
       if (!containing) { map.getSource('basin-hl-src').setData({ type: 'FeatureCollection', features: [] }); return; }
-      // Show all HUC8s in the same HUC6 subbasin — the broader contributing watershed
-      const huc6 = (containing.properties.huc8 || '').slice(0, 6);
-      const upstream = huc6 ? all.filter(f => (f.properties.huc8 || '').startsWith(huc6)) : [containing];
+      const startHuc8 = containing.properties.huc8 || '';
+      // If tohuc data is present, walk the graph; otherwise fall back to containing basin only
+      const hasTohuc = all.some(f => f.properties.tohuc);
+      let upstream;
+      if (hasTohuc && startHuc8) {
+        const upSet = getUpstreamSet(startHuc8);
+        upstream = all.filter(f => upSet.has(f.properties.huc8));
+      } else {
+        upstream = [containing];
+      }
       map.getSource('basin-hl-src').setData({ type: 'FeatureCollection', features: upstream });
     }
     function clearBasinHighlight() {
