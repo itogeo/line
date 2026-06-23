@@ -34,7 +34,6 @@ if os.path.isdir(_PROJ_DATA):
     os.environ["PROJ_LIB"] = _PROJ_DATA
 
 import json
-from collections import Counter
 from pathlib import Path
 
 import geopandas as gpd
@@ -94,59 +93,51 @@ def dissolve_and_save(gdf: gpd.GeoDataFrame, by: str, out_path: Path, label: str
 
 
 def build_topology(gdf: gpd.GeoDataFrame) -> dict:
-    """Return {pfaf8: next_pfaf8} downstream map using NEXT_DOWN → HYBAS_ID lookup."""
-    hybas_to_pfaf8 = dict(zip(gdf["HYBAS_ID"].astype(int), gdf["PFAF8"]))
-
-    counts: dict = {}
+    """Return {pfaf_id: next_pfaf_id} using direct NEXT_DOWN → HYBAS_ID lookup."""
+    hybas_to_pfaf = dict(zip(gdf["HYBAS_ID"].astype(int), gdf["PFAF_ID"].astype(str)))
+    result = {}
     for _, row in gdf.iterrows():
-        src = row["PFAF8"]
+        src = str(row["PFAF_ID"])
         next_id = int(row["NEXT_DOWN"])
         if next_id == 0:
             continue
-        tgt = hybas_to_pfaf8.get(next_id)
+        tgt = hybas_to_pfaf.get(next_id)
         if tgt and tgt != src:
-            if src not in counts:
-                counts[src] = Counter()
-            counts[src][tgt] += 1
-
-    return {k: v.most_common(1)[0][0] for k, v in counts.items()}
+            result[src] = tgt
+    return result
 
 
 def build_mt_basins(gdf: gpd.GeoDataFrame, out_path: Path) -> None:
     """
-    Output mt_basins.geojson — medium-resolution basins (PFAF8) with upstream topology.
+    Output mt_basins.geojson — level-12 HydroSHEDS basins with downstream topology.
 
     Properties per feature:
-      pfaf8      — 8-char Pfafstetter code used as basin ID
-      next_pfaf8 — downstream basin's pfaf8 (for BFS upstream traversal in the map)
-      areasqkm   — dissolved area computed from geometry
+      pfaf_id      — full 12-digit Pfafstetter code (unique per basin)
+      next_pfaf_id — downstream basin's pfaf_id (empty at ocean/boundary outlets)
+      areasqkm     — area computed from geometry
     """
-    print("\nBuilding mt_basins (medium + topology) …")
+    print("\nBuilding mt_basins (level-12, no dissolve) …")
 
     topo = build_topology(gdf)
-    print(f"  Topology: {len(topo)} PFAF8 → downstream mappings")
+    print(f"  Topology: {len(topo)} pfaf_id → downstream mappings")
 
     gdf_s = gdf.copy()
     gdf_s["geometry"] = gdf_s.geometry.simplify(PRE_SIMPLIFY, preserve_topology=True)
+    gdf_s = gdf_s[gdf_s.geometry.is_valid & ~gdf_s.geometry.is_empty].copy()
+    print(f"  Level-12 basins: {len(gdf_s)}")
 
-    dissolved = gdf_s[["PFAF8", "geometry"]].dissolve(by="PFAF8", as_index=False)
-    dissolved["geometry"] = dissolved.geometry.simplify(POST_SIMPLIFY, preserve_topology=True)
-    dissolved = dissolved[dissolved.geometry.is_valid & ~dissolved.geometry.is_empty]
-    print(f"  Dissolved → {len(dissolved)} basins")
-
-    dissolved["next_pfaf8"] = dissolved["PFAF8"].map(topo).fillna("")
-    dissolved["areasqkm"]   = (dissolved.geometry.to_crs("EPSG:6933").area / 1e6).round(1)
-    dissolved = dissolved.rename(columns={"PFAF8": "pfaf8"})
+    gdf_s["pfaf_id"]      = gdf_s["PFAF_ID"].astype(str)
+    gdf_s["next_pfaf_id"] = gdf_s["pfaf_id"].map(topo).fillna("")
+    gdf_s["areasqkm"]     = (gdf_s.geometry.to_crs("EPSG:6933").area / 1e6).round(1)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    dissolved[["pfaf8", "next_pfaf8", "areasqkm", "geometry"]].to_file(out_path, driver="GeoJSON")
+    gdf_s[["pfaf_id", "next_pfaf_id", "areasqkm", "geometry"]].to_file(out_path, driver="GeoJSON")
     size_mb = out_path.stat().st_size / 1_048_576
-    print(f"  Wrote {len(dissolved)} features → {out_path}  ({size_mb:.1f} MB)")
+    print(f"  Wrote {len(gdf_s)} features → {out_path}  ({size_mb:.1f} MB)")
 
-    # Sample — show a few with topology
-    sample = dissolved[dissolved["next_pfaf8"] != ""].head(5)
+    sample = gdf_s[gdf_s["next_pfaf_id"] != ""].head(5)
     for _, r in sample.iterrows():
-        print(f"    {r['pfaf8']} → {r['next_pfaf8']}  ({r['areasqkm']:.0f} km²)")
+        print(f"    {r['pfaf_id']} → {r['next_pfaf_id']}  ({r['areasqkm']:.0f} km²)")
 
 
 def main():

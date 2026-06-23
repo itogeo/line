@@ -2,9 +2,9 @@
 Build dnrc_snotel_links.json — maps each DNRC gauge to its upstream SNOTEL stations.
 
 Strategy:
-  1. Load mt_basins.geojson (PFAF8 polygons + next_pfaf8 topology)
-  2. For each DNRC gauge, find its containing PFAF8 basin via point-in-polygon
-  3. BFS upstream through next_pfaf8 topology to collect all upstream basins
+  1. Load mt_basins.geojson (level-12 HydroSHEDS polygons + next_pfaf_id topology)
+  2. For each DNRC gauge, find its containing basin via point-in-polygon
+  3. BFS upstream through next_pfaf_id topology to collect all upstream basins
   4. Find SNOTEL stations inside those upstream basins
   5. Compute distance, sort, emit top MAX_SNOTEL per gauge
 
@@ -48,11 +48,11 @@ def haversine_km(lon1, lat1, lon2, lat2):
 
 
 def build_reverse_topo(basins_gdf):
-    """Return {pfaf8: [pfaf8 codes that drain INTO it]} for BFS upstream traversal."""
+    """Return {pfaf_id: [pfaf_ids that drain INTO it]} for BFS upstream traversal."""
     rev = defaultdict(list)
     for _, row in basins_gdf.iterrows():
-        p = str(row["pfaf8"])
-        n = str(row.get("next_pfaf8", "") or "")
+        p = str(row["pfaf_id"])
+        n = str(row.get("next_pfaf_id", "") or "")
         if n:
             rev[n].append(p)
     return dict(rev)
@@ -112,15 +112,15 @@ def main():
     snotel_gdf = gpd.GeoDataFrame(snotel_rows, crs="EPSG:4326")
 
     print("Spatial join: DNRC → basins …")
-    dnrc_joined = gpd.sjoin(dnrc_gdf, basins[["pfaf8", "geometry"]], how="left", predicate="within")
+    dnrc_joined = gpd.sjoin(dnrc_gdf, basins[["pfaf_id", "geometry"]], how="left", predicate="within")
 
     print("Spatial join: SNOTEL → basins …")
-    snotel_joined = gpd.sjoin(snotel_gdf, basins[["pfaf8", "geometry"]], how="left", predicate="within")
-    snotel_by_pfaf8 = defaultdict(list)
+    snotel_joined = gpd.sjoin(snotel_gdf, basins[["pfaf_id", "geometry"]], how="left", predicate="within")
+    snotel_by_pfaf = defaultdict(list)
     for _, row in snotel_joined.iterrows():
-        p = row.get("pfaf8")
+        p = row.get("pfaf_id")
         if p and str(p) != "nan":
-            snotel_by_pfaf8[str(p)].append(row)
+            snotel_by_pfaf[str(p)].append(row)
 
     print("Building reverse topology …")
     rev_topo = build_reverse_topo(basins)
@@ -130,18 +130,18 @@ def main():
     matched = 0
     for _, row in dnrc_joined.iterrows():
         dnrc_id = row["dnrc_id"]
-        start_pfaf8 = row.get("pfaf8")
-        if not start_pfaf8 or str(start_pfaf8) == "nan":
+        start_pfaf = row.get("pfaf_id")
+        if not start_pfaf or str(start_pfaf) == "nan":
             links[dnrc_id] = []
             continue
 
-        upstream = bfs_upstream(str(start_pfaf8), rev_topo)
+        upstream = bfs_upstream(str(start_pfaf), rev_topo)
 
         # Collect SNOTEL stations in all upstream basins
         candidates = []
         seen_triplets = set()
         for p in upstream:
-            for s_row in snotel_by_pfaf8.get(p, []):
+            for s_row in snotel_by_pfaf.get(p, []):
                 t = s_row["triplet"]
                 if t not in seen_triplets:
                     seen_triplets.add(t)

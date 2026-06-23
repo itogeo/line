@@ -1255,23 +1255,23 @@ map.on('load', async () => {
       const polys = g.type === 'Polygon' ? [g.coordinates] : g.coordinates;
       return polys.some(poly => ptInRing(pt, poly[0]) && !poly.slice(1).some(h => ptInRing(pt, h)));
     }
-    // Build upstream lookup from HydroSHEDS pfaf8/next_pfaf8 topology
+    // Build upstream lookup from HydroSHEDS pfaf_id/next_pfaf_id topology
     let _upstreamGraph = null;
     function buildUpstreamGraph(features) {
-      // next_pfaf8 points downstream; invert to: pfaf8 → [upstream pfaf8s, ...]
+      // next_pfaf_id points downstream; invert to: pfaf_id → [upstream pfaf_ids, ...]
       const downTo = new Map();
       for (const f of features) {
-        const { pfaf8, next_pfaf8 } = f.properties;
-        if (!pfaf8 || !next_pfaf8) continue;
-        if (!downTo.has(next_pfaf8)) downTo.set(next_pfaf8, []);
-        downTo.get(next_pfaf8).push(pfaf8);
+        const { pfaf_id, next_pfaf_id } = f.properties;
+        if (!pfaf_id || !next_pfaf_id) continue;
+        if (!downTo.has(next_pfaf_id)) downTo.set(next_pfaf_id, []);
+        downTo.get(next_pfaf_id).push(pfaf_id);
       }
       return downTo;
     }
-    function getUpstreamSet(startPfaf8) {
+    function getUpstreamSet(startPfafId) {
       if (!_upstreamGraph) _upstreamGraph = buildUpstreamGraph(basinsData.features);
       const visited = new Set();
-      const queue = [startPfaf8];
+      const queue = [startPfafId];
       while (queue.length) {
         const cur = queue.shift();
         if (visited.has(cur)) continue;
@@ -1286,12 +1286,12 @@ map.on('load', async () => {
       const all = basinsData.features;
       const containing = all.find(f => ptInFeature(coords, f));
       if (!containing) { map.getSource('basin-hl-src').setData({ type: 'FeatureCollection', features: [] }); return; }
-      const startPfaf8 = containing.properties.pfaf8 || '';
-      const hasTopology = all.some(f => f.properties.next_pfaf8);
+      const startPfafId = containing.properties.pfaf_id || '';
+      const hasTopology = all.some(f => f.properties.next_pfaf_id);
       let upstream;
-      if (hasTopology && startPfaf8) {
-        const upSet = getUpstreamSet(startPfaf8);
-        upstream = all.filter(f => upSet.has(f.properties.pfaf8));
+      if (hasTopology && startPfafId) {
+        const upSet = getUpstreamSet(startPfafId);
+        upstream = all.filter(f => upSet.has(f.properties.pfaf_id));
       } else {
         upstream = [containing];
       }
@@ -1319,15 +1319,15 @@ map.on('load', async () => {
 
       const downMap = new Map();
       for (const f of all) {
-        const p = f.properties.pfaf8, n = f.properties.next_pfaf8;
+        const p = f.properties.pfaf_id, n = f.properties.next_pfaf_id;
         if (p && n) downMap.set(p, n);
       }
-      const pfaf8Index = new Map(all.map(f => [f.properties.pfaf8, f]));
+      const pfafIndex = new Map(all.map(f => [f.properties.pfaf_id, f]));
 
       const highlighted = [];
-      let cur = containing.properties.pfaf8;
+      let cur = containing.properties.pfaf_id;
       for (let hop = 0; hop <= maxHops && cur; hop++) {
-        const f = pfaf8Index.get(cur);
+        const f = pfafIndex.get(cur);
         if (!f) break;
         highlighted.push({ ...f, properties: { ...f.properties, hop } });
         cur = downMap.get(cur);
