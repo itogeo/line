@@ -1015,23 +1015,23 @@ map.on('load', async () => {
       const polys = g.type === 'Polygon' ? [g.coordinates] : g.coordinates;
       return polys.some(poly => ptInRing(pt, poly[0]) && !poly.slice(1).some(h => ptInRing(pt, h)));
     }
-    // Build upstream lookup once basinsData is ready: huc8 → set of huc8s that drain into it
+    // Build upstream lookup from HydroSHEDS pfaf8/next_pfaf8 topology
     let _upstreamGraph = null;
     function buildUpstreamGraph(features) {
-      // tohuc maps each HUC8 to its downstream HUC. Invert: downstream → [upstream, ...]
-      const downTo = new Map();  // tohuc → [huc8, ...]
+      // next_pfaf8 points downstream; invert to: pfaf8 → [upstream pfaf8s, ...]
+      const downTo = new Map();
       for (const f of features) {
-        const { huc8, tohuc } = f.properties;
-        if (!huc8 || !tohuc) continue;
-        if (!downTo.has(tohuc)) downTo.set(tohuc, []);
-        downTo.get(tohuc).push(huc8);
+        const { pfaf8, next_pfaf8 } = f.properties;
+        if (!pfaf8 || !next_pfaf8) continue;
+        if (!downTo.has(next_pfaf8)) downTo.set(next_pfaf8, []);
+        downTo.get(next_pfaf8).push(pfaf8);
       }
       return downTo;
     }
-    function getUpstreamSet(startHuc8) {
+    function getUpstreamSet(startPfaf8) {
       if (!_upstreamGraph) _upstreamGraph = buildUpstreamGraph(basinsData.features);
       const visited = new Set();
-      const queue = [startHuc8];
+      const queue = [startPfaf8];
       while (queue.length) {
         const cur = queue.shift();
         if (visited.has(cur)) continue;
@@ -1046,13 +1046,12 @@ map.on('load', async () => {
       const all = basinsData.features;
       const containing = all.find(f => ptInFeature(coords, f));
       if (!containing) { map.getSource('basin-hl-src').setData({ type: 'FeatureCollection', features: [] }); return; }
-      const startHuc8 = containing.properties.huc8 || '';
-      // If tohuc data is present, walk the graph; otherwise fall back to containing basin only
-      const hasTohuc = all.some(f => f.properties.tohuc);
+      const startPfaf8 = containing.properties.pfaf8 || '';
+      const hasTopology = all.some(f => f.properties.next_pfaf8);
       let upstream;
-      if (hasTohuc && startHuc8) {
-        const upSet = getUpstreamSet(startHuc8);
-        upstream = all.filter(f => upSet.has(f.properties.huc8));
+      if (hasTopology && startPfaf8) {
+        const upSet = getUpstreamSet(startPfaf8);
+        upstream = all.filter(f => upSet.has(f.properties.pfaf8));
       } else {
         upstream = [containing];
       }
