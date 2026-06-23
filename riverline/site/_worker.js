@@ -35,6 +35,25 @@ export default {
       );
     }
 
+    if (url.pathname === '/api/snotel') {
+      const triplet = url.searchParams.get('triplet');
+      const days = Math.min(parseInt(url.searchParams.get('days') || '49', 10), 400);
+      if (!triplet) return new Response('Bad request', { status: 400 });
+      const end = new Date();
+      const start = new Date(+end - days * 86400000);
+      const fmt = d => d.toISOString().slice(0, 10);
+      const awdbUrl = `https://wcc.sc.egov.usda.gov/awdbRestApi/services/v1/data?stationTriplets=${encodeURIComponent(triplet)}&elements=WTEQ,SNWD,TOBS&duration=DAILY&beginDate=${fmt(start)}&endDate=${fmt(end)}&periodRef=END`;
+      try {
+        const r = await fetch(awdbUrl, { headers: { 'User-Agent': 'RiverLine/1.0 (Ito Geospatial)' } });
+        const body = await r.text();
+        return new Response(body, {
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'public, max-age=3600' },
+        });
+      } catch (_) {
+        return new Response('[]', { status: 502, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } });
+      }
+    }
+
     if (url.pathname.startsWith('/api/') && request.method === 'OPTIONS') {
       return new Response(null, {
         headers: {

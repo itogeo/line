@@ -328,6 +328,8 @@ function arcgisTile(layerIds) {
 let flowChart = null;
 let noaaMap = {};
 let currentSiteId = null;
+let currentPanelType = null;
+let currentSnotelFeature = null;
 
 const panel     = document.getElementById('panel');
 const panelName = document.getElementById('panel-name');
@@ -342,6 +344,7 @@ document.getElementById('panel-close').addEventListener('click', closePanel);
 function closePanel() {
   panel.classList.remove('open');
   if (flowChart) { flowChart.destroy(); flowChart = null; }
+  if (window._clearBasinHighlight) window._clearBasinHighlight();
 }
 
 function openPanel(name, id, badgeClass) {
@@ -367,10 +370,15 @@ function nDaysAgo(n) {
 async function openUsgsPanel(feature) {
   const { id, name } = feature.properties;
   currentSiteId = id;
+  currentPanelType = 'usgs';
   openPanel(name, id, 'badge-usgs');
   chartSection.style.display = '';
-  document.getElementById('range-btns').style.display = 'flex';
-  document.querySelectorAll('.range-btn').forEach(b => b.classList.toggle('active', b.dataset.range === '14'));
+  const rangeBtns = document.getElementById('range-btns');
+  rangeBtns.innerHTML = `
+    <button class="range-btn active" data-range="14">14D</button>
+    <button class="range-btn" data-range="30">30D</button>
+    <button class="range-btn" data-range="365">1Y</button>`;
+  rangeBtns.style.display = 'flex';
   await loadUsgsChart(id, 14);
 }
 
@@ -441,9 +449,7 @@ async function loadUsgsChart(siteId, days) {
     const fcMap  = new Map(sampledFc.map(v => [v.validTime, v.flow]));
     const allKeys = [...new Set([...obsMap.keys(), ...fcMap.keys()])].sort((a, b) => new Date(a) - new Date(b));
 
-    const labelEvery = Math.max(1, Math.floor(allKeys.length / 7));
-    const labels = allKeys.map((t, i) => {
-      if (i % labelEvery !== 0) return '';
+    const labels = allKeys.map(t => {
       const d = new Date(t);
       return days >= 365
         ? `${d.getMonth()+1}/${d.getDate()}/${String(d.getFullYear()).slice(2)}`
@@ -453,12 +459,44 @@ async function loadUsgsChart(siteId, days) {
     const obsData = allKeys.map(t => obsMap.has(t) ? obsMap.get(t) : null);
     const fcData  = allKeys.map(t => fcMap.has(t)  ? fcMap.get(t)  : null);
 
+    // Fetch USGS historical mean by day-of-year for the average overlay
+    let avgData = [];
+    try {
+      const statsUrl = `https://waterservices.usgs.gov/nwis/stat/?format=json&sites=${siteId}&parameterCd=00060&statReportType=daily&statYearType=calendar`;
+      const statsJson = await fetch(statsUrl).then(r => r.json());
+      const allSeries = statsJson?.value?.timeSeries || [];
+      const meanSeries = allSeries.find(s => {
+        const opts = s?.variable?.options?.option || [];
+        return opts.some(o => o.name === 'statType' && (o.value === '00003' || o.value === '3'));
+      }) || allSeries.find(s => (s?.variable?.variableDescription || '').toLowerCase().includes('mean'));
+      if (meanSeries) {
+        const meanVals = meanSeries?.values?.[0]?.value || [];
+        const doyMap = new Map(); // "MM-DD" → mean cfs
+        for (const v of meanVals) {
+          const mmdd = (v.dateTime || '').slice(5, 10); // "MM-DD" (reference year varies)
+          if (mmdd && v.value && v.value !== '-999999') doyMap.set(mmdd, parseFloat(v.value));
+        }
+        avgData = allKeys.map(t => {
+          const mmdd = new Date(t).toISOString().slice(5, 10);
+          return doyMap.has(mmdd) ? doyMap.get(mmdd) : null;
+        });
+      }
+    } catch(_) {}
+
     const datasets = [{
       data: obsData,
       borderColor: 'rgba(74,143,186,0.85)', borderWidth: 1.5,
       fill: true, backgroundColor: 'rgba(74,143,186,0.08)',
       pointRadius: 0, tension: 0.2, spanGaps: false,
     }];
+    if (avgData.some(v => v !== null)) {
+      datasets.push({
+        data: avgData,
+        borderColor: 'rgba(255,255,255,0.2)', borderWidth: 1,
+        borderDash: [4, 3],
+        fill: false, pointRadius: 0, tension: 0.3, spanGaps: true,
+      });
+    }
     if (sampledFc.length) {
       datasets.push({
         data: fcData,
@@ -478,14 +516,21 @@ async function loadUsgsChart(siteId, days) {
           legend: { display: false },
           tooltip: {
             callbacks: {
-              label: c => c.parsed.y !== null ? c.parsed.y.toLocaleString() + ' cfs' : '',
+              label: c => c.datasetIndex === 1 && avgData.length ? (c.parsed.y !== null ? c.parsed.y.toLocaleString() + ' cfs avg' : '') : (c.parsed.y !== null ? c.parsed.y.toLocaleString() + ' cfs' : ''),
             },
             backgroundColor: 'rgba(14,28,45,0.95)', titleColor: '#455a70',
             bodyColor: '#d4dde8', borderColor: '#1a2f45', borderWidth: 1,
           },
         },
         scales: {
-          x: { display: false },
+          x: {
+            ticks: {
+              color: '#455a70', font: { family: 'JetBrains Mono', size: 9 },
+              maxTicksLimit: 7, maxRotation: 0,
+            },
+            grid: { display: false },
+            border: { display: false },
+          },
           y: {
             ticks: { color: '#455a70', font: { family: 'JetBrains Mono', size: 10 },
               callback: v => v >= 1000 ? (v/1000).toFixed(1)+'k' : v },
@@ -552,7 +597,10 @@ async function openDnrcPanel(feature) {
     flowChart = new Chart(ctx, {
       type: 'line',
       data: {
-        labels: readings.map(r => r.dt.slice(5, 16).replace('T', ' ')),
+        labels: readings.map(r => {
+          const d = new Date(r.dt);
+          return `${d.getMonth()+1}/${d.getDate()}`;
+        }),
         datasets: [{
           data: readings.map(r => r.cfs),
           borderColor: 'rgba(58,171,138,0.85)', borderWidth: 1.5,
@@ -571,7 +619,14 @@ async function openDnrcPanel(feature) {
           },
         },
         scales: {
-          x: { display: false },
+          x: {
+            ticks: {
+              color: '#455a70', font: { family: 'JetBrains Mono', size: 9 },
+              maxTicksLimit: 7, maxRotation: 0,
+            },
+            grid: { display: false },
+            border: { display: false },
+          },
           y: {
             ticks: { color: '#455a70', font: { family: 'JetBrains Mono', size: 10 },
               callback: v => v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v.toFixed(0) },
@@ -587,10 +642,25 @@ async function openDnrcPanel(feature) {
 }
 
 async function openSnotelPanel(feature) {
-  const { triplet, name, elevation_ft, county } = feature.properties;
+  const { triplet, name } = feature.properties;
+  currentPanelType = 'snotel';
+  currentSnotelFeature = feature;
   openPanel(name, triplet, 'badge-snotel');
+  chartSection.style.display = '';
+  const rangeBtns = document.getElementById('range-btns');
+  rangeBtns.innerHTML = `
+    <button class="range-btn active" data-range="49">7W</button>
+    <button class="range-btn" data-range="365">1Y</button>`;
+  rangeBtns.style.display = 'flex';
+  await loadSnotelChart(feature, 49);
+}
+
+async function loadSnotelChart(feature, days) {
+  if (flowChart) { flowChart.destroy(); flowChart = null; }
+  cfsHero.innerHTML = '<div class="cfs-loading">Loading…</div>';
+  const { triplet, elevation_ft, county } = feature.properties;
   try {
-    const rawArr = await fetch(`/api/snotel?triplet=${encodeURIComponent(triplet)}`).then(r => r.json());
+    const rawArr = await fetch(`/api/snotel?triplet=${encodeURIComponent(triplet)}&days=${days}`).then(r => r.json());
     const blocks = rawArr?.[0]?.data || [];
 
     function latestVal(code) {
@@ -617,13 +687,18 @@ async function openSnotelPanel(feature) {
     const sweBlock = blocks.find(x => x.stationElement?.elementCode === 'WTEQ');
     const sweVals = (sweBlock?.values || []).filter(v => v.value != null);
     if (sweVals.length > 1) {
-      document.getElementById('chart-label').textContent = '30-Day SWE';
-      chartSection.style.display = '';
+      const rangeLabel = days >= 365 ? '1-Year SWE' : days >= 49 ? '7-Week SWE' : 'SWE';
+      document.getElementById('chart-label').textContent = rangeLabel;
       const ctx = document.getElementById('flow-chart').getContext('2d');
       flowChart = new Chart(ctx, {
         type: 'line',
         data: {
-          labels: sweVals.map(v => v.date.slice(5)),
+          labels: sweVals.map(v => {
+            const d = new Date(v.date);
+            return days >= 365
+              ? `${d.getMonth()+1}/${d.getDate()}/${String(d.getFullYear()).slice(2)}`
+              : `${d.getMonth()+1}/${d.getDate()}`;
+          }),
           datasets: [{
             data: sweVals.map(v => parseFloat(v.value)),
             borderColor: 'rgba(212,148,58,0.85)', borderWidth: 1.5,
@@ -642,7 +717,14 @@ async function openSnotelPanel(feature) {
             },
           },
           scales: {
-            x: { display: false },
+            x: {
+              ticks: {
+                color: '#455a70', font: { family: 'JetBrains Mono', size: 9 },
+                maxTicksLimit: 7, maxRotation: 0,
+              },
+              grid: { display: false },
+              border: { display: false },
+            },
             y: {
               ticks: { color: '#455a70', font: { family: 'JetBrains Mono', size: 10 },
                 callback: v => v.toFixed(1) + '″' },
@@ -681,10 +763,14 @@ document.querySelectorAll('.layer-toggle').forEach(btn => {
 
 document.getElementById('range-btns').addEventListener('click', e => {
   const btn = e.target.closest('.range-btn');
-  if (!btn || !currentSiteId) return;
+  if (!btn) return;
   const days = parseInt(btn.dataset.range);
   document.querySelectorAll('.range-btn').forEach(b => b.classList.toggle('active', b === btn));
-  loadUsgsChart(currentSiteId, days);
+  if (currentPanelType === 'snotel' && currentSnotelFeature) {
+    loadSnotelChart(currentSnotelFeature, days);
+  } else if (currentSiteId) {
+    loadUsgsChart(currentSiteId, days);
+  }
 });
 
 function dismissLoading() {
@@ -898,9 +984,50 @@ map.on('load', async () => {
         'line-opacity': ['interpolate', ['linear'], ['zoom'], 4, 0.7, 9, 0.4],
         'line-dasharray': [5, 3],
       }});
+      // Upstream highlight overlay — orange, drawn above the base basin layer
+      map.addSource('basin-hl-src', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addLayer({ id: 'basin-hl-fill', type: 'fill', source: 'basin-hl-src', paint: {
+        'fill-color': '#d4943a',
+        'fill-opacity': 0.22,
+      }});
+      map.addLayer({ id: 'basin-hl-line', type: 'line', source: 'basin-hl-src', paint: {
+        'line-color': '#e8a84a',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1.4, 8, 0.9],
+        'line-opacity': 0.85,
+      }});
       const basinsToggle = document.getElementById('toggle-basins');
       if (basinsToggle) basinsToggle.classList.add('on');
     }
+
+    // Point-in-polygon helpers (ray casting) for upstream basin lookup
+    function ptInRing(pt, ring) {
+      let inside = false;
+      const [px, py] = pt;
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const [xi, yi] = ring[i], [xj, yj] = ring[j];
+        if (((yi > py) !== (yj > py)) && px < (xj - xi) * (py - yi) / (yj - yi) + xi) inside = !inside;
+      }
+      return inside;
+    }
+    function ptInFeature(pt, f) {
+      const g = f.geometry;
+      const polys = g.type === 'Polygon' ? [g.coordinates] : g.coordinates;
+      return polys.some(poly => ptInRing(pt, poly[0]) && !poly.slice(1).some(h => ptInRing(pt, h)));
+    }
+    function highlightUpstreamBasins(coords) {
+      if (!basinsData || !map.getSource('basin-hl-src')) return;
+      const all = basinsData.features;
+      const containing = all.find(f => ptInFeature(coords, f));
+      if (!containing) { map.getSource('basin-hl-src').setData({ type: 'FeatureCollection', features: [] }); return; }
+      // Show all HUC8s in the same HUC6 subbasin — the broader contributing watershed
+      const huc6 = (containing.properties.huc8 || '').slice(0, 6);
+      const upstream = huc6 ? all.filter(f => (f.properties.huc8 || '').startsWith(huc6)) : [containing];
+      map.getSource('basin-hl-src').setData({ type: 'FeatureCollection', features: upstream });
+    }
+    function clearBasinHighlight() {
+      if (map.getSource('basin-hl-src')) map.getSource('basin-hl-src').setData({ type: 'FeatureCollection', features: [] });
+    }
+    window._clearBasinHighlight = clearBasinHighlight;
 
     // Named lakes — fill polygons below river lines
     if (lakesData) {
@@ -946,6 +1073,9 @@ map.on('load', async () => {
       if (streamToggle) streamToggle.dataset.layers = 'mt-streams,nhd-rivers-line';
 
       map.on('click', 'nhd-rivers-line', e => {
+        // Don't open river panel when the click also hit a gauge dot
+        const gaugeHit = map.queryRenderedFeatures(e.point, { layers: ['usgs-points', 'dnrc-points', 'snotel-points'].filter(id => map.getLayer(id)) });
+        if (gaugeHit.length > 0) return;
         const name = e.features[0]?.properties?.name;
         if (name && window._openRiverByName) window._openRiverByName(name);
       });
@@ -967,6 +1097,7 @@ map.on('load', async () => {
       map.on('click', 'usgs-points', e => {
         openUsgsPanel(e.features[0]);
         if (window._highlightGauge) window._highlightGauge(e.features[0].properties.id);
+        highlightUpstreamBasins(e.features[0].geometry.coordinates);
       });
       map.on('mouseenter', 'usgs-points', () => { map.getCanvas().style.cursor = 'pointer'; });
       map.on('mouseleave', 'usgs-points', () => { map.getCanvas().style.cursor = ''; });
@@ -985,7 +1116,10 @@ map.on('load', async () => {
       });
       map.on('click', 'dnrc-points', e => {
         const usgs = usgsData ? map.queryRenderedFeatures(e.point, { layers: ['usgs-points'] }) : [];
-        if (!usgs.length) openDnrcPanel(e.features[0]);
+        if (!usgs.length) {
+          openDnrcPanel(e.features[0]);
+          highlightUpstreamBasins(e.features[0].geometry.coordinates);
+        }
       });
       map.on('mouseenter', 'dnrc-points', () => { map.getCanvas().style.cursor = 'pointer'; });
       map.on('mouseleave', 'dnrc-points', () => { map.getCanvas().style.cursor = ''; });
@@ -1007,6 +1141,7 @@ map.on('load', async () => {
         if (!usgs.length) {
           openSnotelPanel(e.features[0]);
           if (window._highlightSnotel) window._highlightSnotel(e.features[0].properties.triplet);
+          highlightUpstreamBasins(e.features[0].geometry.coordinates);
         }
       });
       map.on('mouseenter', 'snotel-points', () => { map.getCanvas().style.cursor = 'pointer'; });
