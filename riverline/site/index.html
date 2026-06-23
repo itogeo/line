@@ -831,7 +831,7 @@ map.on('load', async () => {
   try {
     map.addSource('src-streams', { type: 'raster', tiles: [arcgisTile('7')], tileSize: 256 });
     map.addSource('src-basins',  { type: 'raster', tiles: [arcgisTile('11')], tileSize: 256 });
-    map.addLayer({ id: 'mt-streams', type: 'raster', source: 'src-streams', paint: { 'raster-opacity': 0.5 } });
+    map.addLayer({ id: 'mt-streams', type: 'raster', source: 'src-streams', paint: { 'raster-opacity': 0.2 } });
     map.addLayer({ id: 'huc8-basins', type: 'raster', source: 'src-basins', paint: { 'raster-opacity': 0.35 }, layout: { visibility: 'none' } });
 
     dismissLoading();
@@ -888,63 +888,29 @@ map.on('load', async () => {
       });
     }
 
-    // NHD perennial river lines — data-driven width/color by visibilityfilter tier
-    // visibilityfilter: 0/24000=major, 50000=large, 100000=medium, 250000/500000=smaller, 1M+=creeks
+    // OSM named rivers — prominent vector lines over the faint raster texture
     if (riversData) {
       map.addSource('nhd-rivers', { type: 'geojson', data: riversData });
       map.addLayer({ id: 'nhd-rivers-line', type: 'line', source: 'nhd-rivers',
         layout: { 'line-join': 'round', 'line-cap': 'round' },
         paint: {
-          'line-color': ['match', ['get', 'visibilityfilter'],
-            0,       '#6dbfe8',
-            24000,   '#6dbfe8',
-            50000,   '#4fa5cc',
-            100000,  '#3d82aa',
-            250000,  '#2d6080',
-            500000,  '#2d6080',
-            '#1e3f55',
+          'line-color': '#5cb8e0',
+          'line-width': ['interpolate', ['linear'], ['zoom'],
+            5,  1.8,
+            8,  3.5,
+            10, 5.0,
+            13, 8.0,
           ],
-          'line-width': [
-            'interpolate', ['linear'], ['zoom'],
-            5, ['match', ['get', 'visibilityfilter'],
-              0, 2.0, 24000, 2.0,
-              50000, 1.2,
-              100000, 0.7,
-              250000, 0.4, 500000, 0.4,
-              0.2,
-            ],
-            10, ['match', ['get', 'visibilityfilter'],
-              0, 5.5, 24000, 5.5,
-              50000, 3.5,
-              100000, 2.2,
-              250000, 1.2, 500000, 1.2,
-              0.6,
-            ],
-            14, ['match', ['get', 'visibilityfilter'],
-              0, 9.0, 24000, 9.0,
-              50000, 6.0,
-              100000, 3.8,
-              250000, 2.2, 500000, 2.2,
-              1.0,
-            ],
-          ],
-          'line-opacity': ['match', ['get', 'visibilityfilter'],
-            0, 0.9, 24000, 0.9,
-            50000, 0.8,
-            100000, 0.7,
-            250000, 0.55, 500000, 0.55,
-            0.4,
-          ],
+          'line-opacity': 0.85,
         },
       });
-      // Swap: hide raster stream layer — vector is now authoritative
-      map.setLayoutProperty('mt-streams', 'visibility', 'none');
+      // Raster stays as faint background texture; toggle controls both together
       const streamToggle = document.getElementById('toggle-streams');
-      if (streamToggle) streamToggle.dataset.layers = 'nhd-rivers-line';
+      if (streamToggle) streamToggle.dataset.layers = 'mt-streams,nhd-rivers-line';
 
       map.on('click', 'nhd-rivers-line', e => {
-        const gnisName = e.features[0]?.properties?.gnis_name;
-        if (gnisName && window._openRiverByName) window._openRiverByName(gnisName);
+        const name = e.features[0]?.properties?.name;
+        if (name && window._openRiverByName) window._openRiverByName(name);
       });
       map.on('mouseenter', 'nhd-rivers-line', () => { map.getCanvas().style.cursor = 'pointer'; });
       map.on('mouseleave', 'nhd-rivers-line', () => { map.getCanvas().style.cursor = ''; });
