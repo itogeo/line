@@ -192,6 +192,30 @@ export default {
         );
       }
 
+      // SNOTEL proxy — AWDB has no CORS headers; proxy single station's 30-day data
+      if (path === '/api/snotel' && url.searchParams.get('triplet')) {
+        const triplet = url.searchParams.get('triplet');
+        const today = new Date().toISOString().slice(0, 10);
+        const thirtyAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        const apiUrl = `https://wcc.sc.egov.usda.gov/awdbRestApi/services/v1/data?stationTriplets=${encodeURIComponent(triplet)}&elements=WTEQ,SNWD,TOBS&duration=DAILY&beginDate=${thirtyAgo}&endDate=${today}&periodRef=END`;
+        try {
+          const r = await fetch(apiUrl, { headers: { 'User-Agent': 'riverline/1.0' } });
+          const body = await r.text();
+          return new Response(body, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*',
+              'Cache-Control': 'public, max-age=3600',
+            },
+          });
+        } catch (e) {
+          return new Response(JSON.stringify({ error: 'SNOTEL proxy error' }), {
+            status: 502,
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+          });
+        }
+      }
+
       // Shared freshness utilities
       if (path === '/shared/freshness.js') {
         return env.ASSETS.fetch(new Request(new URL('/_shared/freshness.js', url), request));

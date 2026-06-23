@@ -21,6 +21,7 @@
     --accent:  #4a8fba;
     --teal:    #3aab8a;
     --warn:    #c8973a;
+    --gold:    #d4943a;
     --danger:  #c05040;
     --mono:    'JetBrains Mono', monospace;
     --serif:   'Playfair Display', serif;
@@ -118,8 +119,11 @@
     letter-spacing: 0.08em; padding: 2px 6px; border-radius: 4px;
     flex-shrink: 0; margin-top: 3px;
   }
-  .badge-usgs { background: rgba(74,143,186,0.2); color: var(--accent); border: 1px solid rgba(74,143,186,0.3); }
-  .badge-dnrc { background: rgba(58,171,138,0.2); color: var(--teal); border: 1px solid rgba(58,171,138,0.3); }
+  .badge-usgs  { background: rgba(74,143,186,0.2);  color: var(--accent); border: 1px solid rgba(74,143,186,0.3); }
+  .badge-dnrc  { background: rgba(58,171,138,0.2);  color: var(--teal);   border: 1px solid rgba(58,171,138,0.3); }
+  .badge-snotel{ background: rgba(212,148,58,0.2);  color: var(--gold);   border: 1px solid rgba(212,148,58,0.3); }
+  .ext-link .snotel-link { border-color: rgba(212,148,58,0.3); color: var(--gold); }
+  .ext-link .snotel-link:hover { background: rgba(212,148,58,0.1); border-color: var(--gold); }
   .title-block { flex: 1; min-width: 0; }
   .gauge-name { font-family: var(--serif); font-size: 15px; font-weight: 700; color: var(--text); line-height: 1.2; }
   .gauge-sub { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 3px; }
@@ -211,6 +215,10 @@
     <div class="dot" style="background:var(--teal)"></div>
     <span>DNRC gauges</span>
   </div>
+  <div class="layer-toggle on" id="toggle-snotel" data-layers="snotel-points">
+    <div class="dot" style="background:var(--gold)"></div>
+    <span>SNOTEL</span>
+  </div>
   <div class="layer-toggle on" id="toggle-streams" data-layers="mt-streams">
     <div class="dot" style="background:#5b8db8; border-radius:1px; height:3px; width:14px;"></div>
     <span>MT streams</span>
@@ -224,10 +232,11 @@
 <div id="legend">
   <div class="leg-row"><div class="leg-dot" style="background:var(--accent)"></div>USGS stream gauge</div>
   <div class="leg-row"><div class="leg-dot" style="background:var(--teal)"></div>DNRC stage gauge</div>
+  <div class="leg-row"><div class="leg-dot" style="background:var(--gold)"></div>SNOTEL snowpack</div>
 </div>
 
 <div id="gauge-count">
-  <span id="usgs-ct">—</span> USGS · <span id="dnrc-ct">—</span> DNRC
+  <span id="usgs-ct">—</span> USGS · <span id="dnrc-ct">—</span> DNRC · <span id="snotel-ct">—</span> SNOTEL
 </div>
 
 <div id="panel">
@@ -242,7 +251,7 @@
   <div id="panel-body">
     <div class="cfs-hero" id="cfs-hero"><div class="cfs-loading">Loading…</div></div>
     <div id="chart-section" style="display:none">
-      <div class="section-label">7-Day Flow</div>
+      <div class="section-label" id="chart-label">7-Day Flow</div>
       <div class="chart-wrap"><canvas id="flow-chart"></canvas></div>
     </div>
     <div id="info-section"></div>
@@ -290,7 +299,7 @@ function openPanel(name, id, badgeClass) {
   panelName.textContent = name;
   panelId.textContent = id;
   panelBadge.className = 'source-badge ' + badgeClass;
-  panelBadge.textContent = badgeClass.includes('usgs') ? 'USGS' : 'DNRC';
+  panelBadge.textContent = badgeClass.includes('usgs') ? 'USGS' : badgeClass.includes('dnrc') ? 'DNRC' : 'SNOTEL';
   cfsHero.innerHTML = '<div class="cfs-loading">Loading…</div>';
   chartSection.style.display = 'none';
   infoSection.innerHTML = '';
@@ -327,6 +336,7 @@ async function openUsgsPanel(feature) {
       if (vals.length > 1) {
         const step = Math.max(1, Math.floor(vals.length / 96));
         const sampled = vals.filter((_, i) => i % step === 0);
+        document.getElementById('chart-label').textContent = '7-Day Flow';
         chartSection.style.display = '';
         const ctx = document.getElementById('flow-chart').getContext('2d');
         flowChart = new Chart(ctx, {
@@ -394,6 +404,90 @@ function openDnrcPanel(feature) {
   extLink.innerHTML = `<a href="https://gis.dnrc.mt.gov/apps/stage/gage-report/location/${id}" target="_blank" rel="noopener">DNRC StAGE ↗</a>`;
 }
 
+async function openSnotelPanel(feature) {
+  const { triplet, name, elevation_ft, county } = feature.properties;
+  openPanel(name, triplet, 'badge-snotel');
+  try {
+    const rawArr = await fetch(`/api/snotel?triplet=${encodeURIComponent(triplet)}`).then(r => r.json());
+    const blocks = rawArr?.[0]?.data || [];
+
+    function latestVal(code) {
+      const b = blocks.find(x => x.stationElement?.elementCode === code);
+      const vals = (b?.values || []).filter(v => v.value != null);
+      if (!vals.length) return null;
+      const last = vals[vals.length - 1];
+      return { value: parseFloat(last.value), date: last.date };
+    }
+
+    const swe   = latestVal('WTEQ');
+    const depth = latestVal('SNWD');
+    const tobs  = latestVal('TOBS');
+
+    if (swe !== null) {
+      cfsHero.innerHTML = `
+        <div class="cfs-value" style="color:var(--gold)">${swe.value.toFixed(1)}</div>
+        <div class="cfs-unit">inches SWE</div>
+        <div class="cfs-ts">${swe.date}</div>`;
+    } else {
+      cfsHero.innerHTML = '<div class="cfs-loading">No SWE data</div>';
+    }
+
+    const sweBlock = blocks.find(x => x.stationElement?.elementCode === 'WTEQ');
+    const sweVals = (sweBlock?.values || []).filter(v => v.value != null);
+    if (sweVals.length > 1) {
+      document.getElementById('chart-label').textContent = '30-Day SWE';
+      chartSection.style.display = '';
+      const ctx = document.getElementById('flow-chart').getContext('2d');
+      flowChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: sweVals.map(v => v.date.slice(5)),
+          datasets: [{
+            data: sweVals.map(v => parseFloat(v.value)),
+            borderColor: 'rgba(212,148,58,0.85)', borderWidth: 1.5,
+            fill: true, backgroundColor: 'rgba(212,148,58,0.08)',
+            pointRadius: 0, tension: 0.2,
+          }],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false, animation: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: { label: c => c.parsed.y.toFixed(1) + ' in SWE' },
+              backgroundColor: 'rgba(14,28,45,0.95)', titleColor: '#455a70',
+              bodyColor: '#d4dde8', borderColor: '#1a2f45', borderWidth: 1,
+            },
+          },
+          scales: {
+            x: { display: false },
+            y: {
+              ticks: { color: '#455a70', font: { family: 'JetBrains Mono', size: 10 },
+                callback: v => v.toFixed(1) + '″' },
+              grid: { color: 'rgba(255,255,255,0.04)' },
+              border: { display: false },
+            },
+          },
+        },
+      });
+    }
+
+    const rows = [];
+    if (depth) rows.push({ lbl: 'Snow depth', val: depth.value.toFixed(0) + ' in' });
+    if (tobs)  rows.push({ lbl: 'Air temp',   val: tobs.value.toFixed(0) + '°F' });
+    if (elevation_ft) rows.push({ lbl: 'Elevation', val: parseInt(elevation_ft).toLocaleString() + ' ft' });
+    if (county) rows.push({ lbl: 'County', val: county });
+    rows.push({ lbl: 'Network', val: 'NRCS SNOTEL' });
+    infoSection.innerHTML = rows.map(r =>
+      `<div class="info-row"><span class="lbl">${r.lbl}</span><span class="val">${r.val}</span></div>`
+    ).join('');
+    const stationId = triplet.split(':')[0];
+    extLink.innerHTML = `<a class="snotel-link" href="https://wcc.sc.egov.usda.gov/nwcc/site?sitenum=${stationId}" target="_blank" rel="noopener">NRCS Station ↗</a>`;
+  } catch(e) {
+    cfsHero.innerHTML = '<div class="cfs-loading">Fetch error</div>';
+  }
+}
+
 document.querySelectorAll('.layer-toggle').forEach(btn => {
   btn.addEventListener('click', () => {
     const on = btn.classList.toggle('on');
@@ -419,13 +513,15 @@ map.on('load', async () => {
     // Show map immediately — dismiss loading before waiting for gauge data
     dismissLoading();
 
-    const [usgsData, dnrcData] = await Promise.all([
+    const [usgsData, dnrcData, snotelData] = await Promise.all([
       fetch('/data/usgs_gauges.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
       fetch('/data/dnrc_gauges.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+      fetch('/data/snotel_stations.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
     ]);
 
     document.getElementById('usgs-ct').textContent = usgsData.features.length;
     document.getElementById('dnrc-ct').textContent = dnrcData.features.length;
+    document.getElementById('snotel-ct').textContent = snotelData.features.length;
 
   map.addSource('usgs-gauges', {
     type: 'geojson', data: usgsData,
@@ -435,7 +531,7 @@ map.on('load', async () => {
     id: 'usgs-clusters', type: 'circle', source: 'usgs-gauges',
     filter: ['has', 'point_count'],
     paint: {
-      'circle-color': 'rgba(74,143,186,0.25)',
+      'circle-color': 'rgba(74,143,186,0.75)',
       'circle-stroke-color': 'rgba(74,143,186,0.65)',
       'circle-stroke-width': 1.5,
       'circle-radius': ['step', ['get', 'point_count'], 16, 10, 22, 30, 28],
@@ -473,6 +569,17 @@ map.on('load', async () => {
     },
   });
 
+  map.addSource('snotel-stations', { type: 'geojson', data: snotelData });
+  map.addLayer({
+    id: 'snotel-points', type: 'circle', source: 'snotel-stations',
+    paint: {
+      'circle-color': 'rgba(212,148,58,0.82)',
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 4.5, 10, 8],
+      'circle-stroke-color': 'rgba(255,255,255,0.18)',
+      'circle-stroke-width': 1.2,
+    },
+  });
+
   map.on('click', 'usgs-clusters', e => {
     const f = map.queryRenderedFeatures(e.point, { layers: ['usgs-clusters'] })[0];
     map.getSource('usgs-gauges').getClusterExpansionZoom(f.properties.cluster_id, (err, zoom) => {
@@ -484,8 +591,12 @@ map.on('load', async () => {
     const usgs = map.queryRenderedFeatures(e.point, { layers: ['usgs-points'] });
     if (!usgs.length) openDnrcPanel(e.features[0]);
   });
+  map.on('click', 'snotel-points', e => {
+    const usgs = map.queryRenderedFeatures(e.point, { layers: ['usgs-points'] });
+    if (!usgs.length) openSnotelPanel(e.features[0]);
+  });
 
-  ['usgs-clusters','usgs-points','dnrc-points'].forEach(id => {
+  ['usgs-clusters','usgs-points','dnrc-points','snotel-points'].forEach(id => {
     map.on('mouseenter', id, () => { map.getCanvas().style.cursor = 'pointer'; });
     map.on('mouseleave', id, () => { map.getCanvas().style.cursor = ''; });
   });
