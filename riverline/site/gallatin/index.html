@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>River Conditions — Gallatin at Gateway · itogeospatial</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="/shared/freshness.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,400&family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #080f18;
+      --surface: #0e1c2d;
+      --border: #1a2d42;
+      --text: #d4dde8;
+      --dim: #455a70;
+      --accent: #4a8fba;
+      --green: #4ade80;
+      --yellow: #c8973a;
+      --orange: #c05040;
+      --red: #c05040;
+      --purple: #c084fc;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      background: var(--bg); color: var(--text);
+      font-family: 'Inter', -apple-system, sans-serif;
+      font-size: 16px; line-height: 1.5;
+    }
+    a { color: var(--accent); text-decoration: none; }
+
+    /* ── Layout ── */
+    .page { max-width: 720px; margin: 0 auto; padding: 0 16px 64px; }
+
+    /* ── Header ── */
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 20px 0 8px;
+    }
+    .wordmark { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 400; color: var(--dim); letter-spacing: 0.05em; }
+    .live-dot {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 12px; color: var(--dim);
+    }
+    .live-dot::before {
+      content: ''; display: block; width: 7px; height: 7px;
+      border-radius: 50%; background: var(--green);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; } 50% { opacity: 0.4; }
+    }
+
+    /* ── Section headers ── */
+    .section-label {
+      font-family: 'Playfair Display', serif;
+      font-style: italic;
+      font-size: 20px;
+      font-weight: 400;
+      color: var(--accent);
+      margin-bottom: 16px;
+      margin-top: 8px;
+    }
+
+    /* ── Hero ── */
+    #hero {
+      padding: 28px 0 24px; margin: 12px 0 20px;
+    }
+    .hero-station {
+      font-size: 11px;
+      font-family: 'Inter';
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      color: var(--dim);
+      margin-bottom: 16px;
+    }
+    .hero-divider {
+      height: 1px;
+      background: var(--border);
+      margin: 12px 0;
+    }
+    .hero-cfs {
+      font-size: 80px;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      line-height: 1;
+      color: var(--text);
+    }
+    .hero-cfs .unit {
+      font-size: 24px;
+      font-weight: 400;
+      color: var(--dim);
+      margin-left: 4px;
+    }
+    .hero-trend {
+      font-size: 16px;
+      color: var(--dim);
+      margin-top: 4px;
+    }
+    .hero-level {
+      display: inline-block;
+      margin-top: 16px;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      padding: 4px 12px;
+      border-radius: 999px;
+      background: rgba(74,143,186,0.15);
+      color: var(--accent);
+    }
+    .hero-level.warn {
+      background: rgba(200,151,58,0.15);
+      color: var(--yellow);
+    }
+    .hero-level.alert {
+      background: rgba(192,80,64,0.15);
+      color: var(--red);
+    }
+    .hero-sublevel {
+      font-size: 14px;
+      color: var(--dim);
+      margin-top: 6px;
+    }
+    .hero-meta {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-top: 16px;
+      font-size: 13px;
+      color: var(--dim);
+    }
+    .flood-ok { color: var(--green); }
+    .flood-warn { color: var(--yellow); }
+    .flood-alert { color: var(--red); }
+    .freshness { font-size: 11px; color: var(--dim); }
+
+    /* ── Gauge strip ── */
+    #gauge-strip { margin-bottom: 20px; }
+    .gauge-strip {
+      display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px;
+      scrollbar-width: none;
+    }
+    .gauge-strip::-webkit-scrollbar { display: none; }
+    .gauge-card {
+      flex: 0 0 auto; min-width: 80px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 10px 12px; text-align: center;
+      cursor: pointer; transition: border-color 0.15s, background 0.15s;
+    }
+    .gauge-card:hover { border-color: var(--accent); }
+    .gauge-card.active {
+      border-color: var(--accent); background: rgba(74,143,186,0.12);
+    }
+    .gc-short {
+      font-size: 10px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--dim); margin-bottom: 4px;
+    }
+    .gc-cfs {
+      font-family: 'JetBrains Mono', monospace; font-size: 18px;
+      font-weight: 600; color: var(--text); line-height: 1;
+    }
+    .gc-unit {
+      font-size: 10px; color: var(--dim); margin-top: 2px;
+    }
+
+    /* ── Forecast chart ── */
+    #forecast { margin-bottom: 20px; }
+    .chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+    }
+    .chart-head {
+      display: flex; justify-content: space-between; align-items: baseline;
+      margin-bottom: 16px;
+    }
+    .chart-title { font-size: 16px; font-weight: 600; }
+    .chart-source { font-size: 11px; color: var(--dim); }
+    .chart-wrap { position: relative; height: 200px; }
+    #forecast.collapsed .chart-wrap { display: none; }
+    .no-forecast {
+      font-size: 14px; color: var(--dim); padding: 24px 0; text-align: center;
+    }
+
+    /* ── Audience cards ── */
+    #audience { margin-bottom: 20px; }
+    .card-row {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .audience-card {
+      display: flex;
+      align-items: center;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      gap: 0;
+    }
+    .audience-card:last-child {
+      border-bottom: none;
+    }
+    .card-label {
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--dim);
+      width: 64px;
+      flex-shrink: 0;
+    }
+    .card-status {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+      flex: 1;
+    }
+    .card-detail {
+      font-size: 13px;
+      color: var(--dim);
+      text-align: right;
+    }
+
+    /* ── History chart ── */
+    #history { margin-bottom: 20px; }
+    #historyChart-wrap { position: relative; height: 200px; }
+
+    /* ── Weather strip ── */
+    #weather { margin-bottom: 20px; }
+    .weather-strip {
+      display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px;
+      scrollbar-width: none;
+    }
+    .weather-strip::-webkit-scrollbar { display: none; }
+    .weather-day {
+      flex: 0 0 68px; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 10px 8px; text-align: center;
+    }
+    .wd-name { font-size: 11px; font-weight: 600; color: var(--dim); }
+    .wd-icon { font-size: 22px; margin: 6px 0; }
+    .wd-temp { font-size: 13px; font-weight: 600; }
+    .wd-pop { font-size: 11px; color: var(--accent); margin-top: 2px; }
+
+    /* ── Collapsible sections ── */
+    details {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 14px; margin-bottom: 12px; overflow: hidden;
+    }
+    summary {
+      padding: 14px 18px; font-size: 14px; font-weight: 600;
+      cursor: pointer; list-style: none; display: flex;
+      justify-content: space-between; align-items: center;
+      user-select: none;
+    }
+    summary::-webkit-details-marker { display: none; }
+    summary::after {
+      content: '›'; font-size: 18px; color: var(--dim);
+      transform: rotate(90deg); transition: transform 0.2s;
+      display: inline-block;
+    }
+    details[open] summary::after { transform: rotate(-90deg); }
+    .details-body { padding: 0 18px 16px; }
+
+    /* ── Snowpack table ── */
+    .snotel-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .snotel-table th {
+      text-align: left; font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--dim); padding: 4px 0 8px; border-bottom: 1px solid var(--border);
+    }
+    .snotel-table td { padding: 8px 0; border-bottom: 1px solid var(--border); }
+    .snotel-table tr:last-child td { border-bottom: none; }
+    .pct-bar {
+      display: inline-block; height: 4px; border-radius: 2px;
+      background: var(--accent); margin-left: 8px; vertical-align: middle;
+    }
+
+    /* ── Crests table ── */
+    .crests-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .crests-table th {
+      text-align: left; font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--dim); padding: 4px 0 8px; border-bottom: 1px solid var(--border);
+    }
+    .crests-table td { padding: 8px 0; border-bottom: 1px solid var(--border); color: var(--dim); }
+    .crests-table tr:last-child td { border-bottom: none; }
+    .crests-table td:first-child { color: var(--text); }
+    .crests-table .stage-col { text-align: right; }
+    .crests-table .flow-col { text-align: right; }
+
+    /* ── Loading / error ── */
+    .loading {
+      text-align: center; color: var(--dim); font-size: 14px;
+      padding: 60px 0;
+    }
+    .error-banner {
+      background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.3);
+      border-radius: 10px; padding: 12px 16px; font-size: 13px; color: var(--red);
+      margin: 12px 0;
+    }
+
+    @media (max-width: 480px) {
+      .hero-cfs { font-size: 52px; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <div class="wordmark">itogeospatial</div>
+    <a href="/" style="font-size:10px;color:var(--dim);text-decoration:none;border:1px solid var(--border);border-radius:4px;padding:2px 7px;font-family:'JetBrains Mono',monospace;letter-spacing:0.04em;" title="Montana map">← Map</a>
+    <div class="live-dot" id="live-label">Live</div>
+  </header>
+
+  <div id="root"><div class="loading">Loading…</div></div>
+
+</div>
+
+<script>
+// ── Level descriptors ────────────────────────────────────────────────────────
+// Gallatin at Logan (06043500) — cfs ranges
+
+function level(cfs) {
+  if (cfs < 300)        return { badge: 'Too low to float', sub: 'Excellent low-water wading', cls: '' };
+  if (cfs < 800)        return { badge: 'Good for beginners', sub: 'Good wade fishing', cls: '' };
+  if (cfs < 1500)       return { badge: 'Good for floaters', sub: 'Prime wade conditions', cls: '' };
+  if (cfs < 3000)       return { badge: 'Experienced floaters', sub: 'Wade carefully', cls: 'warn' };
+  if (cfs < 4846)       return { badge: 'Experts only', sub: 'Stay out of the water', cls: 'warn' };
+  return                      { badge: 'Flood stage', sub: 'Dangerous — do not enter', cls: 'alert' };
+}
+
+function floatCard(cfs) {
+  if (cfs < 300)  return { status: 'Too low', detail: 'Not floatable' };
+  if (cfs < 800)  return { status: 'Flatwater', detail: 'Beginners OK' };
+  if (cfs < 1500) return { status: 'Good', detail: 'Intermediate+' };
+  if (cfs < 3000) return { status: 'Experienced', detail: 'Scout first' };
+  if (cfs < 4846) return { status: 'Experts only', detail: 'High water' };
+  return               { status: 'Flood', detail: 'Stay off water' };
+}
+
+function wadeCard(cfs) {
+  if (cfs < 300)  return { status: 'Excellent', detail: 'Summer low — prime' };
+  if (cfs < 800)  return { status: 'Good', detail: 'Most spots fishable' };
+  if (cfs < 1500) return { status: 'Prime', detail: '✓ Go now' };
+  if (cfs < 3000) return { status: 'Caution', detail: 'Watch your footing' };
+  if (cfs < 4846) return { status: 'Stay out', detail: 'Too high to wade' };
+  return               { status: 'Dangerous', detail: 'Do not enter' };
+}
+
+function waterCard(cfs, p50) {
+  if (!p50 || p50 <= 0) return { status: '—', detail: 'No data' };
+  const pct = Math.round((cfs / p50) * 100) - 100;
+  const sign = pct >= 0 ? '+' : '';
+  let detail;
+  if (pct < -30)      detail = 'Well below typical';
+  else if (pct < -10) detail = 'Below typical';
+  else if (pct <= 10) detail = 'Near typical';
+  else if (pct <= 30) detail = 'Above typical';
+  else                detail = 'Well above typical';
+  return { status: `${sign}${pct}%`, detail };
+}
+
+// ── Flood category label ─────────────────────────────────────────────────────
+
+function floodLabel(category) {
+  switch (category) {
+    case 'no_flooding': return { text: 'No flood concerns', cls: 'flood-ok' };
+    case 'action':      return { text: '⚠ Action stage', cls: 'flood-warn' };
+    case 'minor':       return { text: '⚠ Minor flooding', cls: 'flood-warn' };
+    case 'moderate':    return { text: '⚡ Moderate flooding', cls: 'flood-alert' };
+    case 'major':       return { text: '🚨 Major flooding', cls: 'flood-alert' };
+    default:            return { text: category || 'Unknown', cls: '' };
+  }
+}
+
+// ── Trend ────────────────────────────────────────────────────────────────────
+
+function trend(history) {
+  if (!history || history.length < 2) return '— No trend data';
+  const today = history[0].cfs;
+  const yesterday = history[1].cfs;
+  if (!today || !yesterday) return '— No trend data';
+  const delta = (today - yesterday) / yesterday;
+  if (delta > 0.05)  return '↑ Rising';
+  if (delta < -0.05) return '↓ Falling';
+  return '→ Steady';
+}
+
+// ── Time formatting ──────────────────────────────────────────────────────────
+
+function formatTimeMT(iso) {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString('en-US', {
+      timeZone: 'America/Denver',
+      month: 'short', day: 'numeric',
+      hour: 'numeric', minute: '2-digit',
+      hour12: true,
+    }) + ' MT';
+  } catch { return iso; }
+}
+
+function formatDateMT(iso) {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString('en-US', {
+      timeZone: 'America/Denver',
+      month: 'short', day: 'numeric', year: 'numeric',
+    });
+  } catch { return iso; }
+}
+
+// ── DOY lookup ───────────────────────────────────────────────────────────────
+
+function getDOY(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00Z');
+  const year = d.getUTCFullYear();
+  const start = new Date(Date.UTC(year, 0, 0));
+  const diff = d - start;
+  return Math.floor(diff / 86400000);
+}
+
+// ── Chart: 10-Day Forecast ───────────────────────────────────────────────────
+
+function buildForecastChart(canvasId, points, thresholds) {
+  const labels = points.map(p => {
+    const d = new Date(p.validTime);
+    return d.toLocaleString('en-US', {
+      timeZone: 'America/Denver',
+      month: 'short', day: 'numeric',
+      hour: 'numeric', hour12: true,
+    });
+  });
+  const data = points.map(p => p.primary);
+
+  const thresholdLines = [
+    { value: thresholds.action_stage_ft,   color: '#facc15', label: 'Action' },
+    { value: thresholds.minor_stage_ft,    color: '#fb923c', label: 'Minor' },
+    { value: thresholds.moderate_stage_ft, color: '#f87171', label: 'Moderate' },
+    { value: thresholds.major_stage_ft,    color: '#c084fc', label: 'Major' },
+  ].filter(t => t.value != null);
+
+  const annotations = {};
+  thresholdLines.forEach(t => {
+    annotations[t.label] = {
+      type: 'line', yMin: t.value, yMax: t.value,
+      borderColor: t.color, borderWidth: 1.5,
+      borderDash: [4, 3],
+      label: { content: t.label, display: true, position: 'end',
+               color: t.color, font: { size: 10 }, padding: 2 },
+    };
+  });
+
+  const ctx = document.getElementById(canvasId).getContext('2d');
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        data,
+        borderColor: '#4a8fba',
+        backgroundColor: 'rgba(74,143,186,0.08)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 2,
+        pointHoverRadius: 5,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => `${ctx.parsed.y.toFixed(1)} ft stage`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          ticks: {
+            color: '#455a70', font: { size: 10 },
+            maxRotation: 45, maxTicksLimit: 8,
+          },
+          grid: { color: 'rgba(255,255,255,0.04)' },
+        },
+        y: {
+          ticks: { color: '#455a70', font: { size: 11 } },
+          grid: { color: 'rgba(255,255,255,0.04)' },
+          title: { display: true, text: 'Stage (ft)', color: '#455a70', font: { size: 11 } },
+        },
+      },
+    },
+  });
+}
+
+// ── Chart: 90-Day History ────────────────────────────────────────────────────
+
+function buildHistoryChart(canvasId, history, bands, todayDOY) {
+  // history is DESC from API — reverse to chronological
+  const sorted = [...history].reverse();
+  const labels = sorted.map(r => {
+    const d = new Date(r.date + 'T12:00:00Z');
+    return d.toLocaleString('en-US', { month: 'short', day: 'numeric' });
+  });
+  const cfsData = sorted.map(r => r.cfs);
+
+  // Build P10/P90 band arrays aligned to each date
+  const bandMap = {};
+  bands.forEach(b => { bandMap[b.doy] = b; });
+
+  const p10Data = sorted.map(r => {
+    const doy = getDOY(r.date);
+    return bandMap[doy]?.p10 ?? null;
+  });
+  const p90Data = sorted.map(r => {
+    const doy = getDOY(r.date);
+    return bandMap[doy]?.p90 ?? null;
+  });
+  const p50Data = sorted.map(r => {
+    const doy = getDOY(r.date);
+    return bandMap[doy]?.p50 ?? null;
+  });
+
+  const ctx = document.getElementById(canvasId).getContext('2d');
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'P90',
+          data: p90Data,
+          borderColor: 'transparent',
+          backgroundColor: 'rgba(74,143,186,0.08)',
+          fill: '+1',
+          tension: 0.3,
+          pointRadius: 0,
+        },
+        {
+          label: 'P10',
+          data: p10Data,
+          borderColor: 'transparent',
+          backgroundColor: 'rgba(74,143,186,0.08)',
+          fill: false,
+          tension: 0.3,
+          pointRadius: 0,
+        },
+        {
+          label: 'Median',
+          data: p50Data,
+          borderColor: 'rgba(74,143,186,0.35)',
+          borderWidth: 1,
+          borderDash: [3, 3],
+          fill: false,
+          tension: 0.3,
+          pointRadius: 0,
+        },
+        {
+          label: 'Flow',
+          data: cfsData,
+          borderColor: '#4a8fba',
+          backgroundColor: 'rgba(74,143,186,0.12)',
+          fill: false,
+          tension: 0.2,
+          pointRadius: 0,
+          borderWidth: 2,
+        },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          mode: 'index', intersect: false,
+          filter: item => item.dataset.label === 'Flow',
+          callbacks: {
+            label: ctx => `${Math.round(ctx.parsed.y).toLocaleString()} cfs`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          ticks: {
+            color: '#455a70', font: { size: 10 },
+            maxTicksLimit: 7,
+          },
+          grid: { color: 'rgba(255,255,255,0.04)' },
+        },
+        y: {
+          ticks: { color: '#455a70', font: { size: 11 } },
+          grid: { color: 'rgba(255,255,255,0.04)' },
+          title: { display: true, text: 'Flow (cfs)', color: '#455a70', font: { size: 11 } },
+        },
+      },
+    },
+  });
+}
+
+// ── Weather icon from NWS shortForecast ─────────────────────────────────────
+
+function weatherIcon(short) {
+  const s = (short || '').toLowerCase();
+  if (s.includes('thunder'))  return '⛈';
+  if (s.includes('snow'))     return '❄️';
+  if (s.includes('rain') || s.includes('shower')) return '🌧';
+  if (s.includes('drizzle'))  return '🌦';
+  if (s.includes('cloud') && s.includes('partly')) return '⛅';
+  if (s.includes('cloud') || s.includes('overcast')) return '☁️';
+  if (s.includes('wind'))     return '💨';
+  if (s.includes('fog'))      return '🌫';
+  if (s.includes('sunny') || s.includes('clear')) return '☀️';
+  return '🌤';
+}
+
+// ── Gauge selection state ────────────────────────────────────────────────────
+
+let activeGauge = '06043500';
+let _lastChart = null;
+let _lastTodayDOY = null;
+
+async function selectGauge(siteId) {
+  activeGauge = siteId;
+  document.querySelectorAll('.gauge-card').forEach(el => {
+    el.classList.toggle('active', el.dataset.site === siteId);
+  });
+  try {
+    const chart = await fetch('/api/chart?site=' + siteId).then(r => r.json());
+    const histWrap = document.getElementById('historyChart-wrap');
+    if (!histWrap) return;
+    histWrap.innerHTML = '<canvas id="historyChart"></canvas>';
+    if ((chart.history || []).length > 0) {
+      buildHistoryChart('historyChart', chart.history, chart.bands || [], _lastTodayDOY);
+    }
+    const src = document.querySelector('#history .chart-source');
+    if (src) src.textContent = `USGS ${siteId} · Shaded = P10–P90`;
+  } catch (e) {
+    console.warn('selectGauge fetch failed:', e);
+  }
+}
+
+// ── Render ───────────────────────────────────────────────────────────────────
+
+async function render() {
+  const root = document.getElementById('root');
+
+  let current, chart;
+  try {
+    [current, chart] = await Promise.all([
+      fetch('/api/current').then(r => r.json()),
+      fetch('/api/chart?site=' + activeGauge).then(r => r.json()),
+    ]);
+  } catch (e) {
+    root.innerHTML = `<div class="error-banner">Could not load river data. Check back soon.</div>`;
+    return;
+  }
+
+  const cfs = current.current?.discharge_cfs ?? 0;
+  const observedAt = current.current?.discharge_cfs_observed_at;
+  const floodCat = current.current?.flood_category ?? 'no_flooding';
+  const thresholds = current.thresholds ?? {};
+  const forecast = current.forecast ?? {};
+  const weather = current.weather ?? {};
+  const snotelStations = current.snowpack?.stations ?? [];
+  const crests = current.historic_crests ?? [];
+
+  const lvl = level(cfs);
+  const trendStr = trend(chart.history);
+  const flood = floodLabel(floodCat);
+
+  // Today's DOY for p50 lookup
+  const todayDOY = getDOY(new Date().toISOString().slice(0, 10));
+  _lastTodayDOY = todayDOY;
+  const bandMap = {};
+  (chart.bands || []).forEach(b => { bandMap[b.doy] = b; });
+  const todayBand = bandMap[todayDOY] || {};
+  const flt = floatCard(cfs);
+  const wad = wadeCard(cfs);
+  const wat = waterCard(cfs, todayBand.p50);
+
+  // 7-day weather: NWS returns day/night pairs; we want one per day
+  const periods = (weather.periods || []).filter(p => p.isDaytime !== false).slice(0, 7);
+
+  root.innerHTML = `
+    <!-- HERO -->
+    <section id="hero">
+      <div class="hero-station">${current.gauge?.name || 'Gallatin River near Gallatin Gateway'}</div>
+      <div class="hero-divider"></div>
+      <div class="hero-cfs">${Math.round(cfs).toLocaleString()}<span class="unit">cfs</span></div>
+      <div class="hero-trend">${trendStr}</div>
+      <div class="hero-level ${lvl.cls}">${lvl.badge}</div>
+      <div class="hero-sublevel">${lvl.sub}</div>
+      <div class="hero-divider"></div>
+      <div class="hero-meta">
+        <span>${formatTimeMT(observedAt)}</span>
+        ${observedAt ? `<span class="freshness" id="hero-freshness">${formatAge(observedAt)}</span>` : ''}
+        <span class="${flood.cls}">${flood.text}</span>
+      </div>
+    </section>
+
+    <!-- GAUGE STRIP -->
+    ${(current.gauges || []).length > 0 ? `
+    <section id="gauge-strip">
+      <div class="section-label">Bozeman Area</div>
+      <div class="gauge-strip" id="gauge-strip-cards">
+        ${(current.gauges).map(g => `
+          <div class="gauge-card${g.site_id === activeGauge ? ' active' : ''}"
+               data-site="${g.site_id}"
+               onclick="selectGauge('${g.site_id}')">
+            <div class="gc-short">${g.short}</div>
+            <div class="gc-cfs">${g.discharge_cfs != null ? Math.round(g.discharge_cfs).toLocaleString() : '—'}</div>
+            <div class="gc-unit">cfs</div>
+          </div>
+        `).join('')}
+      </div>
+    </section>
+    ` : ''}
+
+    <!-- FORECAST -->
+    <section id="forecast">
+      <div class="section-label">10-Day Forecast</div>
+      <div class="chart-card">
+        <div class="chart-head">
+          <div class="chart-title">Stage forecast</div>
+          <div class="chart-source">NOAA / MBRFC · ${forecast.issued_at ? formatTimeMT(forecast.issued_at) : ''}</div>
+        </div>
+        ${forecast.active && (forecast.points || []).length > 0
+          ? `<div class="chart-wrap"><canvas id="forecastChart"></canvas></div>`
+          : `<div class="no-forecast">No active forecast — low water season</div>`}
+      </div>
+    </section>
+
+    <!-- AUDIENCE CARDS -->
+    <section id="audience">
+      <div class="section-label">What to Expect</div>
+      <div class="card-row">
+        <div class="audience-card">
+          <div class="card-label">Float</div>
+          <div class="card-status">${flt.status}</div>
+          <div class="card-detail">${flt.detail}</div>
+        </div>
+        <div class="audience-card">
+          <div class="card-label">Wade</div>
+          <div class="card-status">${wad.status}</div>
+          <div class="card-detail">${wad.detail}</div>
+        </div>
+        <div class="audience-card">
+          <div class="card-label">Water</div>
+          <div class="card-status">${wat.status}</div>
+          <div class="card-detail">${wat.detail}</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- HISTORY CHART -->
+    <section id="history">
+      <div class="section-label">90-Day Flow History</div>
+      <div class="chart-card">
+        <div class="chart-head">
+          <div class="chart-title">Daily flow vs. historical range</div>
+          <div class="chart-source" id="history-source">USGS ${activeGauge} · Shaded = P10–P90</div>
+        </div>
+        <div class="chart-wrap" id="historyChart-wrap">
+          <canvas id="historyChart"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- WEATHER -->
+    ${periods.length > 0 ? `
+    <section id="weather">
+      <div class="section-label">7-Day Weather</div>
+      <div class="weather-strip" id="weather-strip"></div>
+    </section>
+    ` : ''}
+
+    <!-- SNOWPACK -->
+    ${snotelStations.length > 0 ? `
+    <details id="snowpack">
+      <summary>Basin Snowpack</summary>
+      <div class="details-body">
+        <table class="snotel-table">
+          <tr><th>Station</th><th>Elev</th><th>SWE</th><th>% Normal</th></tr>
+          ${snotelStations.map(s => `
+            <tr>
+              <td>${s.name || s.triplet}</td>
+              <td>${s.elevation_ft ? Math.round(s.elevation_ft).toLocaleString() + ' ft' : '—'}</td>
+              <td>${s.swe_in != null ? s.swe_in.toFixed(1) + '"' : '—'}</td>
+              <td>
+                ${s.pct_of_normal != null ? Math.round(s.pct_of_normal) + '%' : '—'}
+                ${s.pct_of_normal != null
+                  ? `<span class="pct-bar" style="width:${Math.min(s.pct_of_normal, 120) * 0.6}px"></span>`
+                  : ''}
+              </td>
+            </tr>
+          `).join('')}
+        </table>
+      </div>
+    </details>
+    ` : ''}
+
+    <!-- HISTORIC CRESTS -->
+    ${crests.length > 0 ? `
+    <details id="crests">
+      <summary>Historic Crests at Gateway</summary>
+      <div class="details-body">
+        <table class="crests-table">
+          <tr><th>Date</th><th class="stage-col">Stage (ft)</th><th class="flow-col">Flow (cfs)</th></tr>
+          ${crests.slice(0, 10).map(c => `
+            <tr>
+              <td>${formatDateMT(c.occurredTime)}</td>
+              <td class="stage-col">${c.stage?.toFixed(2) ?? '—'}</td>
+              <td class="flow-col">${c.flow != null ? c.flow.toLocaleString() : '—'}</td>
+            </tr>
+          `).join('')}
+        </table>
+      </div>
+    </details>
+    ` : ''}
+  `;
+
+  // Build charts after DOM is set
+  if (forecast.active && (forecast.points || []).length > 0) {
+    buildForecastChart('forecastChart', forecast.points, thresholds);
+  }
+
+  if ((chart.history || []).length > 0) {
+    buildHistoryChart('historyChart', chart.history, chart.bands || [], todayDOY);
+  }
+
+  // Weather strip
+  if (periods.length > 0) {
+    const strip = document.getElementById('weather-strip');
+    strip.innerHTML = periods.map(p => `
+      <div class="weather-day">
+        <div class="wd-name">${p.name || ''}</div>
+        <div class="wd-icon">${weatherIcon(p.shortForecast)}</div>
+        <div class="wd-temp">${p.temperature ?? '—'}°${p.temperatureUnit || 'F'}</div>
+        ${p.probabilityOfPrecipitation?.value != null
+          ? `<div class="wd-pop">${p.probabilityOfPrecipitation.value}% rain</div>`
+          : '<div class="wd-pop"></div>'}
+      </div>
+    `).join('');
+  }
+
+  // Collapse snowpack Jun–Sep
+  const month = new Date().getMonth() + 1;
+  const snowpackEl = document.getElementById('snowpack');
+  if (snowpackEl && month >= 6 && month <= 9) {
+    snowpackEl.removeAttribute('open');
+  }
+
+  document.getElementById('live-label').textContent = 'Live';
+}
+
+render();
+</script>
+</body>
+</html>

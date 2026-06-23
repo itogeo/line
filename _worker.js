@@ -210,6 +210,7 @@ export default {
       }
 
       // Static assets → rewrite to riverline/site/ prefix
+      // /gallatin and /gallatin/ both route to riverline/site/gallatin/
       const riverPath = path === '/' ? '/riverline/site/' : '/riverline/site' + path;
       return env.ASSETS.fetch(new Request(new URL(riverPath, url), request));
     }
