@@ -46,8 +46,8 @@ DATA = ROOT / "riverline" / "site" / "data"
 BBOX = (-116.5, 44.0, -103.5, 49.2)
 
 # Simplification tolerances (degrees, ~111km per degree at lat 47°)
-PRE_SIMPLIFY  = 0.0003  # ~33m before dissolve — nearly full vertex preservation
-POST_SIMPLIFY = 0.0005  # ~55m after dissolve — sub-pixel smoothing only at typical zoom
+PRE_SIMPLIFY  = 0.001   # ~110m — good balance for level-12 basins at web zoom 8-12
+POST_SIMPLIFY = 0.0005  # ~55m after dissolve — used only for major/medium dissolved layers
 
 
 def load_shp() -> gpd.GeoDataFrame:
