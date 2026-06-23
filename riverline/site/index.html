@@ -403,19 +403,29 @@ document.querySelectorAll('.layer-toggle').forEach(btn => {
   });
 });
 
+function dismissLoading() {
+  const el = document.getElementById('loading');
+  el.classList.add('hidden');
+  setTimeout(() => { el.style.display = 'none'; }, 400);
+}
+
 map.on('load', async () => {
-  map.addSource('src-streams', { type: 'raster', tiles: [arcgisTile('7')], tileSize: 256 });
-  map.addSource('src-basins',  { type: 'raster', tiles: [arcgisTile('11')], tileSize: 256 });
-  map.addLayer({ id: 'mt-streams', type: 'raster', source: 'src-streams', paint: { 'raster-opacity': 0.5 } });
-  map.addLayer({ id: 'huc8-basins', type: 'raster', source: 'src-basins', paint: { 'raster-opacity': 0.35 }, layout: { visibility: 'none' } });
+  try {
+    map.addSource('src-streams', { type: 'raster', tiles: [arcgisTile('7')], tileSize: 256 });
+    map.addSource('src-basins',  { type: 'raster', tiles: [arcgisTile('11')], tileSize: 256 });
+    map.addLayer({ id: 'mt-streams', type: 'raster', source: 'src-streams', paint: { 'raster-opacity': 0.5 } });
+    map.addLayer({ id: 'huc8-basins', type: 'raster', source: 'src-basins', paint: { 'raster-opacity': 0.35 }, layout: { visibility: 'none' } });
 
-  const [usgsData, dnrcData] = await Promise.all([
-    fetch('/data/usgs_gauges.json').then(r => r.json()),
-    fetch('/data/dnrc_gauges.json').then(r => r.json()),
-  ]);
+    // Show map immediately — dismiss loading before waiting for gauge data
+    dismissLoading();
 
-  document.getElementById('usgs-ct').textContent = usgsData.features.length;
-  document.getElementById('dnrc-ct').textContent = dnrcData.features.length;
+    const [usgsData, dnrcData] = await Promise.all([
+      fetch('/data/usgs_gauges.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+      fetch('/data/dnrc_gauges.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+    ]);
+
+    document.getElementById('usgs-ct').textContent = usgsData.features.length;
+    document.getElementById('dnrc-ct').textContent = dnrcData.features.length;
 
   map.addSource('usgs-gauges', {
     type: 'geojson', data: usgsData,
@@ -480,8 +490,10 @@ map.on('load', async () => {
     map.on('mouseleave', id, () => { map.getCanvas().style.cursor = ''; });
   });
 
-  document.getElementById('loading').classList.add('hidden');
-  setTimeout(() => { document.getElementById('loading').style.display = 'none'; }, 400);
+  } catch(e) {
+    console.error('Map load error:', e);
+    document.getElementById('gauge-count').textContent = 'Gauge data unavailable';
+  }
 });
 </script>
 </body>
