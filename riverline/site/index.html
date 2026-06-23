@@ -269,7 +269,7 @@
     <div class="dot" style="background:#3a7db5; border-radius:2px; width:12px; height:12px;"></div>
     <span>Lakes</span>
   </div>
-  <div class="layer-toggle on" id="toggle-basins" data-layers="huc8-basins">
+  <div class="layer-toggle" id="toggle-basins" data-layers="mt-basins-fill,mt-basins-line">
     <div class="dot" style="background:var(--muted); border-radius:1px;"></div>
     <span>HUC8 basins</span>
   </div>
@@ -833,33 +833,49 @@ async function loadHierarchy(usgsData, snotelData) {
 
 map.on('load', async () => {
   try {
+    // Hillshade — DEM-based terrain shading so mountains read clearly on the dark basemap
+    map.addSource('mapbox-dem', {
+      type: 'raster-dem',
+      url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
+      tileSize: 512,
+      maxzoom: 14,
+    });
+    map.addLayer({
+      id: 'hillshade',
+      type: 'hillshade',
+      source: 'mapbox-dem',
+      paint: {
+        'hillshade-exaggeration':          0.4,
+        'hillshade-shadow-color':          '#0a0e18',
+        'hillshade-highlight-color':       '#c8d8e8',
+        'hillshade-accent-color':          '#0a0e18',
+        'hillshade-illumination-direction': 335,
+      },
+    });
+
     map.addSource('src-streams', { type: 'raster', tiles: [arcgisTile('7')], tileSize: 256 });
-    map.addSource('src-basins',  { type: 'raster', tiles: [arcgisTile('11')], tileSize: 256 });
     map.addLayer({ id: 'mt-streams', type: 'raster', source: 'src-streams', paint: { 'raster-opacity': 0.2 } });
-    map.addLayer({ id: 'huc8-basins', type: 'raster', source: 'src-basins', paint: { 'raster-opacity': 0.30 } });
 
     dismissLoading();
 
-    const [usgsResult, dnrcResult, snotelResult, majBasinsResult, medBasinsResult, riversResult, noaaResult, lakesResult] =
+    const [usgsResult, dnrcResult, snotelResult, basinsResult, riversResult, noaaResult, lakesResult] =
       await Promise.allSettled([
         fetch('/data/usgs_gauges.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
         fetch('/data/dnrc_gauges.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
         fetch('/data/snotel_stations.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
-        fetch('/data/major_basins.geojson').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
-        fetch('/data/medium_basins.geojson').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+        fetch('/data/mt_basins.geojson').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
         fetch('/data/mt_rivers.geojson').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
         fetch('/data/noaa_gauges.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
         fetch('/data/mt_lakes.geojson').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
       ]);
 
-    const usgsData      = usgsResult.status      === 'fulfilled' ? usgsResult.value      : null;
-    const dnrcData      = dnrcResult.status      === 'fulfilled' ? dnrcResult.value      : null;
-    const snotelData    = snotelResult.status    === 'fulfilled' ? snotelResult.value    : null;
-    const majBasinsData = majBasinsResult.status === 'fulfilled' ? majBasinsResult.value : null;
-    const medBasinsData = medBasinsResult.status === 'fulfilled' ? medBasinsResult.value : null;
-    const riversData    = riversResult.status    === 'fulfilled' ? riversResult.value    : null;
-    noaaMap             = noaaResult.status      === 'fulfilled' ? noaaResult.value      : {};
-    const lakesData     = lakesResult.status     === 'fulfilled' ? lakesResult.value     : null;
+    const usgsData    = usgsResult.status    === 'fulfilled' ? usgsResult.value    : null;
+    const dnrcData    = dnrcResult.status    === 'fulfilled' ? dnrcResult.value    : null;
+    const snotelData  = snotelResult.status  === 'fulfilled' ? snotelResult.value  : null;
+    const basinsData  = basinsResult.status  === 'fulfilled' ? basinsResult.value  : null;
+    const riversData  = riversResult.status  === 'fulfilled' ? riversResult.value  : null;
+    noaaMap           = noaaResult.status    === 'fulfilled' ? noaaResult.value    : {};
+    const lakesData   = lakesResult.status   === 'fulfilled' ? lakesResult.value   : null;
 
     document.getElementById('usgs-ct').textContent   = usgsData   ? usgsData.features.length   : '—';
     document.getElementById('dnrc-ct').textContent   = dnrcData   ? dnrcData.features.length   : '—';
@@ -869,29 +885,21 @@ map.on('load', async () => {
       document.getElementById('gauge-count').textContent = 'Gauge data unavailable';
     }
 
-    // Vector watershed polygons — faded fill below all point layers
-    if (majBasinsData) {
-      map.addSource('major-basins', { type: 'geojson', data: majBasinsData });
-      map.addLayer({ id: 'major-basins-fill', type: 'fill', source: 'major-basins', paint: {
+    // HUC8 watershed polygons — dashed outlines, subtle fill, clearly visible on dark basemap
+    if (basinsData) {
+      map.addSource('mt-basins', { type: 'geojson', data: basinsData });
+      map.addLayer({ id: 'mt-basins-fill', type: 'fill', source: 'mt-basins', paint: {
         'fill-color': '#4a8fba',
-        'fill-opacity': ['interpolate', ['linear'], ['zoom'], 4, 0.06, 8, 0.02],
+        'fill-opacity': ['interpolate', ['linear'], ['zoom'], 4, 0.07, 9, 0.03],
       }});
-      map.addLayer({ id: 'major-basins-line', type: 'line', source: 'major-basins', paint: {
-        'line-color': '#4a8fba',
-        'line-width': 0.6,
-        'line-opacity': ['interpolate', ['linear'], ['zoom'], 4, 0.35, 9, 0.1],
+      map.addLayer({ id: 'mt-basins-line', type: 'line', source: 'mt-basins', paint: {
+        'line-color': '#6ab0d8',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1.0, 8, 0.6],
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 4, 0.7, 9, 0.4],
+        'line-dasharray': [5, 3],
       }});
-    }
-    if (medBasinsData) {
-      map.addSource('medium-basins', { type: 'geojson', data: medBasinsData });
-      map.addLayer({ id: 'medium-basins-line', type: 'line', source: 'medium-basins',
-        minzoom: 7,
-        paint: {
-          'line-color': '#4a8fba',
-          'line-width': 0.3,
-          'line-opacity': ['interpolate', ['linear'], ['zoom'], 7, 0.2, 11, 0.06],
-        },
-      });
+      const basinsToggle = document.getElementById('toggle-basins');
+      if (basinsToggle) basinsToggle.classList.add('on');
     }
 
     // Named lakes — fill polygons below river lines
