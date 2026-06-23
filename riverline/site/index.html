@@ -513,93 +513,109 @@ map.on('load', async () => {
     // Show map immediately — dismiss loading before waiting for gauge data
     dismissLoading();
 
-    const [usgsData, dnrcData, snotelData] = await Promise.all([
+    const [usgsResult, dnrcResult, snotelResult] = await Promise.allSettled([
       fetch('/data/usgs_gauges.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
       fetch('/data/dnrc_gauges.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
       fetch('/data/snotel_stations.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
     ]);
 
-    document.getElementById('usgs-ct').textContent = usgsData.features.length;
-    document.getElementById('dnrc-ct').textContent = dnrcData.features.length;
-    document.getElementById('snotel-ct').textContent = snotelData.features.length;
+    const usgsData   = usgsResult.status   === 'fulfilled' ? usgsResult.value   : null;
+    const dnrcData   = dnrcResult.status   === 'fulfilled' ? dnrcResult.value   : null;
+    const snotelData = snotelResult.status === 'fulfilled' ? snotelResult.value : null;
 
-  map.addSource('usgs-gauges', {
-    type: 'geojson', data: usgsData,
-    cluster: true, clusterMaxZoom: 9, clusterRadius: 40,
-  });
-  map.addLayer({
-    id: 'usgs-clusters', type: 'circle', source: 'usgs-gauges',
-    filter: ['has', 'point_count'],
-    paint: {
-      'circle-color': 'rgba(74,143,186,0.75)',
-      'circle-stroke-color': 'rgba(74,143,186,0.65)',
-      'circle-stroke-width': 1.5,
-      'circle-radius': ['step', ['get', 'point_count'], 16, 10, 22, 30, 28],
-    },
-  });
-  map.addLayer({
-    id: 'usgs-cluster-count', type: 'symbol', source: 'usgs-gauges',
-    filter: ['has', 'point_count'],
-    layout: {
-      'text-field': '{point_count_abbreviated}',
-      'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Bold'],
-      'text-size': 11,
-    },
-    paint: { 'text-color': 'rgba(74,143,186,0.95)' },
-  });
-  map.addLayer({
-    id: 'usgs-points', type: 'circle', source: 'usgs-gauges',
-    filter: ['!', ['has', 'point_count']],
-    paint: {
-      'circle-color': 'rgba(74,143,186,0.85)',
-      'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 4, 10, 7],
-      'circle-stroke-color': 'rgba(255,255,255,0.15)',
-      'circle-stroke-width': 1,
-    },
-  });
+    document.getElementById('usgs-ct').textContent   = usgsData   ? usgsData.features.length   : '—';
+    document.getElementById('dnrc-ct').textContent   = dnrcData   ? dnrcData.features.length   : '—';
+    document.getElementById('snotel-ct').textContent = snotelData ? snotelData.features.length : '—';
 
-  map.addSource('dnrc-gauges', { type: 'geojson', data: dnrcData });
-  map.addLayer({
-    id: 'dnrc-points', type: 'circle', source: 'dnrc-gauges',
-    paint: {
-      'circle-color': 'rgba(58,171,138,0.75)',
-      'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 3.5, 10, 6],
-      'circle-stroke-color': 'rgba(255,255,255,0.12)',
-      'circle-stroke-width': 1,
-    },
-  });
+    if (!usgsData && !dnrcData && !snotelData) {
+      document.getElementById('gauge-count').textContent = 'Gauge data unavailable';
+    }
 
-  map.addSource('snotel-stations', { type: 'geojson', data: snotelData });
-  map.addLayer({
-    id: 'snotel-points', type: 'circle', source: 'snotel-stations',
-    paint: {
-      'circle-color': 'rgba(212,148,58,0.82)',
-      'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 4.5, 10, 8],
-      'circle-stroke-color': 'rgba(255,255,255,0.18)',
-      'circle-stroke-width': 1.2,
-    },
-  });
-
-  map.on('click', 'usgs-clusters', e => {
-    const f = map.queryRenderedFeatures(e.point, { layers: ['usgs-clusters'] })[0];
-    map.getSource('usgs-gauges').getClusterExpansionZoom(f.properties.cluster_id, (err, zoom) => {
-      if (!err) map.easeTo({ center: f.geometry.coordinates, zoom, duration: 300 });
+  if (usgsData) {
+    map.addSource('usgs-gauges', {
+      type: 'geojson', data: usgsData,
+      cluster: true, clusterMaxZoom: 9, clusterRadius: 40,
     });
-  });
-  map.on('click', 'usgs-points', e => { openUsgsPanel(e.features[0]); });
-  map.on('click', 'dnrc-points', e => {
-    const usgs = map.queryRenderedFeatures(e.point, { layers: ['usgs-points'] });
-    if (!usgs.length) openDnrcPanel(e.features[0]);
-  });
-  map.on('click', 'snotel-points', e => {
-    const usgs = map.queryRenderedFeatures(e.point, { layers: ['usgs-points'] });
-    if (!usgs.length) openSnotelPanel(e.features[0]);
-  });
+    map.addLayer({
+      id: 'usgs-clusters', type: 'circle', source: 'usgs-gauges',
+      filter: ['has', 'point_count'],
+      paint: {
+        'circle-color': 'rgba(74,143,186,0.75)',
+        'circle-stroke-color': 'rgba(74,143,186,0.65)',
+        'circle-stroke-width': 1.5,
+        'circle-radius': ['step', ['get', 'point_count'], 16, 10, 22, 30, 28],
+      },
+    });
+    map.addLayer({
+      id: 'usgs-cluster-count', type: 'symbol', source: 'usgs-gauges',
+      filter: ['has', 'point_count'],
+      layout: {
+        'text-field': '{point_count_abbreviated}',
+        'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Bold'],
+        'text-size': 11,
+      },
+      paint: { 'text-color': 'rgba(74,143,186,0.95)' },
+    });
+    map.addLayer({
+      id: 'usgs-points', type: 'circle', source: 'usgs-gauges',
+      filter: ['!', ['has', 'point_count']],
+      paint: {
+        'circle-color': 'rgba(74,143,186,0.85)',
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 4, 10, 7],
+        'circle-stroke-color': 'rgba(255,255,255,0.15)',
+        'circle-stroke-width': 1,
+      },
+    });
+    map.on('click', 'usgs-clusters', e => {
+      const f = map.queryRenderedFeatures(e.point, { layers: ['usgs-clusters'] })[0];
+      map.getSource('usgs-gauges').getClusterExpansionZoom(f.properties.cluster_id, (err, zoom) => {
+        if (!err) map.easeTo({ center: f.geometry.coordinates, zoom, duration: 300 });
+      });
+    });
+    map.on('click', 'usgs-points', e => { openUsgsPanel(e.features[0]); });
+    map.on('mouseenter', 'usgs-clusters', () => { map.getCanvas().style.cursor = 'pointer'; });
+    map.on('mouseleave', 'usgs-clusters', () => { map.getCanvas().style.cursor = ''; });
+    map.on('mouseenter', 'usgs-points',   () => { map.getCanvas().style.cursor = 'pointer'; });
+    map.on('mouseleave', 'usgs-points',   () => { map.getCanvas().style.cursor = ''; });
+  }
 
-  ['usgs-clusters','usgs-points','dnrc-points','snotel-points'].forEach(id => {
-    map.on('mouseenter', id, () => { map.getCanvas().style.cursor = 'pointer'; });
-    map.on('mouseleave', id, () => { map.getCanvas().style.cursor = ''; });
-  });
+  if (dnrcData) {
+    map.addSource('dnrc-gauges', { type: 'geojson', data: dnrcData });
+    map.addLayer({
+      id: 'dnrc-points', type: 'circle', source: 'dnrc-gauges',
+      paint: {
+        'circle-color': 'rgba(58,171,138,0.75)',
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 3.5, 10, 6],
+        'circle-stroke-color': 'rgba(255,255,255,0.12)',
+        'circle-stroke-width': 1,
+      },
+    });
+    map.on('click', 'dnrc-points', e => {
+      const usgs = usgsData ? map.queryRenderedFeatures(e.point, { layers: ['usgs-points'] }) : [];
+      if (!usgs.length) openDnrcPanel(e.features[0]);
+    });
+    map.on('mouseenter', 'dnrc-points', () => { map.getCanvas().style.cursor = 'pointer'; });
+    map.on('mouseleave', 'dnrc-points', () => { map.getCanvas().style.cursor = ''; });
+  }
+
+  if (snotelData) {
+    map.addSource('snotel-stations', { type: 'geojson', data: snotelData });
+    map.addLayer({
+      id: 'snotel-points', type: 'circle', source: 'snotel-stations',
+      paint: {
+        'circle-color': 'rgba(212,148,58,0.82)',
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 4.5, 10, 8],
+        'circle-stroke-color': 'rgba(255,255,255,0.18)',
+        'circle-stroke-width': 1.2,
+      },
+    });
+    map.on('click', 'snotel-points', e => {
+      const usgs = usgsData ? map.queryRenderedFeatures(e.point, { layers: ['usgs-points'] }) : [];
+      if (!usgs.length) openSnotelPanel(e.features[0]);
+    });
+    map.on('mouseenter', 'snotel-points', () => { map.getCanvas().style.cursor = 'pointer'; });
+    map.on('mouseleave', 'snotel-points', () => { map.getCanvas().style.cursor = ''; });
+  }
 
   } catch(e) {
     console.error('Map load error:', e);
