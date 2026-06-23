@@ -265,7 +265,11 @@
     <div class="dot" style="background:#5b8db8; border-radius:1px; height:3px; width:14px;"></div>
     <span>MT streams</span>
   </div>
-  <div class="layer-toggle" id="toggle-basins" data-layers="huc8-basins">
+  <div class="layer-toggle" id="toggle-lakes" data-layers="lakes-fill,lakes-stroke">
+    <div class="dot" style="background:#3a7db5; border-radius:2px; width:12px; height:12px;"></div>
+    <span>Lakes</span>
+  </div>
+  <div class="layer-toggle on" id="toggle-basins" data-layers="huc8-basins">
     <div class="dot" style="background:var(--muted); border-radius:1px;"></div>
     <span>HUC8 basins</span>
   </div>
@@ -832,11 +836,11 @@ map.on('load', async () => {
     map.addSource('src-streams', { type: 'raster', tiles: [arcgisTile('7')], tileSize: 256 });
     map.addSource('src-basins',  { type: 'raster', tiles: [arcgisTile('11')], tileSize: 256 });
     map.addLayer({ id: 'mt-streams', type: 'raster', source: 'src-streams', paint: { 'raster-opacity': 0.2 } });
-    map.addLayer({ id: 'huc8-basins', type: 'raster', source: 'src-basins', paint: { 'raster-opacity': 0.35 }, layout: { visibility: 'none' } });
+    map.addLayer({ id: 'huc8-basins', type: 'raster', source: 'src-basins', paint: { 'raster-opacity': 0.30 } });
 
     dismissLoading();
 
-    const [usgsResult, dnrcResult, snotelResult, majBasinsResult, medBasinsResult, riversResult, noaaResult] =
+    const [usgsResult, dnrcResult, snotelResult, majBasinsResult, medBasinsResult, riversResult, noaaResult, lakesResult] =
       await Promise.allSettled([
         fetch('/data/usgs_gauges.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
         fetch('/data/dnrc_gauges.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
@@ -845,6 +849,7 @@ map.on('load', async () => {
         fetch('/data/medium_basins.geojson').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
         fetch('/data/mt_rivers.geojson').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
         fetch('/data/noaa_gauges.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+        fetch('/data/mt_lakes.geojson').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
       ]);
 
     const usgsData      = usgsResult.status      === 'fulfilled' ? usgsResult.value      : null;
@@ -854,6 +859,7 @@ map.on('load', async () => {
     const medBasinsData = medBasinsResult.status === 'fulfilled' ? medBasinsResult.value : null;
     const riversData    = riversResult.status    === 'fulfilled' ? riversResult.value    : null;
     noaaMap             = noaaResult.status      === 'fulfilled' ? noaaResult.value      : {};
+    const lakesData     = lakesResult.status     === 'fulfilled' ? lakesResult.value     : null;
 
     document.getElementById('usgs-ct').textContent   = usgsData   ? usgsData.features.length   : '—';
     document.getElementById('dnrc-ct').textContent   = dnrcData   ? dnrcData.features.length   : '—';
@@ -888,20 +894,43 @@ map.on('load', async () => {
       });
     }
 
-    // OSM named rivers — prominent vector lines over the faint raster texture
+    // Named lakes — fill polygons below river lines
+    if (lakesData) {
+      map.addSource('mt-lakes', { type: 'geojson', data: lakesData });
+      map.addLayer({ id: 'lakes-fill', type: 'fill', source: 'mt-lakes', paint: {
+        'fill-color': '#2a6db5',
+        'fill-opacity': 0.55,
+      }});
+      map.addLayer({ id: 'lakes-stroke', type: 'line', source: 'mt-lakes', paint: {
+        'line-color': '#5cb8e0',
+        'line-width': 0.5,
+        'line-opacity': 0.7,
+      }});
+      const lakesToggle = document.getElementById('toggle-lakes');
+      if (lakesToggle) lakesToggle.classList.add('on');
+    }
+
+    // OSM named rivers — width + color scale by discharge-proxy tier (1–5)
+    // Tier 5 = Missouri/Yellowstone (200+ segments), Tier 1 = small named creeks
     if (riversData) {
       map.addSource('nhd-rivers', { type: 'geojson', data: riversData });
       map.addLayer({ id: 'nhd-rivers-line', type: 'line', source: 'nhd-rivers',
         layout: { 'line-join': 'round', 'line-cap': 'round' },
         paint: {
-          'line-color': '#5cb8e0',
-          'line-width': ['interpolate', ['linear'], ['zoom'],
-            5,  1.8,
-            8,  3.5,
-            10, 5.0,
-            13, 8.0,
+          'line-color': ['match', ['get', 'tier'],
+            5, '#7de0ff',
+            4, '#5cb8e0',
+            3, '#4a9fc8',
+            2, '#3a87b0',
+               '#2a6890',
           ],
-          'line-opacity': 0.85,
+          'line-width': ['interpolate', ['linear'], ['zoom'],
+            4,  ['match', ['get', 'tier'], 5, 1.8, 4, 1.2, 3, 0.7, 2, 0.4, 0.2],
+            7,  ['match', ['get', 'tier'], 5, 4.0, 4, 2.5, 3, 1.4, 2, 0.8, 0.4],
+            10, ['match', ['get', 'tier'], 5, 8.0, 4, 5.0, 3, 2.8, 2, 1.5, 0.7],
+            13, ['match', ['get', 'tier'], 5, 14.0, 4, 9.0, 3, 5.0, 2, 2.5, 1.2],
+          ],
+          'line-opacity': ['match', ['get', 'tier'], 5, 1.0, 4, 0.95, 3, 0.88, 2, 0.78, 0.55],
         },
       });
       // Raster stays as faint background texture; toggle controls both together
