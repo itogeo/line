@@ -295,6 +295,18 @@
     <div class="dot" style="background:var(--muted); border-radius:1px;"></div>
     <span>HUC8 basins</span>
   </div>
+  <div class="layer-toggle" id="toggle-wrqs-div" data-layers="wrqs-diversions">
+    <div class="dot" style="background:#e05c2a"></div>
+    <span>Water diversions</span>
+  </div>
+  <div class="layer-toggle" id="toggle-wrqs-irr" data-layers="wrqs-irrigation">
+    <div class="dot" style="background:#f59e0b"></div>
+    <span>Irrigation claims</span>
+  </div>
+  <div class="layer-toggle" id="toggle-wrqs-res" data-layers="wrqs-reservoirs">
+    <div class="dot" style="background:#7c3aed"></div>
+    <span>Dams &amp; reservoirs</span>
+  </div>
 </div>
 
 
@@ -351,6 +363,12 @@ map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'bottom-r
 const DNRC_BASE = 'https://gis.dnrc.mt.gov/arcgis/rest/services/WRD/WMB_StAGE/MapServer/export';
 function arcgisTile(layerIds) {
   return `${DNRC_BASE}?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&layers=show:${layerIds}&size=256,256&f=image&format=png32&transparent=true&dpi=96`;
+}
+
+const WRQS_BASE = 'https://gis.dnrc.mt.gov/arcgis/rest/services/WRD/WRQS/MapServer/export';
+function wrqsTile(layerId, where) {
+  const defs = where ? '&layerDefs=' + encodeURIComponent(JSON.stringify({[layerId]: where})) : '';
+  return `${WRQS_BASE}?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&layers=show:${layerId}&size=256,256&f=image&format=png32&transparent=true&dpi=96${defs}`;
 }
 
 let flowChart = null;
@@ -1259,6 +1277,16 @@ map.on('load', async () => {
 
     map.addSource('src-streams', { type: 'raster', tiles: [arcgisTile('7')], tileSize: 256 });
     map.addLayer({ id: 'mt-streams', type: 'raster', source: 'src-streams', paint: { 'raster-opacity': 0.2 } });
+
+    // DNRC water rights — only renders at zoom 11+ (DNRC server minScale 100k)
+    map.addSource('src-wrqs-div', { type: 'raster', tiles: [wrqsTile(1, "SOURCE_TYPE = 'SURFACE' AND WR_STATUS = 'ACTIVE'")], tileSize: 256 });
+    map.addLayer({ id: 'wrqs-diversions', type: 'raster', source: 'src-wrqs-div', minzoom: 10, paint: { 'raster-opacity': 0.85 }, layout: { visibility: 'none' } });
+
+    map.addSource('src-wrqs-irr', { type: 'raster', tiles: [wrqsTile(1, "SOURCE_TYPE = 'SURFACE' AND WR_STATUS = 'ACTIVE' AND PURPOSES LIKE '%IRRIGATION%'")], tileSize: 256 });
+    map.addLayer({ id: 'wrqs-irrigation', type: 'raster', source: 'src-wrqs-irr', minzoom: 10, paint: { 'raster-opacity': 0.85 }, layout: { visibility: 'none' } });
+
+    map.addSource('src-wrqs-res', { type: 'raster', tiles: [wrqsTile(3, "WR_STATUS = 'ACTIVE'")], tileSize: 256 });
+    map.addLayer({ id: 'wrqs-reservoirs', type: 'raster', source: 'src-wrqs-res', minzoom: 10, paint: { 'raster-opacity': 0.85 }, layout: { visibility: 'none' } });
 
     dismissLoading();
 
