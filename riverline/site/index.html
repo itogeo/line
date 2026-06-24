@@ -745,9 +745,13 @@ async function loadUsgsChart(siteId, days) {
       return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}h`;
     };
 
-    // Use secondary (CFS flow) if present; fall back to primary (stage ft)
-    const hasFlow = [...sampledObs, ...sampledFc].some(v => v.secondary != null && v.secondary !== 0);
-    const val = (v) => hasFlow ? (v.secondary || 0) * mult : (v.primary || 0);
+    // -9999 / -9998 are NOAA sentinel values meaning "missing" — treat as null
+    const isSentinel = x => x == null || x < -9000;
+    const hasFlow = [...sampledObs, ...sampledFc].some(v => !isSentinel(v.secondary) && v.secondary !== 0);
+    const val = (v) => {
+      if (hasFlow) { const s = v.secondary; return isSentinel(s) ? null : s * mult; }
+      else         { const p = v.primary;   return isSentinel(p) ? null : p; }
+    };
     const yLabel = hasFlow ? 'cfs' : 'ft';
     const obsMap = new Map(sampledObs.map(v => [v.validTime, val(v)]));
     const fcMap  = new Map(sampledFc.map( v => [v.validTime, val(v)]));
