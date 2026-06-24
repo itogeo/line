@@ -365,11 +365,7 @@ function arcgisTile(layerIds) {
   return `${DNRC_BASE}?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&layers=show:${layerIds}&size=256,256&f=image&format=png32&transparent=true&dpi=96`;
 }
 
-const WRQS_BASE = 'https://gis.dnrc.mt.gov/arcgis/rest/services/WRD/WRQS/MapServer/export';
-function wrqsTile(layerId, where) {
-  const defs = where ? '&layerDefs=' + encodeURIComponent(JSON.stringify({[layerId]: where})) : '';
-  return `${WRQS_BASE}?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&layers=show:${layerId}&size=256,256&f=image&format=png32&transparent=true&dpi=96${defs}`;
-}
+let wrqsFetching = false;
 
 let flowChart = null;
 let noaaMap = {};
@@ -922,12 +918,63 @@ async function loadSnotelChart(feature, days) {
   }
 }
 
+function openWrqsPanel(feature) {
+  const p = feature.properties;
+  const title = p.SOURCE_NAME || p.WR_NUMBER || 'Water Right';
+  openPanel(title, p.WR_NUMBER || '—', 'badge-dnrc');
+  chartSection.style.display = 'none';
+  const cfs = parseFloat(p.MAX_FLOW_CFS);
+  const acres = parseFloat(p.MAX_ACRES);
+  if (!isNaN(cfs) && cfs > 0) {
+    cfsHero.innerHTML = `<div class="cfs-reading"><span class="cfs-value">${cfs.toLocaleString(undefined, {maximumFractionDigits:1})}</span><span class="cfs-unit">cfs max</span></div>`;
+  } else if (!isNaN(acres) && acres > 0) {
+    cfsHero.innerHTML = `<div class="cfs-reading"><span class="cfs-value">${acres.toLocaleString(undefined, {maximumFractionDigits:0})}</span><span class="cfs-unit">acres</span></div>`;
+  } else {
+    cfsHero.innerHTML = `<div class="cfs-loading">No volume reported</div>`;
+  }
+  const rows = [];
+  if (p.PURPOSES) rows.push({ lbl: 'Use type', val: p.PURPOSES });
+  if (p.SOURCE_NAME) rows.push({ lbl: 'Source', val: p.SOURCE_NAME });
+  if (p.PERIOD_OF_DIVERSIONS) rows.push({ lbl: 'Period', val: p.PERIOD_OF_DIVERSIONS });
+  if (p.OWNERS) rows.push({ lbl: 'Owner', val: p.OWNERS });
+  if (p.ENF_PRTY_DT_CHAR) rows.push({ lbl: 'Priority date', val: p.ENF_PRTY_DT_CHAR });
+  rows.push({ lbl: 'Status', val: 'Active surface water' });
+  infoSection.innerHTML = rows.map(r =>
+    `<div class="info-row"><span class="lbl">${r.lbl}</span><span class="val">${r.val}</span></div>`
+  ).join('');
+  if (p.URL_ABSTRACT) {
+    extLink.innerHTML = `<a href="${p.URL_ABSTRACT}" target="_blank" rel="noopener">WRQS Abstract ↗</a>`;
+  } else if (p.WR_NUMBER) {
+    extLink.innerHTML = `<a href="https://wrqs.dnrc.mt.gov/" target="_blank" rel="noopener">WRQS Abstract ↗</a>`;
+  }
+}
+
+async function fetchWrqs() {
+  if (wrqsFetching || map.getZoom() < 11) return;
+  const wrqsIds = ['wrqs-diversions', 'wrqs-irrigation', 'wrqs-reservoirs'];
+  const anyOn = wrqsIds.some(id => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') === 'visible');
+  if (!anyOn) return;
+  wrqsFetching = true;
+  try {
+    const b = map.getBounds();
+    const q = `xmin=${b.getWest().toFixed(4)}&ymin=${b.getSouth().toFixed(4)}&xmax=${b.getEast().toFixed(4)}&ymax=${b.getNorth().toFixed(4)}`;
+    const [pods, res] = await Promise.all([
+      fetch(`/api/wrqs?layer=1&where=${encodeURIComponent("SOURCE_TYPE='SURFACE' AND WR_STATUS='ACTIVE'")}&${q}`).then(r => r.json()).catch(() => null),
+      fetch(`/api/wrqs?layer=3&where=${encodeURIComponent("WR_STATUS='ACTIVE'")}&${q}`).then(r => r.json()).catch(() => null),
+    ]);
+    if (pods && map.getSource('src-wrqs-pods')) map.getSource('src-wrqs-pods').setData(pods);
+    if (res  && map.getSource('src-wrqs-res'))  map.getSource('src-wrqs-res').setData(res);
+  } catch(_) {}
+  wrqsFetching = false;
+}
+
 document.querySelectorAll('.layer-toggle').forEach(btn => {
   btn.addEventListener('click', () => {
     const on = btn.classList.toggle('on');
     btn.dataset.layers.split(',').forEach(lid => {
       if (map.getLayer(lid)) map.setLayoutProperty(lid, 'visibility', on ? 'visible' : 'none');
     });
+    if (on && btn.id && btn.id.startsWith('toggle-wrqs')) fetchWrqs();
   });
 });
 
@@ -1278,15 +1325,24 @@ map.on('load', async () => {
     map.addSource('src-streams', { type: 'raster', tiles: [arcgisTile('7')], tileSize: 256 });
     map.addLayer({ id: 'mt-streams', type: 'raster', source: 'src-streams', paint: { 'raster-opacity': 0.2 } });
 
-    // DNRC water rights — only renders at zoom 11+ (DNRC server minScale 100k)
-    map.addSource('src-wrqs-div', { type: 'raster', tiles: [wrqsTile(1, "SOURCE_TYPE = 'SURFACE' AND WR_STATUS = 'ACTIVE'")], tileSize: 256 });
-    map.addLayer({ id: 'wrqs-diversions', type: 'raster', source: 'src-wrqs-div', minzoom: 10, paint: { 'raster-opacity': 0.85 }, layout: { visibility: 'none' } });
-
-    map.addSource('src-wrqs-irr', { type: 'raster', tiles: [wrqsTile(1, "SOURCE_TYPE = 'SURFACE' AND WR_STATUS = 'ACTIVE' AND PURPOSES LIKE '%IRRIGATION%'")], tileSize: 256 });
-    map.addLayer({ id: 'wrqs-irrigation', type: 'raster', source: 'src-wrqs-irr', minzoom: 10, paint: { 'raster-opacity': 0.85 }, layout: { visibility: 'none' } });
-
-    map.addSource('src-wrqs-res', { type: 'raster', tiles: [wrqsTile(3, "WR_STATUS = 'ACTIVE'")], tileSize: 256 });
-    map.addLayer({ id: 'wrqs-reservoirs', type: 'raster', source: 'src-wrqs-res', minzoom: 10, paint: { 'raster-opacity': 0.85 }, layout: { visibility: 'none' } });
+    // DNRC water rights — GeoJSON fetched via /api/wrqs proxy on moveend at zoom ≥ 11
+    const WRQS_RADIUS = ['interpolate', ['linear'], ['coalesce', ['get', 'MAX_FLOW_CFS'], 0],
+      0, 4, 1, 5, 5, 6.5, 20, 9, 100, 12, 500, 16];
+    map.addSource('src-wrqs-pods', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    map.addSource('src-wrqs-res', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    map.addLayer({ id: 'wrqs-diversions', type: 'circle', source: 'src-wrqs-pods', minzoom: 11,
+      layout: { visibility: 'none' },
+      paint: { 'circle-color': '#e05c2a', 'circle-radius': WRQS_RADIUS,
+               'circle-stroke-color': 'rgba(255,255,255,0.2)', 'circle-stroke-width': 0.8, 'circle-opacity': 0.85 } });
+    map.addLayer({ id: 'wrqs-irrigation', type: 'circle', source: 'src-wrqs-pods', minzoom: 11,
+      filter: ['in', 'IRRIGATION', ['get', 'PURPOSES']],
+      layout: { visibility: 'none' },
+      paint: { 'circle-color': '#f59e0b', 'circle-radius': WRQS_RADIUS,
+               'circle-stroke-color': 'rgba(255,255,255,0.2)', 'circle-stroke-width': 0.8, 'circle-opacity': 0.85 } });
+    map.addLayer({ id: 'wrqs-reservoirs', type: 'circle', source: 'src-wrqs-res', minzoom: 11,
+      layout: { visibility: 'none' },
+      paint: { 'circle-color': '#7c3aed', 'circle-radius': WRQS_RADIUS,
+               'circle-stroke-color': 'rgba(255,255,255,0.2)', 'circle-stroke-width': 0.8, 'circle-opacity': 0.85 } });
 
     dismissLoading();
 
@@ -1604,9 +1660,25 @@ map.on('load', async () => {
       map.on('mouseleave', 'snotel-points', () => { map.getCanvas().style.cursor = ''; });
     }
 
+    // WRQS click handlers
+    ['wrqs-diversions', 'wrqs-irrigation', 'wrqs-reservoirs'].forEach(lid => {
+      map.on('click', lid, e => {
+        const gaugeHit = map.queryRenderedFeatures(e.point, {
+          layers: ['usgs-points', 'dnrc-points', 'snotel-points'].filter(id => map.getLayer(id))
+        });
+        if (gaugeHit.length) return;
+        openWrqsPanel(e.features[0]);
+      });
+      map.on('mouseenter', lid, () => { map.getCanvas().style.cursor = 'pointer'; });
+      map.on('mouseleave', lid, () => { map.getCanvas().style.cursor = ''; });
+    });
+
+    map.on('moveend', fetchWrqs);
+
     // Click on empty space → close panel and clear all highlights
     map.on('click', e => {
-      const interactive = ['usgs-points', 'dnrc-points', 'snotel-points', 'nhd-rivers-line'].filter(id => map.getLayer(id));
+      const interactive = ['usgs-points', 'dnrc-points', 'snotel-points', 'nhd-rivers-line',
+        'wrqs-diversions', 'wrqs-irrigation', 'wrqs-reservoirs'].filter(id => map.getLayer(id));
       const hit = map.queryRenderedFeatures(e.point, { layers: interactive });
       if (!hit.length) closePanel();
     });
