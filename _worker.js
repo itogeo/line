@@ -364,6 +364,35 @@ export default {
         }
       }
 
+      // DNRC WRQS proxy — FeatureServer has no CORS headers
+      if (path.startsWith('/api/wrqs')) {
+        const layer = url.searchParams.get('layer') || '1';
+        const xmin = url.searchParams.get('xmin');
+        const ymin = url.searchParams.get('ymin');
+        const xmax = url.searchParams.get('xmax');
+        const ymax = url.searchParams.get('ymax');
+        const where = url.searchParams.get('where') || '1=1';
+        const geom = JSON.stringify({ xmin: parseFloat(xmin), ymin: parseFloat(ymin), xmax: parseFloat(xmax), ymax: parseFloat(ymax) });
+        const fields = 'WR_NUMBER,SOURCE_NAME,PURPOSES,MAX_FLOW_CFS,PERIOD_OF_DIVERSIONS,OWNERS,ENF_PRTY_DT_CHAR,URL_ABSTRACT,MAX_ACRES';
+        const featureUrl = `https://gis.dnrc.mt.gov/arcgis/rest/services/WRD/WRQS/FeatureServer/${layer}/query?geometry=${encodeURIComponent(geom)}&geometryType=esriGeometryEnvelope&spatialRel=esriSpatialRelIntersects&inSR=4326&where=${encodeURIComponent(where)}&outFields=${fields}&f=geojson&resultRecordCount=500`;
+        try {
+          const r = await fetch(featureUrl, { headers: { 'User-Agent': 'RiverLine/1.0 (Ito Geospatial)' } });
+          const body = await r.text();
+          return new Response(body, {
+            headers: {
+              'Content-Type': 'application/geo+json',
+              'Access-Control-Allow-Origin': '*',
+              'Cache-Control': 'public, max-age=3600',
+            },
+          });
+        } catch (_) {
+          return new Response('{"type":"FeatureCollection","features":[]}', {
+            status: 502,
+            headers: { 'Content-Type': 'application/geo+json', 'Access-Control-Allow-Origin': '*' },
+          });
+        }
+      }
+
       // Shared freshness utilities
       if (path === '/shared/freshness.js') {
         return env.ASSETS.fetch(new Request(new URL('/_shared/freshness.js', url), request));
