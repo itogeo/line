@@ -4,6 +4,12 @@ export default {
     const host = url.hostname;
     const path = url.pathname;
 
+    // ── SHARED (all Line Network sites) ──────────────────────────────────────
+    if (path.startsWith('/shared/')) {
+      const sharedPath = '/_shared' + path.slice('/shared'.length);
+      return env.ASSETS.fetch(new Request(new URL(sharedPath, url), request));
+    }
+
     // ── SNOW ──────────────────────────────────────────────────────────────────
 
     if (host.includes('snow')) {
@@ -142,11 +148,6 @@ export default {
             'Access-Control-Allow-Headers': 'Content-Type',
           },
         });
-      }
-
-      // Shared freshness utilities
-      if (path === '/shared/freshness.js') {
-        return env.ASSETS.fetch(new Request(new URL('/_shared/freshness.js', url), request));
       }
 
       // Static assets → rewrite to snowline/site/ prefix
@@ -340,13 +341,18 @@ export default {
           const zipBuf  = await zipResp.arrayBuffer();
           const csv     = await unzipFirstEntry(zipBuf);
 
+          const allLines = csv.trim().split('\n');
+          const hdrs = allLines[0].split(',').map(h => h.trim().replace(/^"|"$/g, '').toLowerCase());
+          const dtIdx  = Math.max(0, hdrs.findIndex(h => h.includes('date') || h.includes('time')));
+          const valIdx = hdrs.findIndex(h => h.includes('value') || h === 'discharge' || h === 'cfs');
+          const vi = valIdx >= 0 ? valIdx : 1;
           const rows = [];
-          for (const line of csv.trim().split('\n').slice(1)) {
+          for (const line of allLines.slice(1)) {
             const parts = line.split(',');
-            if (parts.length < 2) continue;
-            const dt  = parts[0].trim();
-            const cfs = parseFloat(parts[1]);
-            if (dt && !isNaN(cfs)) rows.push({ dt, cfs });
+            if (parts.length <= vi) continue;
+            const dt  = parts[dtIdx].trim().replace(/^"|"$/g, '');
+            const cfs = parseFloat(parts[vi].trim().replace(/^"|"$/g, ''));
+            if (dt && !isNaN(cfs) && cfs >= 0 && cfs < 9000) rows.push({ dt, cfs });
           }
 
           return new Response(JSON.stringify({ rows }), {

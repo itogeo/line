@@ -47,6 +47,10 @@
   #lp-head .wordmark { font-size: 10px; letter-spacing: 0.08em; color: var(--muted); font-family: var(--sans); font-weight: 500; }
   #lp-head h1 { font-family: var(--serif); font-size: 17px; font-weight: 700; color: var(--text); line-height: 1.1; margin: 2px 0 2px; }
   #lp-head .region { font-family: var(--mono); font-size: 11px; color: var(--accent); }
+  .network-tabs { display: flex; gap: 2px; margin: 5px 0 0; }
+  .network-tabs a { font-family: var(--mono); font-size: 9px; font-weight: 600; padding: 3px 8px; border-radius: 4px; text-decoration: none; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; transition: background 0.15s, color 0.15s; }
+  .network-tabs a:hover { background: rgba(74,143,186,0.1); color: var(--accent); }
+  .network-tabs a.active { background: rgba(74,143,186,0.12); color: var(--accent); }
   #lp-filter { padding: 8px 10px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
   #lp-filter input {
     width: 100%; background: var(--base); border: 1px solid var(--border);
@@ -269,6 +273,11 @@
     <div class="wordmark">itogeospatial</div>
     <h1>River Conditions</h1>
     <span class="region">Montana</span>
+    <div class="network-tabs">
+      <a href="https://snow.line.itogeospatial.com">Snow Cover</a>
+      <a href="https://river.line.itogeospatial.com" class="active">River</a>
+      <a href="/gauges.html">Gauges</a>
+    </div>
   </div>
   <div id="lp-filter">
     <input type="text" id="river-search" placeholder="Filter rivers…">
@@ -346,10 +355,13 @@
       <div id="chart-section" style="display:none">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
           <div class="section-label" id="chart-label" style="margin-bottom:0">Recent Flow</div>
-          <div id="range-btns" style="display:none">
-            <button class="range-btn active" data-range="14">14D</button>
-            <button class="range-btn" data-range="30">30D</button>
-            <button class="range-btn" data-range="365">1Y</button>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span id="chart-src-link" style="font-size:9px;color:var(--muted);font-family:var(--mono)"></span>
+            <div id="range-btns" style="display:none">
+              <button class="range-btn active" data-range="14">14D</button>
+              <button class="range-btn" data-range="30">30D</button>
+              <button class="range-btn" data-range="365">1Y</button>
+            </div>
           </div>
         </div>
         <div class="chart-wrap"><canvas id="flow-chart"></canvas></div>
@@ -357,14 +369,14 @@
       <div id="chart-seasonal-section" style="display:none">
         <div class="section-label" style="display:flex;justify-content:space-between;align-items:baseline">
           <span>Water Year Context</span>
-          <span style="font-size:9px;color:var(--muted);font-family:var(--mono)">Source: USGS</span>
+          <span id="usgs-src-link" style="font-size:9px;color:var(--muted);font-family:var(--mono)">Source: USGS</span>
         </div>
         <div class="chart-wrap-sm"><canvas id="seasonal-chart"></canvas></div>
       </div>
       <div id="chart-forecast-section" style="display:none">
         <div class="section-label" style="display:flex;justify-content:space-between;align-items:baseline">
           <span>NOAA Forecast</span>
-          <span style="font-size:9px;color:var(--muted);font-family:var(--mono)">Source: NOAA</span>
+          <span id="noaa-src-link" style="font-size:9px;color:var(--muted);font-family:var(--mono)">Source: NOAA</span>
         </div>
         <div class="chart-wrap-sm"><canvas id="forecast-chart"></canvas></div>
       </div>
@@ -479,6 +491,7 @@ function openPanel(name, id, badgeClass) {
   document.getElementById('chart-forecast-section').style.display = 'none';
   infoSection.innerHTML = '';
   extLink.innerHTML = '';
+  ['chart-src-link','usgs-src-link','noaa-src-link'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
   addGaugeMode = false;
   addGaugeBtn.classList.remove('active');
   addGaugeBtn.textContent = '+ Compare';
@@ -747,6 +760,15 @@ async function loadUsgsChart(siteId, days) {
       `<div class="info-row"><span class="lbl">${r.lbl}</span><span class="val">${r.val}</span></div>`
     ).join('');
 
+    const srcEl = document.getElementById('usgs-src-link');
+    if (srcEl) srcEl.innerHTML = `<a href="https://waterdata.usgs.gov/monitoring-location/${siteId}/" target="_blank" rel="noopener" style="color:var(--muted);font-size:9px;font-family:var(--mono);text-decoration:none">USGS ↗</a>`;
+    if (noaaLid) {
+      const noaaEl = document.getElementById('noaa-src-link');
+      if (noaaEl) noaaEl.innerHTML = `<a href="https://water.noaa.gov/gauges/${noaaLid.toLowerCase()}" target="_blank" rel="noopener" style="color:var(--muted);font-size:9px;font-family:var(--mono);text-decoration:none">NOAA ↗</a>`;
+    }
+    const flowSrcEl = document.getElementById('chart-src-link');
+    if (flowSrcEl) flowSrcEl.innerHTML = `<a href="https://waterdata.usgs.gov/monitoring-location/${siteId}/" target="_blank" rel="noopener" style="color:var(--muted);font-size:9px;font-family:var(--mono);text-decoration:none">USGS ↗</a>`;
+
     const extLinks = [
       `<a href="https://waterdata.usgs.gov/monitoring-location/${siteId}/" target="_blank" rel="noopener">USGS Data ↗</a>`,
       noaaLid ? `<a href="https://water.noaa.gov/gauges/${noaaLid.toLowerCase()}" target="_blank" rel="noopener">NOAA Forecast ↗</a>` : '',
@@ -905,6 +927,8 @@ async function openDnrcPanel(feature) {
   });
   if (window._highlightDnrc) window._highlightDnrc(id);
   extLink.innerHTML = `<a href="https://gis.dnrc.mt.gov/apps/stage/gage-report/location/${id}" target="_blank" rel="noopener">DNRC StAGE ↗</a>`;
+  const dnrcSrcEl = document.getElementById('chart-src-link');
+  if (dnrcSrcEl) dnrcSrcEl.innerHTML = `<a href="https://gis.dnrc.mt.gov/apps/stage/gage-report/location/${id}" target="_blank" rel="noopener" style="color:var(--muted);font-size:9px;font-family:var(--mono);text-decoration:none">DNRC ↗</a>`;
 
   try {
     const data = await fetch(`/api/dnrc/${id}?days=14`).then(r => r.json());
@@ -1107,6 +1131,8 @@ async function loadSnotelChart(feature, days) {
     ).join('');
     const stationId = triplet.split(':')[0];
     extLink.innerHTML = `<a class="snotel-link" href="https://wcc.sc.egov.usda.gov/nwcc/site?sitenum=${stationId}" target="_blank" rel="noopener">NRCS Station ↗</a>`;
+    const snotelSrcEl = document.getElementById('chart-src-link');
+    if (snotelSrcEl) snotelSrcEl.innerHTML = `<a href="https://wcc.sc.egov.usda.gov/nwcc/site?sitenum=${stationId}" target="_blank" rel="noopener" style="color:var(--muted);font-size:9px;font-family:var(--mono);text-decoration:none">NRCS ↗</a>`;
   } catch(e) {
     cfsHero.innerHTML = '<div class="cfs-loading">Fetch error</div>';
   }

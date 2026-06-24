@@ -36,7 +36,7 @@
     padding: 0 20px; gap: 10px;
     position: sticky; top: 0; z-index: 200;
   }
-  .nav-brand { font-family: var(--mono); font-size: 14px; font-weight: 700; color: var(--accent); letter-spacing: -0.5px; }
+  .nav-brand { font-family: var(--sans); font-size: 12px; font-weight: 500; color: var(--text-muted); letter-spacing: 0.05em; text-transform: lowercase; }
   .nav-sep { color: var(--text-dim); font-size: 12px; }
   .nav-links { display: flex; gap: 2px; margin-left: 8px; }
   .nav-links a {
@@ -208,7 +208,11 @@
 <body>
 
 <nav class="top-nav">
-  <span class="nav-brand">SNOWLINE</span>
+  <span class="nav-brand">itogeospatial</span>
+  <div class="nav-links">
+    <a href="https://snow.line.itogeospatial.com" class="active">Snow Cover</a>
+    <a href="https://river.line.itogeospatial.com">River</a>
+  </div>
   <span class="nav-sep">/</span>
   <div class="nav-links">
     <a href="/">Map</a>
