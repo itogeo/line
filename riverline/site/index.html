@@ -343,11 +343,17 @@
         <div class="chart-wrap"><canvas id="flow-chart"></canvas></div>
       </div>
       <div id="chart-seasonal-section" style="display:none">
-        <div class="section-label">Water Year Context</div>
+        <div class="section-label" style="display:flex;justify-content:space-between;align-items:baseline">
+          <span>Water Year Context</span>
+          <span style="font-size:9px;color:var(--muted);font-family:var(--mono)">Source: USGS</span>
+        </div>
         <div class="chart-wrap-sm"><canvas id="seasonal-chart"></canvas></div>
       </div>
       <div id="chart-forecast-section" style="display:none">
-        <div class="section-label">NOAA Forecast</div>
+        <div class="section-label" style="display:flex;justify-content:space-between;align-items:baseline">
+          <span>NOAA Forecast</span>
+          <span style="font-size:9px;color:var(--muted);font-family:var(--mono)">Source: NOAA</span>
+        </div>
         <div class="chart-wrap-sm"><canvas id="forecast-chart"></canvas></div>
       </div>
       <div id="info-section"></div>
@@ -513,15 +519,23 @@ async function loadUsgsChart(siteId, days) {
 
   const recentP = fetch(recentUrl).then(r => r.json()).catch(() => null);
   const statsP  = fetch(`https://waterservices.usgs.gov/nwis/stat/?format=rdb&sites=${siteId}&parameterCd=00060&statReportType=daily`).then(r => r.text()).catch(() => null);
-  const noaaP   = noaaLid
-    ? Promise.all([
-        fetch(`/api/noaa/${noaaLid}/stageflow`).then(r => r.json()),
-        fetch(`/api/noaa/${noaaLid}`).then(r => r.json()),
-      ]).catch(() => null)
+
+  // Water year DV fetch (Oct 1 of current WY through today) for Chart 2 actual line
+  const wyNow = new Date();
+  const wyYear = wyNow.getMonth() >= 9 ? wyNow.getFullYear() : wyNow.getFullYear() - 1;
+  const wyP = fetch(`https://waterservices.usgs.gov/nwis/dv/?sites=${siteId}&parameterCd=00060&format=json&startDT=${wyYear}-10-01`)
+    .then(r => r.json()).catch(() => null);
+
+  // NOAA: allSettled so stageflow failure doesn't kill the metadata fetch
+  const noaaP = noaaLid
+    ? Promise.allSettled([
+        fetch(`/api/noaa/${noaaLid}/stageflow`).then(r => { if (!r.ok) throw r.status; return r.json(); }),
+        fetch(`/api/noaa/${noaaLid}`).then(r => { if (!r.ok) throw r.status; return r.json(); }),
+      ])
     : Promise.resolve(null);
 
   // ── Charts 1 + 2: USGS observed + seasonal context ────────────────────────
-  Promise.all([recentP, statsP]).then(([recent, statsText]) => {
+  Promise.all([recentP, statsP, wyP]).then(([recent, statsText, wyData]) => {
     // Parse recent flow values
     const series = recent?.value?.timeSeries || [];
     const flowSeries  = series.find(s => s.variable?.variableCode?.[0]?.value === '00060');
@@ -607,7 +621,7 @@ async function loadUsgsChart(siteId, days) {
     });
     chartSection.style.display = '';
 
-    // Chart 2 — water year seasonal context (Oct–Sep)
+    // Chart 2 — water year seasonal context (Oct–Sep) with colored bands + this year's line
     if (doyMap.size > 0) {
       const WY = [
         {m:10,days:31},{m:11,days:30},{m:12,days:31},
@@ -617,20 +631,38 @@ async function loadUsgsChart(siteId, days) {
       ];
       const ABBR = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
       const wyL = [], wyP10 = [], wyP25 = [], wyP50 = [], wyP75 = [], wyP90 = [];
+      const keyToIdx = new Map();
       let todayIdx = -1;
       for (const {m, days: md} of WY) {
         for (let d = 1; d <= md; d++) {
           const key = `${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+          const idx = wyL.length;
           wyL.push(d === 1 ? ABBR[m] : '');
+          keyToIdx.set(key, idx);
           const s = doyMap.get(key) || {};
           wyP10.push(s.p10 ?? null);
           wyP25.push(s.p25 ?? null);
           wyP50.push(s.mean ?? null);
           wyP75.push(s.p75 ?? null);
           wyP90.push(s.p90 ?? null);
-          if (key === todayMD) todayIdx = wyL.length - 1;
+          if (key === todayMD) todayIdx = idx;
         }
       }
+
+      // Build current water year actual flow line
+      const wyActual = new Array(wyL.length).fill(null);
+      if (wyData) {
+        const wySeries = wyData?.value?.timeSeries?.find(s => s.variable?.variableCode?.[0]?.value === '00060');
+        for (const v of (wySeries?.values?.[0]?.value || [])) {
+          const fl = parseFloat(v.value);
+          if (isNaN(fl) || fl < 0) continue;
+          const d = new Date(v.dateTime);
+          const key = `${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+          const idx = keyToIdx.get(key);
+          if (idx !== undefined) wyActual[idx] = fl;
+        }
+      }
+
       const todayDot = wyP50.map((_, i) => (i === todayIdx && !isNaN(cfs)) ? cfs : null);
 
       const ctx2 = document.getElementById('seasonal-chart').getContext('2d');
@@ -638,23 +670,26 @@ async function loadUsgsChart(siteId, days) {
       seasonalChart = new Chart(ctx2, {
         type: 'line',
         data: { labels: wyL, datasets: [
-          // P90 outer band fills to P10 (index+1)
-          { data: wyP90, borderColor: 'transparent', fill: '+1', backgroundColor: 'rgba(74,143,186,0.07)', pointRadius: 0, tension: 0.3, spanGaps: true },
-          // P10 floor (no fill)
+          // Bands ordered so fill:'+1' targets the correct adjacent boundary
+          // P90 → fills to P75: above-normal zone (blue)
+          { data: wyP90, borderColor: 'transparent', fill: '+1', backgroundColor: 'rgba(74,143,186,0.18)', pointRadius: 0, tension: 0.3, spanGaps: true },
+          // P75 → fills to P25: normal zone (green)
+          { data: wyP75, borderColor: 'transparent', fill: '+1', backgroundColor: 'rgba(34,197,94,0.13)', pointRadius: 0, tension: 0.3, spanGaps: true },
+          // P25 → fills to P10: below-normal zone (amber)
+          { data: wyP25, borderColor: 'transparent', fill: '+1', backgroundColor: 'rgba(245,158,11,0.13)', pointRadius: 0, tension: 0.3, spanGaps: true },
+          // P10 floor — no fill
           { data: wyP10, borderColor: 'transparent', fill: false, pointRadius: 0, tension: 0.3, spanGaps: true },
-          // P75 inner band fills to P25 (index+1)
-          { data: wyP75, borderColor: 'transparent', fill: '+1', backgroundColor: 'rgba(74,143,186,0.11)', pointRadius: 0, tension: 0.3, spanGaps: true },
-          // P25 inner floor
-          { data: wyP25, borderColor: 'transparent', fill: false, pointRadius: 0, tension: 0.3, spanGaps: true },
           // Median dashed
-          { data: wyP50, borderColor: 'rgba(74,143,186,0.4)', borderWidth: 1, borderDash: [3,2], fill: false, pointRadius: 0, tension: 0.3, spanGaps: true },
+          { data: wyP50, borderColor: 'rgba(74,143,186,0.35)', borderWidth: 1, borderDash: [3,2], fill: false, pointRadius: 0, tension: 0.3, spanGaps: true },
+          // This water year's actual flow (white/light line)
+          { data: wyActual, borderColor: 'rgba(255,255,255,0.7)', borderWidth: 1.5, fill: false, pointRadius: 0, tension: 0.2, spanGaps: false },
           // Today's dot
           { data: todayDot, type: 'scatter', backgroundColor: '#fff', borderColor: '#4a8fba', borderWidth: 2, pointRadius: todayIdx >= 0 ? 5 : 0, pointHoverRadius: 7 },
         ]},
-        options: { ...baseChartOpts(),
+        options: { ...baseChartOpts(), animation: false,
           plugins: { ...baseChartOpts().plugins,
             tooltip: { ...baseChartOpts().plugins.tooltip,
-              filter: item => item.datasetIndex === 5 || item.datasetIndex === 4,
+              filter: item => item.datasetIndex >= 4,
             },
           },
         },
@@ -685,10 +720,14 @@ async function loadUsgsChart(siteId, days) {
   });
 
   // ── Chart 3: NOAA forecast (renders independently when ready) ─────────────
-  noaaP.then(result => {
-    if (!result) return;
-    const [nd, nm] = result;
-    const mult = (nd?.secondaryUnit || '').toLowerCase() === 'kcfs' ? 1000 : 1;
+  noaaP.then(settled => {
+    if (!settled) return;
+    const nd = settled[0].status === 'fulfilled' ? settled[0].value : null;
+    const nm = settled[1].status === 'fulfilled' ? settled[1].value : null;
+    if (!nd) return;
+    // secondaryUnit lives inside observed or forecast, not at root
+    const secondaryUnit = nd?.observed?.secondaryUnit || nd?.forecast?.secondaryUnit || nd?.secondaryUnit || '';
+    const mult = secondaryUnit.toLowerCase() === 'kcfs' ? 1000 : 1;
     const obsItems = nd?.observed?.data  || [];
     const fcItems  = nd?.forecast?.data  || [];
     if (!obsItems.length && !fcItems.length) return;
@@ -706,8 +745,12 @@ async function loadUsgsChart(siteId, days) {
       return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}h`;
     };
 
-    const obsMap = new Map(sampledObs.map(v => [v.validTime, (v.secondary || 0) * mult]));
-    const fcMap  = new Map(sampledFc.map( v => [v.validTime, (v.secondary || 0) * mult]));
+    // Use secondary (CFS flow) if present; fall back to primary (stage ft)
+    const hasFlow = [...sampledObs, ...sampledFc].some(v => v.secondary != null && v.secondary !== 0);
+    const val = (v) => hasFlow ? (v.secondary || 0) * mult : (v.primary || 0);
+    const yLabel = hasFlow ? 'cfs' : 'ft';
+    const obsMap = new Map(sampledObs.map(v => [v.validTime, val(v)]));
+    const fcMap  = new Map(sampledFc.map( v => [v.validTime, val(v)]));
     const allKeys = [...new Set([...obsMap.keys(), ...fcMap.keys()])].sort();
     const c3labels = allKeys.map(toLabel);
     const c3obs = allKeys.map(t => obsMap.has(t) ? obsMap.get(t) : null);
@@ -727,7 +770,20 @@ async function loadUsgsChart(siteId, days) {
           borderDash: [5, 3],
           fill: false, pointRadius: 0, tension: 0.3, spanGaps: false },
       ]},
-      options: baseChartOpts(),
+      options: { ...baseChartOpts(),
+        plugins: { ...baseChartOpts().plugins,
+          tooltip: { ...baseChartOpts().plugins.tooltip,
+            callbacks: { label: c => c.parsed.y != null ? `${c.parsed.y.toLocaleString(undefined, {maximumFractionDigits: hasFlow ? 0 : 2})} ${yLabel}` : '' },
+          },
+        },
+        scales: { ...baseChartOpts().scales,
+          y: { ...baseChartOpts().scales.y,
+            ticks: { ...baseChartOpts().scales.y.ticks,
+              callback: hasFlow ? (v => v >= 1000 ? (v/1000).toFixed(1)+'k' : v) : (v => v.toFixed(1)+' ft'),
+            },
+          },
+        },
+      },
     });
     document.getElementById('chart-forecast-section').style.display = '';
 
