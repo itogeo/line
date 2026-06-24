@@ -781,7 +781,7 @@ async function loadUsgsChart(siteId, days) {
 
     const toLabel = t => {
       const d = new Date(t);
-      return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}h`;
+      return `${d.getMonth()+1}/${d.getDate()}`;
     };
 
     // -9999 / -999 are NOAA sentinel values meaning "missing" — treat as null
@@ -799,6 +799,9 @@ async function loadUsgsChart(siteId, days) {
     const c3obs = allKeys.map(t => obsMap.has(t) ? obsMap.get(t) : null);
     const c3fc  = allKeys.map(t => fcMap.has(t)  ? fcMap.get(t)  : null);
 
+    // Index of the last observed point — used to draw the "Now" divider
+    const nowIdx = allKeys.reduce((last, t, i) => obsMap.has(t) ? i : last, -1);
+
     const ctx3 = document.getElementById('forecast-chart').getContext('2d');
     if (forecastChart) forecastChart.destroy();
     forecastChart = new Chart(ctx3, {
@@ -809,10 +812,31 @@ async function loadUsgsChart(siteId, days) {
           fill: true, backgroundColor: 'rgba(74,143,186,0.07)',
           pointRadius: 0, tension: 0.2, spanGaps: false },
         { data: c3fc, label: 'Forecast',
-          borderColor: 'rgba(74,143,186,0.5)', borderWidth: 1.5,
+          borderColor: 'rgba(74,143,186,0.55)', borderWidth: 1.5,
           borderDash: [5, 3],
-          fill: false, pointRadius: 0, tension: 0.3, spanGaps: false },
+          fill: false,
+          pointRadius: 3, pointBackgroundColor: 'rgba(74,143,186,0.6)',
+          pointBorderColor: 'transparent', tension: 0.2, spanGaps: false },
       ]},
+      plugins: [{
+        id: 'nowLine',
+        afterDraw: chart => {
+          if (nowIdx < 0) return;
+          const x = chart.scales.x.getPixelForIndex(nowIdx);
+          const { top, bottom } = chart.chartArea;
+          const c = chart.ctx;
+          c.save();
+          c.strokeStyle = 'rgba(255,255,255,0.25)';
+          c.lineWidth = 1;
+          c.setLineDash([3, 3]);
+          c.beginPath(); c.moveTo(x, top); c.lineTo(x, bottom); c.stroke();
+          c.fillStyle = 'rgba(255,255,255,0.35)';
+          c.font = '9px JetBrains Mono, monospace';
+          c.textAlign = 'center';
+          c.fillText('NOW', x, top - 3);
+          c.restore();
+        },
+      }],
       options: { ...baseChartOpts(),
         plugins: { ...baseChartOpts().plugins,
           tooltip: { ...baseChartOpts().plugins.tooltip,
@@ -826,6 +850,7 @@ async function loadUsgsChart(siteId, days) {
             },
           },
         },
+        layout: { padding: { top: 14 } },
       },
     });
     document.getElementById('chart-forecast-section').style.display = '';
