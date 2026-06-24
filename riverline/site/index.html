@@ -487,14 +487,14 @@ async function loadUsgsChart(siteId, days) {
         noaaForecast = (nd?.forecast?.data || []).map(v => ({
           validTime: v.validTime, flow: (v.secondary || 0) * mult,
         }));
-        // NOAA NWPS API field paths vary by version — try several
-        const fc = nm?.floodCategories || nm?.flooding || nm?.floods || (nm?.action != null ? nm : {});
-        const getStage = obj => typeof obj === 'number' ? obj : (obj?.stage ?? null);
+        // NOAA NWPS v1: nm.flood.categories.{action,minor,moderate,major}.stage
+        const cats = nm?.flood?.categories || {};
+        const getStage = obj => (typeof obj === 'number' ? obj : null) ?? obj?.stage ?? null;
         noaaFloodStages = {
-          action:   getStage(fc.action)   ?? getStage(fc.actionStage)   ?? null,
-          flood:    getStage(fc.flood)    ?? getStage(fc.floodStage)    ?? getStage(fc.minor) ?? null,
-          moderate: getStage(fc.moderate) ?? getStage(fc.moderateStage) ?? null,
-          major:    getStage(fc.major)    ?? getStage(fc.majorStage)    ?? null,
+          action:   getStage(cats.action)   ?? null,
+          flood:    getStage(cats.minor)    ?? null,
+          moderate: getStage(cats.moderate) ?? null,
+          major:    getStage(cats.major)    ?? null,
         };
       } catch(_) {}
     }
@@ -521,46 +521,45 @@ async function loadUsgsChart(siteId, days) {
     const obsData = allKeys.map(t => obsMap.has(t) ? obsMap.get(t) : null);
     const fcData  = allKeys.map(t => fcMap.has(t)  ? fcMap.get(t)  : null);
 
-    // Fetch USGS historical stats (mean overlay + P10/P25/P75/P90 for condition badge)
+    // Fetch USGS historical stats via RDB format (JSON format returns 400)
+    // Columns: month_nu, day_nu, mean_va, p10_va, p25_va, p75_va, p90_va
     let avgData = [], flowCondition = null;
     try {
-      const statsUrl = `https://waterservices.usgs.gov/nwis/stat/?format=json&sites=${siteId}&parameterCd=00060&statReportType=daily&statYearType=calendar`;
-      const statsJson = await fetch(statsUrl).then(r => r.json());
-      const allSeries = statsJson?.value?.timeSeries || [];
-      const meanSeries = allSeries.find(s => {
-        const opts = s?.variable?.options?.option || [];
-        return opts.some(o => o.name === 'statType' && (o.value === '00003' || o.value === '3'));
-      }) || allSeries.find(s => (s?.variable?.variableDescription || '').toLowerCase().includes('mean'));
-      if (meanSeries) {
-        const meanVals = meanSeries?.values?.[0]?.value || [];
-        const doyMap = new Map(); // "MM-DD" → mean cfs
-        for (const v of meanVals) {
-          const mmdd = (v.dateTime || '').slice(5, 10); // "MM-DD" (reference year varies)
-          if (mmdd && v.value && v.value !== '-999999') doyMap.set(mmdd, parseFloat(v.value));
-        }
-        avgData = allKeys.map(t => {
-          const mmdd = new Date(t).toISOString().slice(5, 10);
-          return doyMap.has(mmdd) ? doyMap.get(mmdd) : null;
+      const statsUrl = `https://waterservices.usgs.gov/nwis/stat/?format=rdb&sites=${siteId}&parameterCd=00060&statReportType=daily`;
+      const statsText = await fetch(statsUrl).then(r => r.text());
+      const lines = statsText.split('\n').filter(l => l && !l.startsWith('#'));
+      const headers = lines[0].split('\t'); // skip lines[1] (type widths)
+      const doyMap = new Map(); // "MM-DD" → {mean, p10, p25, p75, p90}
+      for (const line of lines.slice(2)) {
+        const cols = line.split('\t');
+        if (cols.length < headers.length) continue;
+        const row = Object.fromEntries(headers.map((h, i) => [h, cols[i]]));
+        const m = row.month_nu?.padStart(2, '0'), d = row.day_nu?.padStart(2, '0');
+        if (!m || !d) continue;
+        const key = `${m}-${d}`;
+        doyMap.set(key, {
+          mean: parseFloat(row.mean_va) || null,
+          p10:  parseFloat(row.p10_va)  || null,
+          p25:  parseFloat(row.p25_va)  || null,
+          p75:  parseFloat(row.p75_va)  || null,
+          p90:  parseFloat(row.p90_va)  || null,
         });
       }
-      // Extract today's percentile thresholds to classify current CFS
+      avgData = allKeys.map(t => {
+        const mmdd = new Date(t).toISOString().slice(5, 10);
+        return doyMap.get(mmdd)?.mean ?? null;
+      });
+      // Classify current CFS against today's historical percentiles
       if (!isNaN(cfs) && cfs >= 0) {
         const today = new Date().toISOString().slice(5, 10); // "MM-DD"
-        const pctBands = {};
-        for (const code of ['P10', 'P25', 'P75', 'P90']) {
-          const ps = allSeries.find(s => (s?.variable?.options?.option || []).some(o => o.name === 'statType' && o.value === code));
-          if (ps) {
-            const m = (ps?.values?.[0]?.value || []).find(v => (v.dateTime || '').slice(5, 10) === today);
-            if (m && m.value !== '-999999') pctBands[code] = parseFloat(m.value);
-          }
-        }
-        if (Object.keys(pctBands).length >= 2) {
+        const pb = doyMap.get(today) || {};
+        if (pb.p10 != null || pb.p90 != null) {
           let label, color;
-          if (pctBands.P90 !== undefined && cfs > pctBands.P90)      { label = 'Exceptionally high'; color = '#c05040'; }
-          else if (pctBands.P75 !== undefined && cfs > pctBands.P75) { label = 'Above normal';       color = '#4a8fba'; }
-          else if (pctBands.P25 !== undefined && cfs > pctBands.P25) { label = 'Normal range';       color = '#3aab8a'; }
-          else if (pctBands.P10 !== undefined && cfs > pctBands.P10) { label = 'Below normal';       color = '#c8973a'; }
-          else                                                         { label = 'Exceptionally low';  color = '#c05040'; }
+          if (pb.p90 != null && cfs > pb.p90)      { label = 'Exceptionally high'; color = '#c05040'; }
+          else if (pb.p75 != null && cfs > pb.p75) { label = 'Above normal';       color = '#4a8fba'; }
+          else if (pb.p25 != null && cfs > pb.p25) { label = 'Normal range';       color = '#3aab8a'; }
+          else if (pb.p10 != null && cfs > pb.p10) { label = 'Below normal';       color = '#c8973a'; }
+          else                                       { label = 'Exceptionally low';  color = '#c05040'; }
           flowCondition = { label, color };
         }
       }
