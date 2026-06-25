@@ -49,108 +49,119 @@
   #loading-overlay.fade { opacity: 0; pointer-events: none; }
 
   /* ── Overview map ────────────────────────────────────────────────── */
-  #overview-map {
-    height: 240px; width: 100%; background: var(--surface);
-    border-bottom: 1px solid var(--border);
-  }
+  #overview-map { height: 240px; width: 100%; background: var(--surface); border-bottom: 1px solid var(--border); position: relative; }
   .mapboxgl-ctrl-logo, .mapboxgl-ctrl-attrib { display: none !important; }
+  #map-total {
+    position: absolute; bottom: 10px; left: 10px; z-index: 10;
+    background: rgba(14,28,45,0.9); border: 1px solid var(--border); border-radius: 6px;
+    padding: 5px 10px; font-family: var(--mono); font-size: 10px; color: var(--muted);
+    pointer-events: none;
+  }
+  #map-total strong { color: var(--text); }
 
   /* ── Page body ───────────────────────────────────────────────────── */
-  .page-body { max-width: 1300px; margin: 0 auto; padding: 0 16px 60px; }
+  .page-body { max-width: 1360px; margin: 0 auto; padding: 0 16px 60px; }
 
   .page-toolbar {
-    display: flex; align-items: center; gap: 12px;
-    padding: 12px 0 10px; border-bottom: 1px solid var(--border); margin-bottom: 4px;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 10px 0 8px; border-bottom: 1px solid var(--border); margin-bottom: 4px;
   }
   .search-box {
-    flex: 1; max-width: 320px; background: var(--surface); border: 1px solid var(--border);
-    border-radius: 5px; padding: 7px 11px; font-family: var(--mono); font-size: 11px;
+    flex: 1; max-width: 280px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 5px; padding: 6px 10px; font-family: var(--mono); font-size: 11px;
     color: var(--text); outline: none; transition: border-color 0.15s;
   }
   .search-box::placeholder { color: var(--muted); }
   .search-box:focus { border-color: var(--accent); }
-  #gauge-stats { font-family: var(--mono); font-size: 10px; color: var(--muted); white-space: nowrap; }
+  .chart-legend-global { display: flex; align-items: center; gap: 12px; }
+  .clg-item { display: flex; align-items: center; gap: 4px; font-family: var(--mono); font-size: 9px; color: var(--muted); white-space: nowrap; }
+  .clg-swatch { width: 18px; height: 7px; border-radius: 2px; }
+  #gauge-stats { font-family: var(--mono); font-size: 10px; color: var(--muted); white-space: nowrap; margin-left: auto; }
 
-  /* ── River section ───────────────────────────────────────────────── */
-  .river-section { margin-top: 20px; }
-  .river-section.hidden { display: none; }
-  .river-section-header {
+  /* ── Basin section ───────────────────────────────────────────────── */
+  .basin-section { margin-top: 20px; }
+  .basin-header {
     display: flex; align-items: baseline; gap: 10px;
-    padding: 5px 0 8px; border-bottom: 1px solid var(--border); margin-bottom: 10px;
+    padding: 5px 0 8px; border-bottom: 2px solid var(--border); margin-bottom: 6px;
   }
-  .river-section-name {
-    font-family: var(--serif); font-style: italic; font-size: 15px; color: var(--accent);
+  .basin-name { font-family: var(--serif); font-style: italic; font-size: 16px; color: var(--accent); }
+  .basin-count { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+
+  /* ── River group within basin ────────────────────────────────────── */
+  .river-group { margin-top: 10px; }
+  .river-group-header {
+    font-family: var(--mono); font-size: 10px; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.5px;
+    padding: 3px 0 5px; border-bottom: 1px solid rgba(26,47,69,0.6); margin-bottom: 6px;
   }
-  .river-section-count { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+  .river-group-header span { color: var(--dim); font-weight: 400; }
 
   /* ── Gauge grid ──────────────────────────────────────────────────── */
   .gauge-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(480px, 1fr));
-    gap: 10px;
+    grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+    gap: 8px;
   }
 
   /* ── Gauge card ──────────────────────────────────────────────────── */
   .gauge-card {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 7px;
     overflow: hidden;
   }
   .gauge-card-head {
     display: flex; align-items: flex-start; justify-content: space-between;
-    padding: 10px 14px 8px; border-bottom: 1px solid var(--border);
-    gap: 10px;
+    padding: 8px 11px 6px; border-bottom: 1px solid var(--border);
+    gap: 8px;
   }
   .gauge-card-left { flex: 1; min-width: 0; }
   .gauge-card-name {
-    font-family: var(--sans); font-size: 12px; font-weight: 600; color: var(--text);
+    font-size: 11px; font-weight: 600; color: var(--text);
     line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .gauge-card-id { font-family: var(--mono); font-size: 9px; color: var(--muted); margin-top: 2px; }
+  .gauge-card-id { font-family: var(--mono); font-size: 9px; color: var(--muted); margin-top: 1px; }
   .gauge-card-right { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; }
-  .gauge-card-cfs { font-family: var(--mono); font-size: 20px; font-weight: 700; line-height: 1; }
-  .gauge-card-unit { font-family: var(--sans); font-size: 10px; color: var(--muted); margin-left: 2px; }
+  .gauge-card-cfs { font-family: var(--mono); font-size: 16px; font-weight: 700; line-height: 1; }
+  .gauge-card-unit { font-family: var(--sans); font-size: 9px; color: var(--muted); margin-left: 2px; }
   .gauge-card-cls {
-    font-family: var(--mono); font-size: 9px; font-weight: 600; text-transform: uppercase;
-    letter-spacing: 0.4px; padding: 2px 7px; border-radius: 3px;
+    font-family: var(--mono); font-size: 8px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.4px; padding: 2px 6px; border-radius: 3px; white-space: nowrap;
   }
 
   /* ── Chart container ─────────────────────────────────────────────── */
-  .chart-container { position: relative; height: 160px; }
+  .chart-container { position: relative; height: 110px; }
   .chart-placeholder {
     position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center;
-    font-family: var(--mono); font-size: 10px; color: var(--muted);
-    background: var(--surface);
+    font-family: var(--mono); font-size: 10px; color: var(--muted); background: var(--surface);
   }
   .chart-placeholder.hidden { display: none; }
 
   /* ── Card footer ─────────────────────────────────────────────────── */
   .gauge-card-footer {
-    display: flex; align-items: center; gap: 8px; padding: 5px 14px;
-    border-top: 1px solid var(--border); background: rgba(0,0,0,0.12);
+    display: flex; align-items: center; gap: 8px; padding: 4px 11px;
+    border-top: 1px solid var(--border); background: rgba(0,0,0,0.1);
   }
-  .gauge-card-link {
-    font-family: var(--mono); font-size: 9px; color: var(--muted); text-decoration: none;
-    transition: color 0.15s;
-  }
+  .gauge-card-link { font-family: var(--mono); font-size: 9px; color: var(--muted); text-decoration: none; transition: color 0.15s; }
   .gauge-card-link:hover { color: var(--accent); }
   .gauge-card-ts { font-family: var(--mono); font-size: 9px; color: var(--dim); margin-left: auto; }
 
-  /* ── Legend strip ────────────────────────────────────────────────── */
-  .chart-legend {
-    display: flex; gap: 14px; padding: 4px 14px 6px;
-    border-bottom: 1px solid var(--border);
-  }
-  .chart-legend-item { display: flex; align-items: center; gap: 5px; }
-  .chart-legend-swatch { width: 20px; height: 8px; border-radius: 2px; }
-  .chart-legend-label { font-family: var(--mono); font-size: 9px; color: var(--muted); }
-
   /* ── Mobile ──────────────────────────────────────────────────────── */
-  @media (max-width: 620px) {
+  @media (max-width: 560px) {
     .gauge-grid { grid-template-columns: 1fr; }
     #overview-map { height: 180px; }
-    .page-toolbar { flex-wrap: wrap; }
-    .search-box { max-width: 100%; }
+    .chart-legend-global { display: none; }
   }
+
+  /* ── Mapbox popup override ───────────────────────────────────────── */
+  .mapboxgl-popup-content {
+    background: rgba(14,28,45,0.96) !important;
+    border: 1px solid #1a2f45 !important;
+    border-radius: 6px !important;
+    padding: 7px 11px !important;
+    box-shadow: none !important;
+  }
+  .mapboxgl-popup-tip { display: none; }
+  .popup-name { font-family: 'JetBrains Mono',monospace; font-size: 11px; font-weight: 600; color: #d4dde8; }
+  .popup-cfs  { font-family: 'JetBrains Mono',monospace; font-size: 11px; margin-top: 2px; }
 </style>
 </head>
 <body>
@@ -170,24 +181,51 @@
 
 <div id="loading-overlay">Loading Montana gauges…</div>
 
-<div id="overview-map"></div>
+<div id="overview-map">
+  <div id="map-total"></div>
+</div>
 
 <div class="page-body">
   <div class="page-toolbar">
-    <input type="search" class="search-box" id="search-box" placeholder="Search rivers or gauges…" autocomplete="off">
+    <input type="search" class="search-box" id="search-box" placeholder="Search basins, rivers, gauges…" autocomplete="off">
+    <div class="chart-legend-global">
+      <div class="clg-item">
+        <div class="clg-swatch" style="background:rgba(74,143,186,0.28)"></div>P75–P90
+      </div>
+      <div class="clg-item">
+        <div class="clg-swatch" style="background:rgba(34,197,94,0.15)"></div>Normal
+      </div>
+      <div class="clg-item">
+        <div class="clg-swatch" style="background:rgba(245,158,11,0.2)"></div>P10–P25
+      </div>
+      <div class="clg-item">
+        <div class="clg-swatch" style="background:rgba(74,143,186,0.5);height:2px;border-radius:1px"></div>Median
+      </div>
+    </div>
     <div id="gauge-stats">Loading…</div>
   </div>
-  <div id="river-sections"></div>
+  <div id="basin-sections"></div>
 </div>
 
 <script>
 mapboxgl.accessToken = 'pk.eyJ1IjoiaXRvZ2VvIiwiYSI6ImNta3ByYnA1bzBsYW0zZG9mMnMxdWZwMjUifQ.Q7pwAuAEKdBHD_dqaVBhvw';
 
-const CLS_COLOR = { 1:'#c05040', 2:'#c8973a', 3:'#4a8fba', 4:'#4aabba', 5:'#4a5fba' };
-const CLS_LABEL = { 1:'Much Below Normal', 2:'Below Normal', 3:'Normal', 4:'Above Normal', 5:'Much Above Normal' };
+// ── CLS color scale: diverging red → slate → blue ──────────────────
+const CLS_COLOR = {
+  1: '#c84030',  // much below normal — red
+  2: '#cc6020',  // below normal — rust/orange
+  3: '#6a8a9a',  // normal — slate blue
+  4: '#28a8e0',  // above normal — sky blue
+  5: '#1468d4',  // much above normal — deep blue
+};
+const CLS_LABEL = {
+  1: 'Much Below Normal', 2: 'Below Normal', 3: 'Normal',
+  4: 'Above Normal',      5: 'Much Above Normal',
+};
 const NO_DATA_COLOR = '#455a70';
-const WY_START = '2025-10-01';
-const WY_MONTHS = [
+
+const WY_START   = '2025-10-01';
+const WY_MONTHS  = [
   {m:10,days:31},{m:11,days:30},{m:12,days:31},
   {m:1,days:31},{m:2,days:28},{m:3,days:31},
   {m:4,days:30},{m:5,days:31},{m:6,days:30},
@@ -197,23 +235,105 @@ const MONTH_ABBR = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oc
 
 function clsColor(cls) { return CLS_COLOR[cls] || NO_DATA_COLOR; }
 function clsLabel(cls) { return CLS_LABEL[cls] || 'No Data'; }
+
 function fmtCfs(v) {
   if (v == null || v === '' || isNaN(Number(v))) return null;
   const n = Number(v);
   if (n < 0) return null;
-  return n >= 10000 ? (n/1000).toFixed(0)+'k' : n >= 1000 ? (n/1000).toFixed(1)+'k' : n.toFixed(0);
+  return n >= 10000 ? (n/1000).toFixed(0)+'k'
+       : n >= 1000  ? (n/1000).toFixed(1)+'k'
+       : n.toFixed(0);
 }
+
 function parseStat(s) { const v = parseFloat(s); return isNaN(v) ? null : v; }
 
-let liveMap = {};
+// ── Montana drainage basin definitions ────────────────────────────
+const BASINS_DEF = [
+  {
+    name: 'SW Montana — Headwaters',
+    rivers: ['Gallatin River','E Gallatin River','Hyalite C','Madison River',
+             'Jefferson River','Beaverhead River','Big Hole River','Ruby River',
+             'Red Rock River','Red Rock Creek','Blacktail Creek','Willow Creek'],
+  },
+  {
+    name: 'Upper Missouri',
+    rivers: ['Missouri River','MISSOURI RIVER NO. 4','MISSOURI RIVER NO. 5',
+             'Smith River','Belt Creek','Dearborn River','Little Prickly Pear Creek',
+             'Prickly Pear Creek','Tenmile Creek','Boulder Creek'],
+  },
+  {
+    name: 'Central Montana',
+    rivers: ['Musselshell River','Judith River','Big Spring Creek','Flatwillow Creek'],
+  },
+  {
+    name: 'Rocky Mountain Front',
+    rivers: ['Sun River','South Fork Sun River','North Fork Sun River','Teton River',
+             'Marias River','Cut Bank Creek','Two Medicine River','Swiftcurrent Creek',
+             'St. Mary River','St. Mary Canal','Birch Creek','Birch Creek Main Canal',
+             'Badger Creek'],
+  },
+  {
+    name: 'Hi-Line — Milk River',
+    rivers: ['Milk River','N F Milk River','Beaver Creek','West Fork Beaver Creek',
+             'Battle Creek','Lodge Creek','Boxelder Creek','Agency Canal Tailwaste',
+             'Little Peoples Creek','Peoples Creek','Lodge Pole Creek','Redrock Coulee',
+             'Big Sandy Creek','White Horse Canal'],
+  },
+  {
+    name: 'Eastern Montana Plains',
+    rivers: ['Big Muddy Creek','Poplar River','Redwater River','Muddy Creek',
+             'Nelson Creek','Sims Creek','Cains Coulee','Little Warm Creek Tributary'],
+  },
+  {
+    name: 'Yellowstone River',
+    rivers: ['Yellowstone River','Yellowstone River Fish Bypass Channel','Stillwater River',
+             'Boulder River','East Boulder River','Clarks Fork Yellowstone River',
+             'Shields River','Soda Butte Creek','Gardner River','Mill Creek',
+             'Red Lodge Creek','West Rosebud Creek','W Rosebud Creek',
+             'Rosebud C','Rosebud C Bel Lame Deer C'],
+  },
+  {
+    name: 'Tongue & Powder',
+    rivers: ['Tongue River','Powder River','Little Bighorn River','Lodge Grass Creek',
+             'Bighorn River','Big Horn Canal','Clear Creek'],
+  },
+  {
+    name: 'Clark Fork & Tributaries',
+    rivers: ['Clark Fork','Silver Bow Creek','Warm Springs Creek','Little Blackfoot River',
+             'Blackfoot River','NF Blackfoot River','Bitterroot River',
+             'West Fork Bitterroot River','Bitterroot Irrigation District Canal',
+             'Lake Como Spillway','Flint Creek','Georgetown Lake','Rock Creek',
+             'Middle Fork Rock Creek','St. Regis River','Thompson River','Prospect Creek',
+             'Lost Creek','South Fork Jocko River','Mission Creek',
+             'Vermilion River','Vermilion River .63 mi','Vermilion River .78 mi',
+             'Vermilion River 1.0 mi','Vermilion River 1100 ft','Vermilion River 1800 ft',
+             'Vermilion River 400 ft','Vermilion River 50 ft',
+             'Vermilion River, N channel, 0.55 mi','Vermilion River, S channel, 0.55 mi'],
+  },
+  {
+    name: 'Flathead & Kootenai',
+    rivers: ['Flathead River','N F Flathead River','M F Flathead River','S F Flathead River',
+             'Swan River','Whitefish River','Tobacco River','Yaak River','Fisher River',
+             'Libby Wetland Site','Kootenai River'],
+  },
+];
+
+// Build fast lookup: river name → basin name
+const BASIN_LOOKUP = new Map();
+const BASIN_ORDER  = BASINS_DEF.map(b => {
+  b.rivers.forEach(r => BASIN_LOOKUP.set(r, b.name));
+  return b.name;
+});
+
+// ── App state ──────────────────────────────────────────────────────
+let liveMap       = {};
 let hierarchyData = [];
-let overviewMap = null;
+let overviewMap   = null;
 let chartObserver = null;
+const dvCache     = new Map();
+const statsCache  = new Map();
 
-// Caches keyed by siteId — persist across filter rebuilds
-const dvCache = new Map();
-const statsCache = new Map();
-
+// ── Bootstrap ─────────────────────────────────────────────────────
 async function loadData() {
   const [hierResp, liveResp] = await Promise.allSettled([
     fetch('/river/data/river_hierarchy.json'),
@@ -221,25 +341,31 @@ async function loadData() {
   ]);
 
   if (hierResp.status === 'fulfilled' && hierResp.value.ok) {
-    const j = await hierResp.value.json();
-    hierarchyData = j.rivers || [];
+    hierarchyData = (await hierResp.value.json()).rivers || [];
   } else {
     document.getElementById('loading-overlay').textContent = 'Failed to load gauge data.';
     return;
   }
 
   if (liveResp.status === 'fulfilled' && liveResp.value.ok) {
-    const geo = await liveResp.value.json();
-    for (const f of (geo.features || [])) {
+    for (const f of ((await liveResp.value.json()).features || [])) {
       const p = f.properties;
       liveMap[p.id] = { flow: p.flow, ts: p.ts, cls: p.cls };
     }
   }
 
-  const total = hierarchyData.reduce((s, r) => s + r.gauges.length, 0);
-  const reporting = Object.values(liveMap).filter(v => v.flow != null).length;
+  const totalGauges = hierarchyData.reduce((s, r) => s + r.gauges.length, 0);
+  const reporting   = Object.values(liveMap).filter(v => v.flow != null).length;
+  const totalFlow   = Object.values(liveMap).reduce((s, v) => s + (v.flow > 0 ? Number(v.flow) : 0), 0);
+
   document.getElementById('gauge-stats').textContent =
-    `${hierarchyData.length} rivers · ${total} gauges · ${reporting} reporting`;
+    `${hierarchyData.length} rivers · ${totalGauges} gauges · ${reporting} reporting`;
+
+  const fmtTotal = totalFlow >= 1e6 ? (totalFlow/1e6).toFixed(2)+'M cfs'
+                 : totalFlow >= 1e3 ? Math.round(totalFlow/1e3)+'k cfs'
+                 : Math.round(totalFlow)+' cfs';
+  document.getElementById('map-total').innerHTML =
+    `Measured total: <strong>${fmtTotal}</strong> · ${reporting} gauges`;
 
   buildPage();
   initMap();
@@ -253,90 +379,94 @@ async function loadData() {
 // ── Page builder ───────────────────────────────────────────────────
 function buildPage(filter) {
   const q = (filter || '').trim().toLowerCase();
-  const container = document.getElementById('river-sections');
+  const container = document.getElementById('basin-sections');
   container.innerHTML = '';
 
+  // Group rivers by basin
+  const basinMap = new Map();
   for (const river of hierarchyData) {
-    const rLow = river.name.toLowerCase();
-    const gauges = q
-      ? river.gauges.filter(g => g.name.toLowerCase().includes(q) || rLow.includes(q))
+    const basinName = BASIN_LOOKUP.get(river.name) || 'Other Montana';
+    const matchedGauges = q
+      ? river.gauges.filter(g =>
+          g.name.toLowerCase().includes(q) ||
+          river.name.toLowerCase().includes(q) ||
+          basinName.toLowerCase().includes(q))
       : river.gauges;
-    if (gauges.length === 0) continue;
-
-    const section = document.createElement('div');
-    section.className = 'river-section';
-
-    const hdr = document.createElement('div');
-    hdr.className = 'river-section-header';
-    hdr.innerHTML = `
-      <span class="river-section-name">${river.name}</span>
-      <span class="river-section-count">${gauges.length} gauge${gauges.length !== 1 ? 's' : ''}</span>`;
-    section.appendChild(hdr);
-
-    const grid = document.createElement('div');
-    grid.className = 'gauge-grid';
-
-    for (const gauge of gauges) {
-      const live = liveMap[gauge.id] || {};
-      const color = clsColor(live.cls);
-      const cfsStr = fmtCfs(live.flow);
-      const ts = live.ts ? live.ts.slice(0, 10) : null;
-
-      const card = document.createElement('div');
-      card.className = 'gauge-card';
-      card.id = `gauge-${gauge.id}`;
-
-      // Head
-      card.innerHTML = `
-        <div class="gauge-card-head">
-          <div class="gauge-card-left">
-            <div class="gauge-card-name" title="${gauge.name}">${gauge.name}</div>
-            <div class="gauge-card-id">${gauge.id}</div>
-          </div>
-          <div class="gauge-card-right">
-            <div>
-              <span class="gauge-card-cfs" style="color:${cfsStr ? color : NO_DATA_COLOR}">${cfsStr || '—'}</span>
-              <span class="gauge-card-unit">cfs</span>
-            </div>
-            <div class="gauge-card-cls" style="background:${color}1a;color:${color}">${clsLabel(live.cls)}</div>
-          </div>
-        </div>
-        <div class="chart-legend">
-          <div class="chart-legend-item">
-            <div class="chart-legend-swatch" style="background:rgba(74,143,186,0.25)"></div>
-            <span class="chart-legend-label">P75–P90</span>
-          </div>
-          <div class="chart-legend-item">
-            <div class="chart-legend-swatch" style="background:rgba(34,197,94,0.18)"></div>
-            <span class="chart-legend-label">P25–P75</span>
-          </div>
-          <div class="chart-legend-item">
-            <div class="chart-legend-swatch" style="background:rgba(245,158,11,0.2)"></div>
-            <span class="chart-legend-label">P10–P25</span>
-          </div>
-          <div class="chart-legend-item">
-            <div class="chart-legend-swatch" style="background:${color};height:3px;border-radius:1px"></div>
-            <span class="chart-legend-label">WY 2026</span>
-          </div>
-        </div>
-        <div class="chart-container" data-site-id="${gauge.id}" data-cls="${live.cls || 0}" data-loaded="false">
-          <canvas></canvas>
-          <div class="chart-placeholder">Loading chart…</div>
-        </div>
-        <div class="gauge-card-footer">
-          <a class="gauge-card-link" href="https://waterdata.usgs.gov/monitoring-location/${gauge.id}/" target="_blank" rel="noopener">USGS ↗</a>
-          <a class="gauge-card-link" href="https://waterdata.usgs.gov/nwis/uv?site_no=${gauge.id}" target="_blank" rel="noopener">Live ↗</a>
-          ${ts ? `<span class="gauge-card-ts">as of ${ts}</span>` : ''}
-        </div>`;
-
-      grid.appendChild(card);
-    }
-
-    section.appendChild(grid);
-    container.appendChild(section);
+    if (matchedGauges.length === 0) continue;
+    if (!basinMap.has(basinName)) basinMap.set(basinName, []);
+    basinMap.get(basinName).push({ ...river, gauges: matchedGauges });
   }
 
-  // Observe newly created containers
+  const orderedBasins = [...BASIN_ORDER, 'Other Montana'].filter(b => basinMap.has(b));
+
+  for (const basinName of orderedBasins) {
+    const rivers      = basinMap.get(basinName);
+    const totalGauges = rivers.reduce((s, r) => s + r.gauges.length, 0);
+
+    const basinEl  = document.createElement('div');
+    basinEl.className = 'basin-section';
+
+    const basinHdr = document.createElement('div');
+    basinHdr.className = 'basin-header';
+    basinHdr.innerHTML =
+      `<span class="basin-name">${basinName}</span>` +
+      `<span class="basin-count">${totalGauges} gauge${totalGauges !== 1 ? 's' : ''}</span>`;
+    basinEl.appendChild(basinHdr);
+
+    for (const river of rivers) {
+      const group = document.createElement('div');
+      group.className = 'river-group';
+
+      const groupHdr = document.createElement('div');
+      groupHdr.className = 'river-group-header';
+      groupHdr.innerHTML =
+        `${river.name} <span>· ${river.gauges.length}</span>`;
+      group.appendChild(groupHdr);
+
+      const grid = document.createElement('div');
+      grid.className = 'gauge-grid';
+
+      for (const gauge of river.gauges) {
+        const live   = liveMap[gauge.id] || {};
+        const color  = clsColor(live.cls);
+        const cfsStr = fmtCfs(live.flow);
+        const ts     = live.ts ? live.ts.slice(0, 10) : null;
+
+        const card = document.createElement('div');
+        card.className = 'gauge-card';
+        card.id        = `gauge-${gauge.id}`;
+        card.innerHTML =
+          `<div class="gauge-card-head">
+            <div class="gauge-card-left">
+              <div class="gauge-card-name" title="${gauge.name}">${gauge.name}</div>
+              <div class="gauge-card-id">${gauge.id}</div>
+            </div>
+            <div class="gauge-card-right">
+              <div>
+                <span class="gauge-card-cfs" style="color:${cfsStr ? color : NO_DATA_COLOR}">${cfsStr || '—'}</span>
+                <span class="gauge-card-unit">cfs</span>
+              </div>
+              <div class="gauge-card-cls" style="background:${color}18;color:${color}">${clsLabel(live.cls)}</div>
+            </div>
+          </div>
+          <div class="chart-container" data-site-id="${gauge.id}" data-cls="${live.cls || 0}" data-loaded="false">
+            <canvas></canvas>
+            <div class="chart-placeholder">—</div>
+          </div>
+          <div class="gauge-card-footer">
+            <a class="gauge-card-link" href="https://waterdata.usgs.gov/monitoring-location/${gauge.id}/" target="_blank" rel="noopener">USGS ↗</a>
+            ${ts ? `<span class="gauge-card-ts">${ts}</span>` : ''}
+          </div>`;
+        grid.appendChild(card);
+      }
+
+      group.appendChild(grid);
+      basinEl.appendChild(group);
+    }
+
+    container.appendChild(basinEl);
+  }
+
   if (chartObserver) {
     document.querySelectorAll('.chart-container[data-loaded="false"]').forEach(el => {
       chartObserver.observe(el);
@@ -344,7 +474,7 @@ function buildPage(filter) {
   }
 }
 
-// ── IntersectionObserver ───────────────────────────────────────────
+// ── IntersectionObserver for lazy chart loading ────────────────────
 function setupObserver() {
   chartObserver = new IntersectionObserver((entries) => {
     for (const entry of entries) {
@@ -362,16 +492,15 @@ function setupObserver() {
   });
 }
 
-// ── Chart loader ───────────────────────────────────────────────────
+// ── Gauge chart loader ─────────────────────────────────────────────
 async function loadGaugeChart(container) {
-  const siteId = container.dataset.siteId;
-  const cls = parseInt(container.dataset.cls) || 0;
-  const lineColor = CLS_COLOR[cls] || '#4a8fba';
-  const canvas = container.querySelector('canvas');
+  const siteId      = container.dataset.siteId;
+  const cls         = parseInt(container.dataset.cls) || 0;
+  const lineColor   = CLS_COLOR[cls] || '#4a8fba';
+  const canvas      = container.querySelector('canvas');
   const placeholder = container.querySelector('.chart-placeholder');
 
   try {
-    // Parallel fetch DV + stats, using cache when available
     const dvP = dvCache.has(siteId)
       ? Promise.resolve(dvCache.get(siteId))
       : fetch(`https://waterservices.usgs.gov/nwis/dv/?sites=${siteId}&parameterCd=00060&startDT=${WY_START}&format=json`)
@@ -383,72 +512,63 @@ async function loadGaugeChart(container) {
           .then(r => r.ok ? r.text() : null).catch(() => null);
 
     const [dvData, statsText] = await Promise.all([dvP, statsP]);
-
-    if (!dvCache.has(siteId)) dvCache.set(siteId, dvData);
+    if (!dvCache.has(siteId))    dvCache.set(siteId, dvData);
     if (!statsCache.has(siteId)) statsCache.set(siteId, statsText);
 
-    // Parse stats RDB → doyMap: 'MM-DD' → {p10,p25,p50,p75,p90}
+    // Parse USGS stats RDB → map 'MM-DD' → {p10,p25,p50,p75,p90}
     const doyMap = new Map();
     if (statsText) {
-      const lines = statsText.split('\n').filter(l => l && !l.startsWith('#'));
+      const lines   = statsText.split('\n').filter(l => l && !l.startsWith('#'));
       const headers = lines[0]?.split('\t').map(h => h.trim()) || [];
       for (const line of lines.slice(2)) {
         const cols = line.split('\t');
         if (cols.length < headers.length) continue;
-        const row = Object.fromEntries(headers.map((h, i) => [h, cols[i]]));
-        const m = (row.month_nu || '').padStart(2, '0');
-        const d = (row.day_nu  || '').padStart(2, '0');
+        const row  = Object.fromEntries(headers.map((h, i) => [h, cols[i]]));
+        const m    = (row.month_nu || '').padStart(2, '0');
+        const d    = (row.day_nu   || '').padStart(2, '0');
         if (!m || !d || isNaN(parseInt(m, 10))) continue;
         doyMap.set(`${m}-${d}`, {
-          p10: parseStat(row.p10_va),
-          p25: parseStat(row.p25_va),
-          p50: parseStat(row.p50_va),
-          p75: parseStat(row.p75_va),
+          p10: parseStat(row.p10_va), p25: parseStat(row.p25_va),
+          p50: parseStat(row.p50_va), p75: parseStat(row.p75_va),
           p90: parseStat(row.p90_va),
         });
       }
     }
 
-    // Parse DV JSON → flowMap: 'YYYY-MM-DD' → cfs
+    // Parse USGS DV JSON → map 'YYYY-MM-DD' → cfs
     const flowMap = new Map();
     if (dvData) {
-      const series = dvData?.value?.timeSeries || [];
-      const fs = series.find(s => s.variable?.variableCode?.[0]?.value === '00060');
+      const fs = (dvData?.value?.timeSeries || [])
+        .find(s => s.variable?.variableCode?.[0]?.value === '00060');
       for (const v of (fs?.values?.[0]?.value || [])) {
         const fl = parseFloat(v.value);
         if (!isNaN(fl) && fl >= 0) flowMap.set(v.dateTime.slice(0, 10), fl);
       }
     }
 
-    // Build water-year date spine from Oct 1, 2025 through today
+    // Build water-year date spine (Oct 1 2025 → today)
     const todayStr = new Date().toISOString().slice(0, 10);
-    const labels = [], p10 = [], p25 = [], p50 = [], p75 = [], p90 = [], actual = [];
+    const labels   = [];
+    const p10 = [], p25 = [], p50 = [], p75 = [], p90 = [], actual = [];
 
     for (const {m, days: md} of WY_MONTHS) {
       for (let day = 1; day <= md; day++) {
-        const mStr = String(m).padStart(2, '0');
-        const dStr = String(day).padStart(2, '0');
-        const yr = m >= 10 ? 2025 : 2026;
+        const mStr   = String(m).padStart(2, '0');
+        const dStr   = String(day).padStart(2, '0');
+        const yr     = m >= 10 ? 2025 : 2026;
         const dateStr = `${yr}-${mStr}-${dStr}`;
         if (dateStr > todayStr) continue;
-
         labels.push(day === 1 ? MONTH_ABBR[m] : '');
-
         const stats = doyMap.get(`${mStr}-${dStr}`) || {};
-        p10.push(stats.p10 ?? null);
-        p25.push(stats.p25 ?? null);
-        p50.push(stats.p50 ?? null);
-        p75.push(stats.p75 ?? null);
+        p10.push(stats.p10 ?? null); p25.push(stats.p25 ?? null);
+        p50.push(stats.p50 ?? null); p75.push(stats.p75 ?? null);
         p90.push(stats.p90 ?? null);
         actual.push(flowMap.get(dateStr) ?? null);
       }
     }
 
-    const hasStats = doyMap.size > 0;
-    const hasActual = actual.some(v => v != null);
-
-    if (!hasStats && !hasActual) {
-      placeholder.textContent = 'No data available';
+    if (!doyMap.size && !actual.some(v => v != null)) {
+      placeholder.textContent = 'No data';
       container.dataset.loaded = 'empty';
       return;
     }
@@ -458,19 +578,12 @@ async function loadGaugeChart(container) {
     new Chart(canvas, {
       type: 'line',
       data: { labels, datasets: [
-        // ── Percentile bands ──────────────────────────────────────────
-        // P90 → fill to P75 (idx+1): above-normal zone (blue)
-        { data: p90, borderColor: 'transparent', fill: '+1', backgroundColor: 'rgba(74,143,186,0.18)', pointRadius: 0, tension: 0.3, spanGaps: true },
-        // P75 → fill to P25 (idx+1): normal zone (green)
-        { data: p75, borderColor: 'transparent', fill: '+1', backgroundColor: 'rgba(34,197,94,0.12)', pointRadius: 0, tension: 0.3, spanGaps: true },
-        // P25 → fill to P10 (idx+1): below-normal zone (amber)
-        { data: p25, borderColor: 'transparent', fill: '+1', backgroundColor: 'rgba(245,158,11,0.14)', pointRadius: 0, tension: 0.3, spanGaps: true },
-        // P10 floor — no fill
+        { data: p90, borderColor: 'transparent', fill: '+1', backgroundColor: 'rgba(74,143,186,0.15)', pointRadius: 0, tension: 0.3, spanGaps: true },
+        { data: p75, borderColor: 'transparent', fill: '+1', backgroundColor: 'rgba(34,197,94,0.11)', pointRadius: 0, tension: 0.3, spanGaps: true },
+        { data: p25, borderColor: 'transparent', fill: '+1', backgroundColor: 'rgba(245,158,11,0.13)', pointRadius: 0, tension: 0.3, spanGaps: true },
         { data: p10, borderColor: 'transparent', fill: false, pointRadius: 0, tension: 0.3, spanGaps: true },
-        // P50 dashed median
-        { data: p50, borderColor: 'rgba(74,143,186,0.32)', borderWidth: 1, borderDash: [3, 2], fill: false, pointRadius: 0, tension: 0.3, spanGaps: true },
-        // ── Current water year ────────────────────────────────────────
-        { data: actual, borderColor: lineColor, borderWidth: 2, fill: false, pointRadius: 0, tension: 0.2, spanGaps: false },
+        { data: p50, borderColor: 'rgba(74,143,186,0.30)', borderWidth: 1, borderDash: [3,2], fill: false, pointRadius: 0, tension: 0.3, spanGaps: true },
+        { data: actual, borderColor: lineColor, borderWidth: 1.5, fill: false, pointRadius: 0, tension: 0.2, spanGaps: false },
       ]},
       options: {
         responsive: true, maintainAspectRatio: false, animation: false,
@@ -481,50 +594,41 @@ async function loadGaugeChart(container) {
             filter: item => item.datasetIndex >= 4,
             backgroundColor: 'rgba(14,28,45,0.95)',
             titleColor: '#455a70', bodyColor: '#d4dde8',
-            borderColor: '#1a2f45', borderWidth: 1,
-            padding: 8,
-            titleFont: { family: "'JetBrains Mono', monospace", size: 9 },
-            bodyFont: { family: "'JetBrains Mono', monospace", size: 10, weight: '600' },
+            borderColor: '#1a2f45', borderWidth: 1, padding: 7,
+            titleFont: { family: "'JetBrains Mono',monospace", size: 9 },
+            bodyFont:  { family: "'JetBrains Mono',monospace", size: 10, weight: '600' },
             callbacks: {
               label: ctx => {
                 if (ctx.parsed.y == null) return '';
                 const v = ctx.parsed.y;
                 const s = v >= 1000 ? (v/1000).toFixed(1)+'k' : v.toFixed(0);
-                return ctx.datasetIndex === 4 ? `Median  ${s} cfs` : `Flow    ${s} cfs`;
+                return ctx.datasetIndex === 4 ? `Med  ${s} cfs` : `Flow ${s} cfs`;
               },
             },
           },
         },
         scales: {
           x: {
-            ticks: {
-              color: '#455a70', font: { family: "'JetBrains Mono', monospace", size: 8 },
-              maxTicksLimit: 13, maxRotation: 0, autoSkip: true,
-            },
-            grid: { color: 'rgba(255,255,255,0.025)' },
-            border: { color: '#1a2f45' },
+            ticks: { color: '#455a70', font: { family: "'JetBrains Mono',monospace", size: 7 }, maxTicksLimit: 13, maxRotation: 0 },
+            grid: { color: 'rgba(255,255,255,0.025)' }, border: { color: '#1a2f45' },
           },
           y: {
-            ticks: {
-              color: '#455a70', font: { family: "'JetBrains Mono', monospace", size: 8 },
-              maxTicksLimit: 5,
-              callback: v => v >= 1000 ? (v/1000).toFixed(1)+'k' : v,
-            },
-            grid: { color: 'rgba(255,255,255,0.04)' },
-            border: { color: '#1a2f45' },
+            ticks: { color: '#455a70', font: { family: "'JetBrains Mono',monospace", size: 7 }, maxTicksLimit: 4,
+              callback: v => v >= 1000 ? (v/1000).toFixed(1)+'k' : v },
+            grid: { color: 'rgba(255,255,255,0.035)' }, border: { color: '#1a2f45' },
           },
         },
       },
     });
 
     container.dataset.loaded = 'done';
-  } catch(e) {
+  } catch {
     placeholder.textContent = 'Chart unavailable';
     container.dataset.loaded = 'error';
   }
 }
 
-// ── Mapbox overview mini-map ───────────────────────────────────────
+// ── Mapbox overview map ────────────────────────────────────────────
 function initMap() {
   overviewMap = new mapboxgl.Map({
     container: 'overview-map',
@@ -537,6 +641,8 @@ function initMap() {
   });
   overviewMap.dragRotate.disable();
 
+  const popup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, offset: 8 });
+
   overviewMap.on('load', () => {
     const features = [];
     for (const river of hierarchyData) {
@@ -546,7 +652,12 @@ function initMap() {
         features.push({
           type: 'Feature',
           geometry: { type: 'Point', coordinates: gauge.coords },
-          properties: { id: gauge.id, name: gauge.name, color: clsColor(live.cls) },
+          properties: {
+            id:    gauge.id,
+            name:  gauge.name,
+            flow:  live.flow != null ? Number(live.flow) : -1,
+            color: clsColor(live.cls),
+          },
         });
       }
     }
@@ -555,33 +666,54 @@ function initMap() {
       type: 'geojson',
       data: { type: 'FeatureCollection', features },
     });
+
     overviewMap.addLayer({
       id: 'gauge-dots',
       type: 'circle',
       source: 'gauges',
       paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 4, 8, 7],
-        'circle-color': ['get', 'color'],
-        'circle-opacity': 0.85,
-        'circle-stroke-width': 1,
-        'circle-stroke-color': 'rgba(0,0,0,0.35)',
+        // Size dots proportionally to log10(flow+1) — large rivers appear larger
+        'circle-radius': [
+          'interpolate', ['linear'],
+          ['log10', ['+', ['max', ['coalesce', ['get', 'flow'], 0], 0], 1]],
+          0, 3,     // ~0 cfs
+          1, 4,     // ~10 cfs
+          2, 5.5,   // ~100 cfs
+          3, 8,     // ~1,000 cfs
+          4, 12,    // ~10,000 cfs
+          5, 16,    // ~100,000 cfs
+        ],
+        'circle-color':         ['get', 'color'],
+        'circle-opacity':        0.88,
+        'circle-stroke-width':   0.8,
+        'circle-stroke-color':  'rgba(0,0,0,0.35)',
       },
     });
 
-    // Click dot → scroll to gauge card
+    // Click → scroll to gauge card
     overviewMap.on('click', 'gauge-dots', e => {
       const id = e.features[0]?.properties?.id;
-      if (!id) return;
-      const el = document.getElementById(`gauge-${id}`);
-      if (!el) return;
-      const y = el.getBoundingClientRect().top + window.scrollY - 60;
-      window.scrollTo({ top: y, behavior: 'smooth' });
+      const el = id && document.getElementById(`gauge-${id}`);
+      if (el) window.scrollTo({
+        top: el.getBoundingClientRect().top + window.scrollY - 60,
+        behavior: 'smooth',
+      });
     });
 
-    overviewMap.on('mouseenter', 'gauge-dots', () => {
+    // Hover → popup with name + flow
+    overviewMap.on('mouseenter', 'gauge-dots', e => {
+      const p = e.features[0]?.properties;
+      if (!p) return;
+      const flowNum = Number(p.flow);
+      const flowStr = flowNum > 0 ? `${fmtCfs(flowNum)} cfs` : 'No data';
+      popup.setLngLat(e.lngLat)
+        .setHTML(`<div class="popup-name">${p.name}</div>` +
+                 `<div class="popup-cfs" style="color:${p.color}">${flowStr}</div>`)
+        .addTo(overviewMap);
       overviewMap.getCanvas().style.cursor = 'pointer';
     });
     overviewMap.on('mouseleave', 'gauge-dots', () => {
+      popup.remove();
       overviewMap.getCanvas().style.cursor = '';
     });
   });
@@ -589,10 +721,8 @@ function initMap() {
 
 // ── Search ─────────────────────────────────────────────────────────
 document.getElementById('search-box').addEventListener('input', e => {
-  // Disconnect observer before rebuild so old targets don't fire
   if (chartObserver) chartObserver.disconnect();
   buildPage(e.target.value);
-  // Re-observe freshly created containers
   if (chartObserver) {
     document.querySelectorAll('.chart-container[data-loaded="false"]').forEach(el => {
       chartObserver.observe(el);
