@@ -49,15 +49,22 @@
   #loading-overlay.fade { opacity: 0; pointer-events: none; }
 
   /* ── Overview map ────────────────────────────────────────────────── */
-  #overview-map { height: 260px; width: 100%; background: var(--surface); border-bottom: 1px solid var(--border); position: relative; }
+  #overview-map { height: 460px; width: 100%; background: var(--surface); border-bottom: 1px solid var(--border); position: relative; }
   .mapboxgl-ctrl-logo, .mapboxgl-ctrl-attrib { display: none !important; }
-  #map-total {
-    position: absolute; bottom: 10px; left: 10px; z-index: 10;
-    background: rgba(8,15,24,0.88); border: 1px solid var(--border); border-radius: 6px;
-    padding: 5px 10px; font-family: var(--mono); font-size: 10px; color: var(--muted);
-    pointer-events: none;
+  .mapboxgl-ctrl-group { background: rgba(14,28,45,0.92) !important; border: 1px solid var(--border) !important; }
+  .mapboxgl-ctrl-group button { background-color: transparent !important; }
+  .mapboxgl-ctrl-icon { filter: invert(0.7); }
+  #map-legend {
+    position: absolute; bottom: 14px; right: 14px; z-index: 10;
+    background: rgba(8,15,24,0.90); border: 1px solid var(--border); border-radius: 7px;
+    padding: 10px 12px; pointer-events: none; display: flex; gap: 20px;
   }
-  #map-total strong { color: var(--text); }
+  .leg-col { display: flex; flex-direction: column; gap: 5px; }
+  .leg-title { font-family: var(--mono); font-size: 8px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); margin-bottom: 2px; }
+  .leg-row { display: flex; align-items: center; gap: 8px; }
+  .leg-dot-wrap { width: 26px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .leg-dot { border-radius: 50%; flex-shrink: 0; }
+  .leg-txt { font-family: var(--mono); font-size: 9px; color: #8090a0; white-space: nowrap; }
 
   /* ── Page body ───────────────────────────────────────────────────── */
   .page-body { max-width: 1360px; margin: 0 auto; padding: 0 16px 60px; }
@@ -191,7 +198,17 @@
 <div id="loading-overlay">Loading Montana gauges…</div>
 
 <div id="overview-map">
-  <div id="map-total"></div>
+  <div id="map-legend">
+    <div class="leg-col">
+      <div class="leg-title">Discharge</div>
+      <div class="leg-row"><div class="leg-dot-wrap"><div class="leg-dot" style="width:6px;height:6px;background:#8b3a30"></div></div><span class="leg-txt">< 10 cfs</span></div>
+      <div class="leg-row"><div class="leg-dot-wrap"><div class="leg-dot" style="width:9px;height:9px;background:#c05040"></div></div><span class="leg-txt">50 cfs</span></div>
+      <div class="leg-row"><div class="leg-dot-wrap"><div class="leg-dot" style="width:12px;height:12px;background:#cc7030"></div></div><span class="leg-txt">200 cfs</span></div>
+      <div class="leg-row"><div class="leg-dot-wrap"><div class="leg-dot" style="width:16px;height:16px;background:#6a8a9a"></div></div><span class="leg-txt">1,000 cfs</span></div>
+      <div class="leg-row"><div class="leg-dot-wrap"><div class="leg-dot" style="width:20px;height:20px;background:#28a8e0"></div></div><span class="leg-txt">5,000 cfs</span></div>
+      <div class="leg-row"><div class="leg-dot-wrap"><div class="leg-dot" style="width:24px;height:24px;background:#0a50c8"></div></div><span class="leg-txt">> 15k cfs</span></div>
+    </div>
+  </div>
 </div>
 
 <div class="page-body">
@@ -382,19 +399,9 @@ async function loadData() {
 
   const totalGauges = hierarchyData.reduce((s, r) => s + r.gauges.length, 0);
   const reporting   = Object.values(liveMap).filter(v => v.flow != null && Number(v.flow) >= 0).length;
-  const totalFlow   = Object.values(liveMap).reduce((s, v) => {
-    const f = Number(v.flow);
-    return s + (isNaN(f) || f < 0 ? 0 : f);
-  }, 0);
 
   document.getElementById('gauge-stats').textContent =
     `${hierarchyData.length} rivers · ${totalGauges} gauges · ${reporting} reporting`;
-
-  const fmtTotal = totalFlow >= 1e6 ? (totalFlow/1e6).toFixed(1)+'M'
-                 : totalFlow >= 1e3 ? Math.round(totalFlow/1e3)+'k'
-                 : Math.round(totalFlow);
-  document.getElementById('map-total').innerHTML =
-    `Measured total: <strong>${fmtTotal} cfs</strong> · ${reporting} gauges`;
 
   buildPage();
   initMap();
@@ -694,32 +701,39 @@ function initMap() {
     style: 'mapbox://styles/mapbox/dark-v11',
     center: [-109.5, 47.0],
     zoom: 4.8,
-    scrollZoom: false,
-    doubleClickZoom: false,
-    touchZoomRotate: false,
   });
   overviewMap.dragRotate.disable();
+  overviewMap.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
 
   const popup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, offset: 8 });
 
   overviewMap.on('load', () => {
-    // Build river polylines (one LineString per river connecting its gauges)
-    const lineFeatures = [];
-    const dotFeatures  = [];
+    // Highlight the Montana river network using Mapbox Streets waterway data.
+    // This gives real river geometry instead of artificial gauge-connecting lines.
+    overviewMap.addLayer({
+      id: 'waterways-hl',
+      type: 'line',
+      source: 'composite',
+      'source-layer': 'waterway',
+      filter: ['match', ['get', 'class'], ['river', 'stream', 'canal'], true, false],
+      paint: {
+        'line-color': ['interpolate', ['linear'], ['zoom'],
+          3, '#1a4060',
+          7, '#1e5a80',
+          10, '#2272a0',
+        ],
+        'line-width': ['interpolate', ['linear'], ['zoom'],
+          3, 0.5,
+          6, 1.2,
+          9, 2.5,
+          12, 4,
+        ],
+        'line-opacity': 0.7,
+      },
+    });
 
+    const dotFeatures = [];
     for (const river of hierarchyData) {
-      const coords = river.gauges
-        .filter(g => g.coords && g.coords.length === 2)
-        .map(g => g.coords);
-
-      if (coords.length >= 2) {
-        lineFeatures.push({
-          type: 'Feature',
-          geometry: { type: 'LineString', coordinates: coords },
-          properties: { name: river.name },
-        });
-      }
-
       for (const gauge of river.gauges) {
         if (!gauge.coords || gauge.coords.length < 2) continue;
         const live  = liveMap[gauge.id] || {};
@@ -732,22 +746,6 @@ function initMap() {
         });
       }
     }
-
-    // River lines — drawn first so dots sit on top
-    overviewMap.addSource('rivers', {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: lineFeatures },
-    });
-    overviewMap.addLayer({
-      id: 'river-lines',
-      type: 'line',
-      source: 'rivers',
-      paint: {
-        'line-color': '#2a5a7a',
-        'line-width': 1.2,
-        'line-opacity': 0.7,
-      },
-    });
 
     // Gauge dots — sized by log10(flow), colored by CLS
     overviewMap.addSource('gauges', {
