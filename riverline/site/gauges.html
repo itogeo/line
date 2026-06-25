@@ -6,6 +6,8 @@
 <title>RiverLine — Montana Gauges</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&family=Playfair+Display:ital,wght@0,700;1,400&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.js"></script>
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.css" rel="stylesheet">
 <style>
   :root {
     --base:    #080f18;
@@ -19,10 +21,10 @@
     --serif:   'Playfair Display', serif;
     --sans:    'Inter', sans-serif;
     --nav-h:   44px;
-    --sidebar: 340px;
   }
   *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { height: 100%; overflow: hidden; font-family: var(--sans); background: var(--base); color: var(--text); }
+  html { background: var(--base); }
+  body { font-family: var(--sans); background: var(--base); color: var(--text); padding-top: var(--nav-h); }
 
   /* ── Nav ─────────────────────────────────────────────────────────── */
   .top-nav {
@@ -37,144 +39,117 @@
   .nav-links a:hover { background: rgba(74,143,186,0.1); color: var(--accent); }
   .nav-links a.active { background: rgba(74,143,186,0.12); color: var(--accent); }
 
-  /* ── Layout ──────────────────────────────────────────────────────── */
-  .page-layout {
-    display: flex; height: 100vh; padding-top: var(--nav-h);
-  }
-
-  /* ── Sidebar ─────────────────────────────────────────────────────── */
-  .gauge-sidebar {
-    width: var(--sidebar); flex-shrink: 0;
-    display: flex; flex-direction: column;
-    background: var(--surface); border-right: 1px solid var(--border);
-    overflow: hidden;
-  }
-  .sidebar-top {
-    padding: 14px 14px 10px; flex-shrink: 0; border-bottom: 1px solid var(--border);
-  }
-  .sidebar-title {
-    font-family: var(--serif); font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 4px;
-  }
-  .sidebar-stats {
-    font-family: var(--mono); font-size: 10px; color: var(--muted); margin-bottom: 10px;
-  }
-  .search-box {
-    width: 100%; background: var(--base); border: 1px solid var(--border); border-radius: 5px;
-    padding: 7px 10px; font-family: var(--mono); font-size: 11px; color: var(--text);
-    outline: none; transition: border-color 0.15s;
-  }
-  .search-box::placeholder { color: var(--muted); }
-  .search-box:focus { border-color: var(--accent); }
-
-  /* ── River list ──────────────────────────────────────────────────── */
-  .river-list { flex: 1; overflow-y: auto; }
-  .river-list::-webkit-scrollbar { width: 4px; }
-  .river-list::-webkit-scrollbar-track { background: transparent; }
-  .river-list::-webkit-scrollbar-thumb { background: var(--dim); border-radius: 2px; }
-
-  .river-section { border-bottom: 1px solid var(--border); }
-  .river-section.hidden { display: none; }
-
-  .river-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 8px 14px; cursor: pointer; user-select: none;
-    transition: background 0.1s;
-  }
-  .river-header:hover { background: rgba(255,255,255,0.03); }
-  .river-header-left { display: flex; align-items: center; gap: 6px; }
-  .river-name { font-family: var(--sans); font-size: 12px; font-weight: 600; color: var(--text); }
-  .river-count { font-family: var(--mono); font-size: 10px; color: var(--muted); }
-  .river-toggle { font-size: 10px; color: var(--dim); transition: transform 0.15s; }
-  .river-section.open .river-toggle { transform: rotate(180deg); }
-
-  .gauge-rows { display: none; }
-  .river-section.open .gauge-rows { display: block; }
-
-  .gauge-row {
-    display: flex; align-items: center; gap: 8px;
-    padding: 7px 14px 7px 22px; cursor: pointer;
-    transition: background 0.1s; border-top: 1px solid rgba(255,255,255,0.03);
-  }
-  .gauge-row:hover { background: rgba(74,143,186,0.06); }
-  .gauge-row.active { background: rgba(74,143,186,0.12); }
-
-  .cls-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-  .gauge-row-name { font-family: var(--sans); font-size: 11px; color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .gauge-row-cfs { font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--text); flex-shrink: 0; text-align: right; min-width: 52px; }
-  .gauge-row-cfs.no-data { color: var(--muted); }
-
-  /* ── Chart panel ─────────────────────────────────────────────────── */
-  .chart-panel {
-    flex: 1; overflow-y: auto; display: flex; flex-direction: column;
-  }
-
-  .chart-empty {
-    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
-    font-family: var(--mono); font-size: 12px; color: var(--muted); text-align: center; gap: 10px;
-  }
-  .chart-empty-icon { font-size: 32px; opacity: 0.3; }
-  .chart-empty.hidden { display: none; }
-
-  .gauge-detail { display: none; flex-direction: column; flex: 1; }
-  .gauge-detail.visible { display: flex; }
-
-  .gauge-hero { padding: 20px 28px 18px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-  .gauge-hero-river {
-    font-family: var(--mono); font-size: 10px; color: var(--muted);
-    text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 4px;
-  }
-  .gauge-hero-name {
-    font-family: var(--serif); font-size: 20px; font-weight: 700; color: var(--text); margin-bottom: 12px; line-height: 1.2;
-  }
-  .gauge-hero-flow { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
-  .gauge-cfs-num { font-family: var(--mono); font-size: 48px; font-weight: 700; line-height: 1; }
-  .gauge-cfs-unit { font-family: var(--sans); font-size: 14px; color: var(--muted); }
-  .gauge-hero-ts { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-bottom: 10px; }
-  .cls-badge {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 4px 10px; border-radius: 4px;
-    font-family: var(--mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
-  }
-  .cls-badge-dot { width: 7px; height: 7px; border-radius: 50%; }
-
-  .gauge-links {
-    display: flex; gap: 8px; padding: 12px 28px; border-bottom: 1px solid var(--border); flex-shrink: 0;
-  }
-  .gauge-link {
-    font-family: var(--mono); font-size: 10px; padding: 5px 12px; border-radius: 5px;
-    background: rgba(74,143,186,0.1); color: var(--accent); text-decoration: none;
-    border: 1px solid rgba(74,143,186,0.2); transition: background 0.15s;
-  }
-  .gauge-link:hover { background: rgba(74,143,186,0.18); }
-
-  .chart-area { padding: 20px 28px; flex: 1; min-height: 280px; position: relative; }
-  .chart-section-label {
-    font-family: var(--mono); font-size: 9px; color: var(--muted); text-transform: uppercase;
-    letter-spacing: 1px; margin-bottom: 12px;
-  }
-  #flow-chart { width: 100%; }
-
-  .chart-loading {
-    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-    font-family: var(--mono); font-size: 11px; color: var(--muted);
-  }
-  .chart-loading.hidden { display: none; }
-
   /* ── Loading overlay ─────────────────────────────────────────────── */
   #loading-overlay {
-    position: fixed; inset: 0; top: var(--nav-h); z-index: 100;
+    position: fixed; top: var(--nav-h); left: 0; right: 0; bottom: 0; z-index: 100;
     background: var(--base); display: flex; align-items: center; justify-content: center;
     font-family: var(--mono); font-size: 12px; color: var(--muted);
     transition: opacity 0.3s;
   }
   #loading-overlay.fade { opacity: 0; pointer-events: none; }
 
+  /* ── Overview map ────────────────────────────────────────────────── */
+  #overview-map {
+    height: 240px; width: 100%; background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  .mapboxgl-ctrl-logo, .mapboxgl-ctrl-attrib { display: none !important; }
+
+  /* ── Page body ───────────────────────────────────────────────────── */
+  .page-body { max-width: 1300px; margin: 0 auto; padding: 0 16px 60px; }
+
+  .page-toolbar {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 0 10px; border-bottom: 1px solid var(--border); margin-bottom: 4px;
+  }
+  .search-box {
+    flex: 1; max-width: 320px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 5px; padding: 7px 11px; font-family: var(--mono); font-size: 11px;
+    color: var(--text); outline: none; transition: border-color 0.15s;
+  }
+  .search-box::placeholder { color: var(--muted); }
+  .search-box:focus { border-color: var(--accent); }
+  #gauge-stats { font-family: var(--mono); font-size: 10px; color: var(--muted); white-space: nowrap; }
+
+  /* ── River section ───────────────────────────────────────────────── */
+  .river-section { margin-top: 20px; }
+  .river-section.hidden { display: none; }
+  .river-section-header {
+    display: flex; align-items: baseline; gap: 10px;
+    padding: 5px 0 8px; border-bottom: 1px solid var(--border); margin-bottom: 10px;
+  }
+  .river-section-name {
+    font-family: var(--serif); font-style: italic; font-size: 15px; color: var(--accent);
+  }
+  .river-section-count { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+
+  /* ── Gauge grid ──────────────────────────────────────────────────── */
+  .gauge-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(480px, 1fr));
+    gap: 10px;
+  }
+
+  /* ── Gauge card ──────────────────────────────────────────────────── */
+  .gauge-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    overflow: hidden;
+  }
+  .gauge-card-head {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    padding: 10px 14px 8px; border-bottom: 1px solid var(--border);
+    gap: 10px;
+  }
+  .gauge-card-left { flex: 1; min-width: 0; }
+  .gauge-card-name {
+    font-family: var(--sans); font-size: 12px; font-weight: 600; color: var(--text);
+    line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .gauge-card-id { font-family: var(--mono); font-size: 9px; color: var(--muted); margin-top: 2px; }
+  .gauge-card-right { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; }
+  .gauge-card-cfs { font-family: var(--mono); font-size: 20px; font-weight: 700; line-height: 1; }
+  .gauge-card-unit { font-family: var(--sans); font-size: 10px; color: var(--muted); margin-left: 2px; }
+  .gauge-card-cls {
+    font-family: var(--mono); font-size: 9px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.4px; padding: 2px 7px; border-radius: 3px;
+  }
+
+  /* ── Chart container ─────────────────────────────────────────────── */
+  .chart-container { position: relative; height: 160px; }
+  .chart-placeholder {
+    position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: 10px; color: var(--muted);
+    background: var(--surface);
+  }
+  .chart-placeholder.hidden { display: none; }
+
+  /* ── Card footer ─────────────────────────────────────────────────── */
+  .gauge-card-footer {
+    display: flex; align-items: center; gap: 8px; padding: 5px 14px;
+    border-top: 1px solid var(--border); background: rgba(0,0,0,0.12);
+  }
+  .gauge-card-link {
+    font-family: var(--mono); font-size: 9px; color: var(--muted); text-decoration: none;
+    transition: color 0.15s;
+  }
+  .gauge-card-link:hover { color: var(--accent); }
+  .gauge-card-ts { font-family: var(--mono); font-size: 9px; color: var(--dim); margin-left: auto; }
+
+  /* ── Legend strip ────────────────────────────────────────────────── */
+  .chart-legend {
+    display: flex; gap: 14px; padding: 4px 14px 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  .chart-legend-item { display: flex; align-items: center; gap: 5px; }
+  .chart-legend-swatch { width: 20px; height: 8px; border-radius: 2px; }
+  .chart-legend-label { font-family: var(--mono); font-size: 9px; color: var(--muted); }
+
   /* ── Mobile ──────────────────────────────────────────────────────── */
-  @media (max-width: 680px) {
-    :root { --sidebar: 100vw; }
-    .page-layout { flex-direction: column; overflow: hidden; }
-    .gauge-sidebar { width: 100%; height: 45vh; flex-shrink: 0; border-right: none; border-bottom: 1px solid var(--border); }
-    .chart-panel { height: 55vh; overflow-y: auto; }
+  @media (max-width: 620px) {
+    .gauge-grid { grid-template-columns: 1fr; }
+    #overview-map { height: 180px; }
+    .page-toolbar { flex-wrap: wrap; }
+    .search-box { max-width: 100%; }
   }
 </style>
 </head>
@@ -195,59 +170,49 @@
 
 <div id="loading-overlay">Loading Montana gauges…</div>
 
-<div class="page-layout">
-  <aside class="gauge-sidebar">
-    <div class="sidebar-top">
-      <div class="sidebar-title">Montana Gauges</div>
-      <div class="sidebar-stats" id="sidebar-stats">Loading…</div>
-      <input type="search" class="search-box" id="search-box" placeholder="Search rivers or gauges…" autocomplete="off">
-    </div>
-    <div class="river-list" id="river-list"></div>
-  </aside>
+<div id="overview-map"></div>
 
-  <main class="chart-panel" id="chart-panel">
-    <div class="chart-empty" id="chart-empty">
-      <div class="chart-empty-icon">〜</div>
-      <div>Select a gauge to view conditions</div>
-    </div>
-    <div class="gauge-detail" id="gauge-detail">
-      <div class="gauge-hero">
-        <div class="gauge-hero-river" id="hero-river"></div>
-        <div class="gauge-hero-name" id="hero-name"></div>
-        <div class="gauge-hero-flow">
-          <span class="gauge-cfs-num" id="hero-cfs">—</span>
-          <span class="gauge-cfs-unit">cfs</span>
-        </div>
-        <div class="gauge-hero-ts" id="hero-ts"></div>
-        <div id="hero-badge"></div>
-      </div>
-      <div class="gauge-links" id="gauge-links"></div>
-      <div class="chart-area">
-        <div class="chart-section-label">7-day flow record</div>
-        <div class="chart-loading" id="chart-loading">Loading chart…</div>
-        <canvas id="flow-chart"></canvas>
-      </div>
-    </div>
-  </main>
+<div class="page-body">
+  <div class="page-toolbar">
+    <input type="search" class="search-box" id="search-box" placeholder="Search rivers or gauges…" autocomplete="off">
+    <div id="gauge-stats">Loading…</div>
+  </div>
+  <div id="river-sections"></div>
 </div>
 
 <script>
+mapboxgl.accessToken = 'pk.eyJ1IjoiaXRvZ2VvIiwiYSI6ImNta3ByYnA1bzBsYW0zZG9mMnMxdWZwMjUifQ.Q7pwAuAEKdBHD_dqaVBhvw';
+
 const CLS_COLOR = { 1:'#c05040', 2:'#c8973a', 3:'#4a8fba', 4:'#4aabba', 5:'#4a5fba' };
 const CLS_LABEL = { 1:'Much Below Normal', 2:'Below Normal', 3:'Normal', 4:'Above Normal', 5:'Much Above Normal' };
 const NO_DATA_COLOR = '#455a70';
+const WY_START = '2025-10-01';
+const WY_MONTHS = [
+  {m:10,days:31},{m:11,days:30},{m:12,days:31},
+  {m:1,days:31},{m:2,days:28},{m:3,days:31},
+  {m:4,days:30},{m:5,days:31},{m:6,days:30},
+  {m:7,days:31},{m:8,days:31},{m:9,days:30},
+];
+const MONTH_ABBR = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 function clsColor(cls) { return CLS_COLOR[cls] || NO_DATA_COLOR; }
 function clsLabel(cls) { return CLS_LABEL[cls] || 'No Data'; }
 function fmtCfs(v) {
-  if (v == null) return null;
+  if (v == null || v === '' || isNaN(Number(v))) return null;
   const n = Number(v);
+  if (n < 0) return null;
   return n >= 10000 ? (n/1000).toFixed(0)+'k' : n >= 1000 ? (n/1000).toFixed(1)+'k' : n.toFixed(0);
 }
+function parseStat(s) { const v = parseFloat(s); return isNaN(v) ? null : v; }
 
-let liveMap = {}; // id → {flow, ts, cls}
+let liveMap = {};
 let hierarchyData = [];
-let activeGaugeId = null;
-let chartInstance = null;
+let overviewMap = null;
+let chartObserver = null;
+
+// Caches keyed by siteId — persist across filter rebuilds
+const dvCache = new Map();
+const statsCache = new Map();
 
 async function loadData() {
   const [hierResp, liveResp] = await Promise.allSettled([
@@ -271,210 +236,368 @@ async function loadData() {
     }
   }
 
-  buildList();
-
   const total = hierarchyData.reduce((s, r) => s + r.gauges.length, 0);
   const reporting = Object.values(liveMap).filter(v => v.flow != null).length;
-  document.getElementById('sidebar-stats').textContent =
+  document.getElementById('gauge-stats').textContent =
     `${hierarchyData.length} rivers · ${total} gauges · ${reporting} reporting`;
+
+  buildPage();
+  initMap();
+  setupObserver();
 
   const overlay = document.getElementById('loading-overlay');
   overlay.classList.add('fade');
   setTimeout(() => overlay.remove(), 350);
 }
 
-function buildList(filter) {
+// ── Page builder ───────────────────────────────────────────────────
+function buildPage(filter) {
   const q = (filter || '').trim().toLowerCase();
-  const container = document.getElementById('river-list');
+  const container = document.getElementById('river-sections');
   container.innerHTML = '';
 
   for (const river of hierarchyData) {
-    const rNameLow = river.name.toLowerCase();
-    const matchedGauges = q
-      ? river.gauges.filter(g => g.name.toLowerCase().includes(q) || rNameLow.includes(q))
+    const rLow = river.name.toLowerCase();
+    const gauges = q
+      ? river.gauges.filter(g => g.name.toLowerCase().includes(q) || rLow.includes(q))
       : river.gauges;
-
-    if (q && matchedGauges.length === 0) continue;
+    if (gauges.length === 0) continue;
 
     const section = document.createElement('div');
-    section.className = 'river-section' + ((!q && river.gauges.length > 1) || q ? ' open' : ' open');
-    section.dataset.river = river.name;
+    section.className = 'river-section';
 
-    const header = document.createElement('div');
-    header.className = 'river-header';
-    header.innerHTML = `
-      <div class="river-header-left">
-        <span class="river-name">${river.name}</span>
-        <span class="river-count">${river.gauges.length}</span>
-      </div>
-      <span class="river-toggle">▲</span>`;
-    header.addEventListener('click', () => {
-      section.classList.toggle('open');
-    });
+    const hdr = document.createElement('div');
+    hdr.className = 'river-section-header';
+    hdr.innerHTML = `
+      <span class="river-section-name">${river.name}</span>
+      <span class="river-section-count">${gauges.length} gauge${gauges.length !== 1 ? 's' : ''}</span>`;
+    section.appendChild(hdr);
 
-    const rows = document.createElement('div');
-    rows.className = 'gauge-rows';
+    const grid = document.createElement('div');
+    grid.className = 'gauge-grid';
 
-    for (const gauge of matchedGauges) {
+    for (const gauge of gauges) {
       const live = liveMap[gauge.id] || {};
       const color = clsColor(live.cls);
       const cfsStr = fmtCfs(live.flow);
+      const ts = live.ts ? live.ts.slice(0, 10) : null;
 
-      const row = document.createElement('div');
-      row.className = 'gauge-row' + (gauge.id === activeGaugeId ? ' active' : '');
-      row.dataset.id = gauge.id;
-      row.dataset.river = river.name;
-      row.innerHTML = `
-        <div class="cls-dot" style="background:${color}"></div>
-        <span class="gauge-row-name" title="${gauge.name}">${gauge.name}</span>
-        <span class="gauge-row-cfs${cfsStr ? '' : ' no-data'}">${cfsStr || '—'}</span>`;
-      row.addEventListener('click', () => selectGauge(gauge, river.name));
-      rows.appendChild(row);
+      const card = document.createElement('div');
+      card.className = 'gauge-card';
+      card.id = `gauge-${gauge.id}`;
+
+      // Head
+      card.innerHTML = `
+        <div class="gauge-card-head">
+          <div class="gauge-card-left">
+            <div class="gauge-card-name" title="${gauge.name}">${gauge.name}</div>
+            <div class="gauge-card-id">${gauge.id}</div>
+          </div>
+          <div class="gauge-card-right">
+            <div>
+              <span class="gauge-card-cfs" style="color:${cfsStr ? color : NO_DATA_COLOR}">${cfsStr || '—'}</span>
+              <span class="gauge-card-unit">cfs</span>
+            </div>
+            <div class="gauge-card-cls" style="background:${color}1a;color:${color}">${clsLabel(live.cls)}</div>
+          </div>
+        </div>
+        <div class="chart-legend">
+          <div class="chart-legend-item">
+            <div class="chart-legend-swatch" style="background:rgba(74,143,186,0.25)"></div>
+            <span class="chart-legend-label">P75–P90</span>
+          </div>
+          <div class="chart-legend-item">
+            <div class="chart-legend-swatch" style="background:rgba(34,197,94,0.18)"></div>
+            <span class="chart-legend-label">P25–P75</span>
+          </div>
+          <div class="chart-legend-item">
+            <div class="chart-legend-swatch" style="background:rgba(245,158,11,0.2)"></div>
+            <span class="chart-legend-label">P10–P25</span>
+          </div>
+          <div class="chart-legend-item">
+            <div class="chart-legend-swatch" style="background:${color};height:3px;border-radius:1px"></div>
+            <span class="chart-legend-label">WY 2026</span>
+          </div>
+        </div>
+        <div class="chart-container" data-site-id="${gauge.id}" data-cls="${live.cls || 0}" data-loaded="false">
+          <canvas></canvas>
+          <div class="chart-placeholder">Loading chart…</div>
+        </div>
+        <div class="gauge-card-footer">
+          <a class="gauge-card-link" href="https://waterdata.usgs.gov/monitoring-location/${gauge.id}/" target="_blank" rel="noopener">USGS ↗</a>
+          <a class="gauge-card-link" href="https://waterdata.usgs.gov/nwis/uv?site_no=${gauge.id}" target="_blank" rel="noopener">Live ↗</a>
+          ${ts ? `<span class="gauge-card-ts">as of ${ts}</span>` : ''}
+        </div>`;
+
+      grid.appendChild(card);
     }
 
-    section.appendChild(header);
-    section.appendChild(rows);
+    section.appendChild(grid);
     container.appendChild(section);
+  }
+
+  // Observe newly created containers
+  if (chartObserver) {
+    document.querySelectorAll('.chart-container[data-loaded="false"]').forEach(el => {
+      chartObserver.observe(el);
+    });
   }
 }
 
-function selectGauge(gauge, riverName) {
-  // Deactivate previous
-  document.querySelectorAll('.gauge-row.active').forEach(el => el.classList.remove('active'));
-  // Activate new
-  const row = document.querySelector(`.gauge-row[data-id="${gauge.id}"]`);
-  if (row) row.classList.add('active');
-  activeGaugeId = gauge.id;
+// ── IntersectionObserver ───────────────────────────────────────────
+function setupObserver() {
+  chartObserver = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      const c = entry.target;
+      if (c.dataset.loaded !== 'false') continue;
+      c.dataset.loaded = 'loading';
+      chartObserver.unobserve(c);
+      loadGaugeChart(c);
+    }
+  }, { rootMargin: '500px' });
 
-  const live = liveMap[gauge.id] || {};
-  const color = clsColor(live.cls);
-  const cfsStr = fmtCfs(live.flow);
-  const ts = live.ts ? live.ts.slice(0, 16).replace('T', ' ') + ' UTC' : null;
-
-  document.getElementById('chart-empty').classList.add('hidden');
-  const detail = document.getElementById('gauge-detail');
-  detail.classList.add('visible');
-
-  document.getElementById('hero-river').textContent = riverName;
-  document.getElementById('hero-name').textContent = gauge.name;
-
-  const cfsEl = document.getElementById('hero-cfs');
-  cfsEl.textContent = cfsStr || '—';
-  cfsEl.style.color = cfsStr ? color : NO_DATA_COLOR;
-
-  document.getElementById('hero-ts').textContent = ts ? 'As of ' + ts : 'No recent data';
-  document.getElementById('hero-badge').innerHTML = `
-    <div class="cls-badge" style="background:${color}20; color:${color}">
-      <div class="cls-badge-dot" style="background:${color}"></div>
-      ${clsLabel(live.cls)}
-    </div>`;
-
-  document.getElementById('gauge-links').innerHTML = `
-    <a class="gauge-link" href="https://waterdata.usgs.gov/monitoring-location/${gauge.id}/" target="_blank" rel="noopener">USGS Page ↗</a>
-    <a class="gauge-link" href="https://waterdata.usgs.gov/nwis/uv?site_no=${gauge.id}" target="_blank" rel="noopener">Live Graph ↗</a>`;
-
-  loadChart(gauge.id, color);
+  document.querySelectorAll('.chart-container[data-loaded="false"]').forEach(el => {
+    chartObserver.observe(el);
+  });
 }
 
-async function loadChart(siteId, lineColor) {
-  const loadingEl = document.getElementById('chart-loading');
-  const canvas = document.getElementById('flow-chart');
-  loadingEl.classList.remove('hidden');
-  canvas.style.display = 'none';
-
-  if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+// ── Chart loader ───────────────────────────────────────────────────
+async function loadGaugeChart(container) {
+  const siteId = container.dataset.siteId;
+  const cls = parseInt(container.dataset.cls) || 0;
+  const lineColor = CLS_COLOR[cls] || '#4a8fba';
+  const canvas = container.querySelector('canvas');
+  const placeholder = container.querySelector('.chart-placeholder');
 
   try {
-    const url = `https://waterservices.usgs.gov/nwis/iv/?sites=${siteId}&parameterCd=00060&period=P7D&format=json`;
-    const resp = await fetch(url);
-    if (!resp.ok) throw new Error(resp.status);
-    const data = await resp.json();
+    // Parallel fetch DV + stats, using cache when available
+    const dvP = dvCache.has(siteId)
+      ? Promise.resolve(dvCache.get(siteId))
+      : fetch(`https://waterservices.usgs.gov/nwis/dv/?sites=${siteId}&parameterCd=00060&startDT=${WY_START}&format=json`)
+          .then(r => r.ok ? r.json() : null).catch(() => null);
 
-    const series = data?.value?.timeSeries;
-    if (!series || !series.length) throw new Error('No series');
-    const values = series[0]?.values?.[0]?.value || [];
+    const statsP = statsCache.has(siteId)
+      ? Promise.resolve(statsCache.get(siteId))
+      : fetch(`https://waterservices.usgs.gov/nwis/stat/?format=rdb&sites=${siteId}&parameterCd=00060&statReportType=daily&statType=p10,p25,p50,p75,p90`)
+          .then(r => r.ok ? r.text() : null).catch(() => null);
 
-    const labels = values.map(v => {
-      const d = new Date(v.dateTime);
-      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', hour12: true });
-    });
-    const points = values.map(v => parseFloat(v.value));
+    const [dvData, statsText] = await Promise.all([dvP, statsP]);
 
-    loadingEl.classList.add('hidden');
-    canvas.style.display = 'block';
+    if (!dvCache.has(siteId)) dvCache.set(siteId, dvData);
+    if (!statsCache.has(siteId)) statsCache.set(siteId, statsText);
 
-    chartInstance = new Chart(canvas, {
+    // Parse stats RDB → doyMap: 'MM-DD' → {p10,p25,p50,p75,p90}
+    const doyMap = new Map();
+    if (statsText) {
+      const lines = statsText.split('\n').filter(l => l && !l.startsWith('#'));
+      const headers = lines[0]?.split('\t').map(h => h.trim()) || [];
+      for (const line of lines.slice(2)) {
+        const cols = line.split('\t');
+        if (cols.length < headers.length) continue;
+        const row = Object.fromEntries(headers.map((h, i) => [h, cols[i]]));
+        const m = (row.month_nu || '').padStart(2, '0');
+        const d = (row.day_nu  || '').padStart(2, '0');
+        if (!m || !d || isNaN(parseInt(m, 10))) continue;
+        doyMap.set(`${m}-${d}`, {
+          p10: parseStat(row.p10_va),
+          p25: parseStat(row.p25_va),
+          p50: parseStat(row.p50_va),
+          p75: parseStat(row.p75_va),
+          p90: parseStat(row.p90_va),
+        });
+      }
+    }
+
+    // Parse DV JSON → flowMap: 'YYYY-MM-DD' → cfs
+    const flowMap = new Map();
+    if (dvData) {
+      const series = dvData?.value?.timeSeries || [];
+      const fs = series.find(s => s.variable?.variableCode?.[0]?.value === '00060');
+      for (const v of (fs?.values?.[0]?.value || [])) {
+        const fl = parseFloat(v.value);
+        if (!isNaN(fl) && fl >= 0) flowMap.set(v.dateTime.slice(0, 10), fl);
+      }
+    }
+
+    // Build water-year date spine from Oct 1, 2025 through today
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const labels = [], p10 = [], p25 = [], p50 = [], p75 = [], p90 = [], actual = [];
+
+    for (const {m, days: md} of WY_MONTHS) {
+      for (let day = 1; day <= md; day++) {
+        const mStr = String(m).padStart(2, '0');
+        const dStr = String(day).padStart(2, '0');
+        const yr = m >= 10 ? 2025 : 2026;
+        const dateStr = `${yr}-${mStr}-${dStr}`;
+        if (dateStr > todayStr) continue;
+
+        labels.push(day === 1 ? MONTH_ABBR[m] : '');
+
+        const stats = doyMap.get(`${mStr}-${dStr}`) || {};
+        p10.push(stats.p10 ?? null);
+        p25.push(stats.p25 ?? null);
+        p50.push(stats.p50 ?? null);
+        p75.push(stats.p75 ?? null);
+        p90.push(stats.p90 ?? null);
+        actual.push(flowMap.get(dateStr) ?? null);
+      }
+    }
+
+    const hasStats = doyMap.size > 0;
+    const hasActual = actual.some(v => v != null);
+
+    if (!hasStats && !hasActual) {
+      placeholder.textContent = 'No data available';
+      container.dataset.loaded = 'empty';
+      return;
+    }
+
+    placeholder.classList.add('hidden');
+
+    new Chart(canvas, {
       type: 'line',
-      data: {
-        labels,
-        datasets: [{
-          data: points,
-          borderColor: lineColor,
-          borderWidth: 2,
-          pointRadius: 0,
-          pointHoverRadius: 4,
-          pointHoverBackgroundColor: lineColor,
-          fill: true,
-          backgroundColor: lineColor + '18',
-          tension: 0.3,
-        }],
-      },
+      data: { labels, datasets: [
+        // ── Percentile bands ──────────────────────────────────────────
+        // P90 → fill to P75 (idx+1): above-normal zone (blue)
+        { data: p90, borderColor: 'transparent', fill: '+1', backgroundColor: 'rgba(74,143,186,0.18)', pointRadius: 0, tension: 0.3, spanGaps: true },
+        // P75 → fill to P25 (idx+1): normal zone (green)
+        { data: p75, borderColor: 'transparent', fill: '+1', backgroundColor: 'rgba(34,197,94,0.12)', pointRadius: 0, tension: 0.3, spanGaps: true },
+        // P25 → fill to P10 (idx+1): below-normal zone (amber)
+        { data: p25, borderColor: 'transparent', fill: '+1', backgroundColor: 'rgba(245,158,11,0.14)', pointRadius: 0, tension: 0.3, spanGaps: true },
+        // P10 floor — no fill
+        { data: p10, borderColor: 'transparent', fill: false, pointRadius: 0, tension: 0.3, spanGaps: true },
+        // P50 dashed median
+        { data: p50, borderColor: 'rgba(74,143,186,0.32)', borderWidth: 1, borderDash: [3, 2], fill: false, pointRadius: 0, tension: 0.3, spanGaps: true },
+        // ── Current water year ────────────────────────────────────────
+        { data: actual, borderColor: lineColor, borderWidth: 2, fill: false, pointRadius: 0, tension: 0.2, spanGaps: false },
+      ]},
       options: {
-        responsive: true,
-        maintainAspectRatio: true,
-        animation: { duration: 300 },
+        responsive: true, maintainAspectRatio: false, animation: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            mode: 'index', intersect: false,
+            filter: item => item.datasetIndex >= 4,
+            backgroundColor: 'rgba(14,28,45,0.95)',
+            titleColor: '#455a70', bodyColor: '#d4dde8',
+            borderColor: '#1a2f45', borderWidth: 1,
+            padding: 8,
+            titleFont: { family: "'JetBrains Mono', monospace", size: 9 },
+            bodyFont: { family: "'JetBrains Mono', monospace", size: 10, weight: '600' },
+            callbacks: {
+              label: ctx => {
+                if (ctx.parsed.y == null) return '';
+                const v = ctx.parsed.y;
+                const s = v >= 1000 ? (v/1000).toFixed(1)+'k' : v.toFixed(0);
+                return ctx.datasetIndex === 4 ? `Median  ${s} cfs` : `Flow    ${s} cfs`;
+              },
+            },
+          },
+        },
         scales: {
           x: {
             ticks: {
-              color: '#455a70',
-              font: { family: "'JetBrains Mono', monospace", size: 9 },
-              maxTicksLimit: 8,
-              maxRotation: 0,
+              color: '#455a70', font: { family: "'JetBrains Mono', monospace", size: 8 },
+              maxTicksLimit: 13, maxRotation: 0, autoSkip: true,
             },
-            grid: { color: 'rgba(255,255,255,0.03)' },
+            grid: { color: 'rgba(255,255,255,0.025)' },
             border: { color: '#1a2f45' },
           },
           y: {
             ticks: {
-              color: '#455a70',
-              font: { family: "'JetBrains Mono', monospace", size: 9 },
+              color: '#455a70', font: { family: "'JetBrains Mono', monospace", size: 8 },
+              maxTicksLimit: 5,
               callback: v => v >= 1000 ? (v/1000).toFixed(1)+'k' : v,
             },
             grid: { color: 'rgba(255,255,255,0.04)' },
             border: { color: '#1a2f45' },
           },
         },
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            backgroundColor: '#0e1c2d',
-            borderColor: '#1a2f45',
-            borderWidth: 1,
-            titleColor: '#455a70',
-            bodyColor: '#d4dde8',
-            titleFont: { family: "'JetBrains Mono', monospace", size: 9 },
-            bodyFont: { family: "'JetBrains Mono', monospace", size: 11, weight: '600' },
-            callbacks: {
-              label: ctx => {
-                const v = ctx.parsed.y;
-                const fmted = v >= 1000 ? (v/1000).toFixed(1)+'k' : v.toFixed(0);
-                return fmted + ' cfs';
-              },
-            },
-          },
-        },
       },
     });
-  } catch (e) {
-    loadingEl.textContent = 'Chart unavailable';
-    loadingEl.classList.remove('hidden');
-    canvas.style.display = 'none';
+
+    container.dataset.loaded = 'done';
+  } catch(e) {
+    placeholder.textContent = 'Chart unavailable';
+    container.dataset.loaded = 'error';
   }
 }
 
-// Search
+// ── Mapbox overview mini-map ───────────────────────────────────────
+function initMap() {
+  overviewMap = new mapboxgl.Map({
+    container: 'overview-map',
+    style: 'mapbox://styles/mapbox/dark-v11',
+    center: [-109.5, 47.0],
+    zoom: 4.8,
+    scrollZoom: false,
+    doubleClickZoom: false,
+    touchZoomRotate: false,
+  });
+  overviewMap.dragRotate.disable();
+
+  overviewMap.on('load', () => {
+    const features = [];
+    for (const river of hierarchyData) {
+      for (const gauge of river.gauges) {
+        if (!gauge.coords || gauge.coords.length < 2) continue;
+        const live = liveMap[gauge.id] || {};
+        features.push({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: gauge.coords },
+          properties: { id: gauge.id, name: gauge.name, color: clsColor(live.cls) },
+        });
+      }
+    }
+
+    overviewMap.addSource('gauges', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features },
+    });
+    overviewMap.addLayer({
+      id: 'gauge-dots',
+      type: 'circle',
+      source: 'gauges',
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 4, 8, 7],
+        'circle-color': ['get', 'color'],
+        'circle-opacity': 0.85,
+        'circle-stroke-width': 1,
+        'circle-stroke-color': 'rgba(0,0,0,0.35)',
+      },
+    });
+
+    // Click dot → scroll to gauge card
+    overviewMap.on('click', 'gauge-dots', e => {
+      const id = e.features[0]?.properties?.id;
+      if (!id) return;
+      const el = document.getElementById(`gauge-${id}`);
+      if (!el) return;
+      const y = el.getBoundingClientRect().top + window.scrollY - 60;
+      window.scrollTo({ top: y, behavior: 'smooth' });
+    });
+
+    overviewMap.on('mouseenter', 'gauge-dots', () => {
+      overviewMap.getCanvas().style.cursor = 'pointer';
+    });
+    overviewMap.on('mouseleave', 'gauge-dots', () => {
+      overviewMap.getCanvas().style.cursor = '';
+    });
+  });
+}
+
+// ── Search ─────────────────────────────────────────────────────────
 document.getElementById('search-box').addEventListener('input', e => {
-  buildList(e.target.value);
+  // Disconnect observer before rebuild so old targets don't fire
+  if (chartObserver) chartObserver.disconnect();
+  buildPage(e.target.value);
+  // Re-observe freshly created containers
+  if (chartObserver) {
+    document.querySelectorAll('.chart-container[data-loaded="false"]').forEach(el => {
+      chartObserver.observe(el);
+    });
+  }
 });
 
 loadData();
