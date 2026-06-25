@@ -81,6 +81,13 @@
   }
   #overview-chart-status { font-family: var(--mono); font-size: 9px; color: var(--dim); }
   #overview-chart-wrap { position: relative; height: 300px; }
+  .scale-toggle {
+    font-family: var(--mono); font-size: 9px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.5px; padding: 3px 8px; border-radius: 4px; cursor: pointer;
+    background: rgba(74,143,186,0.1); border: 1px solid rgba(74,143,186,0.25); color: var(--accent);
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .scale-toggle:hover { background: rgba(74,143,186,0.2); border-color: rgba(74,143,186,0.5); }
 
   /* ── Page body ───────────────────────────────────────────────────── */
   .page-body { max-width: 1360px; margin: 0 auto; padding: 0 16px 60px; }
@@ -216,21 +223,29 @@
 <div id="overview-map">
   <div id="map-legend">
     <div class="leg-col">
-      <div class="leg-title">Discharge</div>
-      <div class="leg-row"><div class="leg-dot-wrap"><div class="leg-dot" style="width:6px;height:6px;background:#8b3a30"></div></div><span class="leg-txt">< 10 cfs</span></div>
-      <div class="leg-row"><div class="leg-dot-wrap"><div class="leg-dot" style="width:9px;height:9px;background:#c05040"></div></div><span class="leg-txt">50 cfs</span></div>
-      <div class="leg-row"><div class="leg-dot-wrap"><div class="leg-dot" style="width:12px;height:12px;background:#cc7030"></div></div><span class="leg-txt">200 cfs</span></div>
-      <div class="leg-row"><div class="leg-dot-wrap"><div class="leg-dot" style="width:16px;height:16px;background:#6a8a9a"></div></div><span class="leg-txt">1,000 cfs</span></div>
-      <div class="leg-row"><div class="leg-dot-wrap"><div class="leg-dot" style="width:20px;height:20px;background:#28a8e0"></div></div><span class="leg-txt">5,000 cfs</span></div>
-      <div class="leg-row"><div class="leg-dot-wrap"><div class="leg-dot" style="width:24px;height:24px;background:#0a50c8"></div></div><span class="leg-txt">> 15k cfs</span></div>
+      <div class="leg-title">Size = Discharge</div>
+      <div class="leg-row"><div class="leg-dot-wrap"><div class="leg-dot" style="width:6px;height:6px;background:#3a6a88"></div></div><span class="leg-txt">< 50 cfs</span></div>
+      <div class="leg-row"><div class="leg-dot-wrap"><div class="leg-dot" style="width:11px;height:11px;background:#3a6a88"></div></div><span class="leg-txt">~ 500 cfs</span></div>
+      <div class="leg-row"><div class="leg-dot-wrap"><div class="leg-dot" style="width:16px;height:16px;background:#3a6a88"></div></div><span class="leg-txt">~ 5,000 cfs</span></div>
+      <div class="leg-row"><div class="leg-dot-wrap"><div class="leg-dot" style="width:24px;height:24px;background:#3a6a88"></div></div><span class="leg-txt">> 15k cfs</span></div>
+    </div>
+    <div class="leg-col">
+      <div class="leg-title">Color = vs. Normal</div>
+      <div class="leg-row"><div class="leg-dot-wrap"><div class="leg-dot" style="width:8px;height:8px;background:#c84030"></div></div><span class="leg-txt">Much Below</span></div>
+      <div class="leg-row"><div class="leg-dot-wrap"><div class="leg-dot" style="width:8px;height:8px;background:#cc6020"></div></div><span class="leg-txt">Below Normal</span></div>
+      <div class="leg-row"><div class="leg-dot-wrap"><div class="leg-dot" style="width:8px;height:8px;background:#6a8a9a"></div></div><span class="leg-txt">Normal</span></div>
+      <div class="leg-row"><div class="leg-dot-wrap"><div class="leg-dot" style="width:8px;height:8px;background:#28a8e0"></div></div><span class="leg-txt">Above Normal</span></div>
+      <div class="leg-row"><div class="leg-dot-wrap"><div class="leg-dot" style="width:8px;height:8px;background:#1468d4"></div></div><span class="leg-txt">Much Above</span></div>
+      <div class="leg-row"><div class="leg-dot-wrap"><div class="leg-dot" style="width:8px;height:8px;background:#3a6a88"></div></div><span class="leg-txt">No class data</span></div>
     </div>
   </div>
 </div>
 
 <div id="overview-chart-section">
   <div class="chart-section-bar">
-    <span class="chart-section-title">All Gauges · Water Year 2026 · Discharge (cfs, log scale)</span>
+    <span class="chart-section-title">All Gauges · Water Year 2026 · Discharge (cfs)</span>
     <span id="overview-chart-status">Loading…</span>
+    <button class="scale-toggle" id="scale-toggle" style="display:none">Linear</button>
   </div>
   <div id="overview-chart-wrap">
     <canvas id="overview-chart-canvas"></canvas>
@@ -274,9 +289,10 @@ const CLS_LABEL = {
   1: 'Much Below Normal', 2: 'Below Normal', 3: 'Normal',
   4: 'Above Normal',      5: 'Much Above Normal',
 };
-const OFFLINE_COLOR = '#2a3f55';  // no data at all
+const OFFLINE_COLOR    = '#2a3f55';  // no data at all
+const REPORTING_COLOR  = '#3a6a88';  // reporting but no CLS percentile class
 
-// Small creeks run red; big rivers run deep blue — same direction as CLS scale.
+// Used for spaghetti chart lines only — colors lines by absolute discharge magnitude.
 function flowMagnitudeColor(cfs) {
   if (cfs <    10) return '#8b3a30';
   if (cfs <    50) return '#c05040';
@@ -297,12 +313,12 @@ const WY_MONTHS = [
 ];
 const MONTH_ABBR = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-// Priority: USGS CLS percentile class → flow-magnitude color → offline gray
+// Map dot color = CLS percentile class only (relative to historical normal).
+// Size carries discharge; color carries historical context.
 function gaugeColor(live) {
   const cls = parseInt(live.cls);
   if (cls >= 1 && cls <= 5) return CLS_COLOR[cls];
-  const flow = live.flow != null ? Number(live.flow) : -1;
-  if (flow >= 0) return flowMagnitudeColor(flow);
+  if (live.flow != null && Number(live.flow) >= 0) return REPORTING_COLOR;
   return OFFLINE_COLOR;
 }
 function clsLabel(cls) { return CLS_LABEL[parseInt(cls)] || 'No Data'; }
@@ -395,10 +411,12 @@ const BASIN_ORDER  = BASINS_DEF.map(b => {
 });
 
 // ── App state ──────────────────────────────────────────────────────
-let liveMap       = {};
-let hierarchyData = [];
-let overviewMap   = null;
-let chartObserver = null;
+let liveMap        = {};
+let hierarchyData  = [];
+let overviewMap    = null;
+let overviewChart  = null;
+let chartObserver  = null;
+let chartLogScale  = true;
 const dvCache     = new Map();
 const statsCache  = new Map();
 
@@ -783,7 +801,8 @@ async function buildOverviewChart() {
 
   for (const [id, fMap] of allFlowData) {
     const live  = liveMap[id] || {};
-    const color = gaugeColor(live);
+    const flow  = live.flow != null ? Number(live.flow) : -1;
+    const color = flow >= 0 ? flowMagnitudeColor(flow) : REPORTING_COLOR;
     datasets.push({
       data:        dates.map(d => fMap.get(d) ?? null),
       borderColor: hexToRgba(color, 0.5),
@@ -802,7 +821,9 @@ async function buildOverviewChart() {
 
   statusEl.textContent = `${datasets.length} gauges`;
 
-  new Chart(canvas, {
+  const tickCb = v => v >= 10000 ? (v/1000).toFixed(0)+'k' : v >= 1000 ? (v/1000).toFixed(1)+'k' : v;
+
+  overviewChart = new Chart(canvas, {
     type: 'line',
     data: { labels, datasets },
     options: {
@@ -822,16 +843,22 @@ async function buildOverviewChart() {
         y: {
           type: 'logarithmic',
           min:  1,
-          ticks: {
-            color: '#455a70',
-            font:  { family: "'JetBrains Mono',monospace", size: 7 },
-            callback: v => v >= 10000 ? (v/1000).toFixed(0)+'k' : v >= 1000 ? (v/1000).toFixed(1)+'k' : v,
-          },
+          ticks: { color: '#455a70', font: { family: "'JetBrains Mono',monospace", size: 7 }, callback: tickCb },
           grid:   { color: 'rgba(255,255,255,0.035)' },
           border: { color: '#1a2f45' },
         },
       },
     },
+  });
+
+  const toggleBtn = document.getElementById('scale-toggle');
+  toggleBtn.style.display = '';
+  toggleBtn.addEventListener('click', () => {
+    chartLogScale = !chartLogScale;
+    overviewChart.options.scales.y.type = chartLogScale ? 'logarithmic' : 'linear';
+    overviewChart.options.scales.y.min  = chartLogScale ? 1 : 0;
+    toggleBtn.textContent = chartLogScale ? 'Linear' : 'Log';
+    overviewChart.update();
   });
 }
 
