@@ -92,11 +92,20 @@ export default {
       if (effectivePath === '/api/mdtcam' && url.searchParams.get('id')) {
         const posId = url.searchParams.get('id');
         try {
-          const r = await fetch(`https://app.mdt.mt.gov/atms/public/camera/lastFiveImages/${posId}`);
+          const r = await fetch(`https://app.mdt.mt.gov/atms/public/camera/lastFiveImages/${posId}`, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (compatible; SnowlineCam/1.0)',
+              'Accept': 'application/json, */*',
+              'Referer': 'https://app.mdt.mt.gov/',
+            },
+            redirect: 'follow',
+          });
+          if (!r.ok) return new Response('MDT API ' + r.status, { status: 502 });
           const data = await r.json();
           const imgUrl = data?.data?.lastFivePolledImages?.[0]?.publicSharePath;
           if (imgUrl) {
-            const imgResp = await fetch(imgUrl);
+            const imgResp = await fetch(imgUrl, { redirect: 'follow' });
+            if (!imgResp.ok) return new Response('Image ' + imgResp.status, { status: 502 });
             const body = await imgResp.arrayBuffer();
             return new Response(body, {
               headers: {
@@ -108,7 +117,7 @@ export default {
           }
           return new Response('No image', { status: 404 });
         } catch (e) {
-          return new Response('MDT error', { status: 502 });
+          return new Response('MDT error: ' + e.message, { status: 502 });
         }
       }
 
@@ -181,7 +190,13 @@ export default {
       }
 
       // Static assets → rewrite to snowline/site/ prefix
-      const snowPath = effectivePath === '/' ? '/snowline/site/' : '/snowline/site' + effectivePath;
+      // Explicitly add .html for extension-less paths to prevent ASSETS from 308-redirecting
+      // and leaking internal paths (e.g. /snowline/site/webcam) into the browser URL bar.
+      const snowPath = (effectivePath === '/' || effectivePath === '')
+        ? '/snowline/site/index.html'
+        : (effectivePath.includes('.') || effectivePath.endsWith('/'))
+          ? '/snowline/site' + effectivePath
+          : '/snowline/site' + effectivePath + '.html';
       return env.ASSETS.fetch(new Request(new URL(snowPath, url), request));
     }
 
@@ -505,11 +520,16 @@ export default {
       }
 
       // Static assets → rewrite to riverline/site/ prefix
-      const riverPath = effectivePath === '/' ? '/riverline/site/' : '/riverline/site' + effectivePath;
+      const riverPath = (effectivePath === '/' || effectivePath === '')
+        ? '/riverline/site/index.html'
+        : (effectivePath.includes('.') || effectivePath.endsWith('/'))
+          ? '/riverline/site' + effectivePath
+          : '/riverline/site' + effectivePath + '.html';
       return env.ASSETS.fetch(new Request(new URL(riverPath, url), request));
     }
 
-    // Default: serve repo root (line.itogeospatial.com landing)
+    // Default: redirect root to /snow; other unknown paths fall through to ASSETS
+    if (path === '/') return Response.redirect(url.origin + '/snow', 302);
     return env.ASSETS.fetch(request);
   },
 };
