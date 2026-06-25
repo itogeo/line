@@ -49,11 +49,11 @@
   #loading-overlay.fade { opacity: 0; pointer-events: none; }
 
   /* ── Overview map ────────────────────────────────────────────────── */
-  #overview-map { height: 240px; width: 100%; background: var(--surface); border-bottom: 1px solid var(--border); position: relative; }
+  #overview-map { height: 260px; width: 100%; background: var(--surface); border-bottom: 1px solid var(--border); position: relative; }
   .mapboxgl-ctrl-logo, .mapboxgl-ctrl-attrib { display: none !important; }
   #map-total {
     position: absolute; bottom: 10px; left: 10px; z-index: 10;
-    background: rgba(14,28,45,0.9); border: 1px solid var(--border); border-radius: 6px;
+    background: rgba(8,15,24,0.88); border: 1px solid var(--border); border-radius: 6px;
     padding: 5px 10px; font-family: var(--mono); font-size: 10px; color: var(--muted);
     pointer-events: none;
   }
@@ -79,26 +79,36 @@
   #gauge-stats { font-family: var(--mono); font-size: 10px; color: var(--muted); white-space: nowrap; margin-left: auto; }
 
   /* ── Basin section ───────────────────────────────────────────────── */
-  .basin-section { margin-top: 20px; }
+  .basin-section { margin-top: 14px; }
   .basin-header {
-    display: flex; align-items: baseline; gap: 10px;
-    padding: 5px 0 8px; border-bottom: 2px solid var(--border); margin-bottom: 6px;
+    display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none;
+    padding: 5px 0 8px; border-bottom: 2px solid var(--border);
+    transition: border-color 0.15s;
   }
+  .basin-header:hover { border-color: var(--accent); }
+  .basin-toggle { font-size: 11px; color: var(--muted); width: 14px; flex-shrink: 0; transition: transform 0.2s; }
   .basin-name { font-family: var(--serif); font-style: italic; font-size: 16px; color: var(--accent); }
   .basin-count { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+  .basin-content { display: none; }
+  .basin-section.open > .basin-content { display: block; }
+  .basin-section.open > .basin-header > .basin-toggle { transform: rotate(90deg); }
 
-  /* ── River group within basin ────────────────────────────────────── */
-  .river-group { margin-top: 10px; }
+  /* ── River group ──────────────────────────────────────────────────── */
+  .river-group { margin-top: 8px; }
   .river-group-header {
+    display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;
     font-family: var(--mono); font-size: 10px; font-weight: 600; color: var(--muted);
     text-transform: uppercase; letter-spacing: 0.5px;
-    padding: 3px 0 5px; border-bottom: 1px solid rgba(26,47,69,0.6); margin-bottom: 6px;
+    padding: 3px 0 5px; border-bottom: 1px solid rgba(26,47,69,0.6);
+    transition: color 0.15s;
   }
+  .river-group-header:hover { color: var(--text); }
+  .rg-toggle { font-size: 9px; color: var(--dim); flex-shrink: 0; }
   .river-group-header span { color: var(--dim); font-weight: 400; }
+  .gauge-grid { display: none; margin-top: 6px; }
+  .river-group.open > .gauge-grid { display: grid; }
 
-  /* ── Gauge grid ──────────────────────────────────────────────────── */
   .gauge-grid {
-    display: grid;
     grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
     gap: 8px;
   }
@@ -144,16 +154,15 @@
   .gauge-card-link:hover { color: var(--accent); }
   .gauge-card-ts { font-family: var(--mono); font-size: 9px; color: var(--dim); margin-left: auto; }
 
-  /* ── Mobile ──────────────────────────────────────────────────────── */
   @media (max-width: 560px) {
     .gauge-grid { grid-template-columns: 1fr; }
-    #overview-map { height: 180px; }
+    #overview-map { height: 200px; }
     .chart-legend-global { display: none; }
   }
 
-  /* ── Mapbox popup override ───────────────────────────────────────── */
+  /* ── Mapbox popup ────────────────────────────────────────────────── */
   .mapboxgl-popup-content {
-    background: rgba(14,28,45,0.96) !important;
+    background: rgba(8,15,24,0.96) !important;
     border: 1px solid #1a2f45 !important;
     border-radius: 6px !important;
     padding: 7px 11px !important;
@@ -222,10 +231,11 @@ const CLS_LABEL = {
   1: 'Much Below Normal', 2: 'Below Normal', 3: 'Normal',
   4: 'Above Normal',      5: 'Much Above Normal',
 };
-const NO_DATA_COLOR = '#455a70';
+const REPORTING_COLOR = '#4a8fba';  // has flow but no CLS classification
+const OFFLINE_COLOR   = '#2a3f55';  // no data at all
 
-const WY_START   = '2025-10-01';
-const WY_MONTHS  = [
+const WY_START  = '2025-10-01';
+const WY_MONTHS = [
   {m:10,days:31},{m:11,days:30},{m:12,days:31},
   {m:1,days:31},{m:2,days:28},{m:3,days:31},
   {m:4,days:30},{m:5,days:31},{m:6,days:30},
@@ -233,8 +243,15 @@ const WY_MONTHS  = [
 ];
 const MONTH_ABBR = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-function clsColor(cls) { return CLS_COLOR[cls] || NO_DATA_COLOR; }
-function clsLabel(cls) { return CLS_LABEL[cls] || 'No Data'; }
+// Return the color for a live gauge entry.
+// Priority: CLS classification → reporting (has flow) → offline
+function gaugeColor(live) {
+  const cls = parseInt(live.cls);
+  if (cls >= 1 && cls <= 5) return CLS_COLOR[cls];
+  if (live.flow != null && Number(live.flow) >= 0) return REPORTING_COLOR;
+  return OFFLINE_COLOR;
+}
+function clsLabel(cls) { return CLS_LABEL[parseInt(cls)] || 'No Data'; }
 
 function fmtCfs(v) {
   if (v == null || v === '' || isNaN(Number(v))) return null;
@@ -244,7 +261,6 @@ function fmtCfs(v) {
        : n >= 1000  ? (n/1000).toFixed(1)+'k'
        : n.toFixed(0);
 }
-
 function parseStat(s) { const v = parseFloat(s); return isNaN(v) ? null : v; }
 
 // ── Montana drainage basin definitions ────────────────────────────
@@ -318,7 +334,6 @@ const BASINS_DEF = [
   },
 ];
 
-// Build fast lookup: river name → basin name
 const BASIN_LOOKUP = new Map();
 const BASIN_ORDER  = BASINS_DEF.map(b => {
   b.rivers.forEach(r => BASIN_LOOKUP.set(r, b.name));
@@ -355,17 +370,20 @@ async function loadData() {
   }
 
   const totalGauges = hierarchyData.reduce((s, r) => s + r.gauges.length, 0);
-  const reporting   = Object.values(liveMap).filter(v => v.flow != null).length;
-  const totalFlow   = Object.values(liveMap).reduce((s, v) => s + (v.flow > 0 ? Number(v.flow) : 0), 0);
+  const reporting   = Object.values(liveMap).filter(v => v.flow != null && Number(v.flow) >= 0).length;
+  const totalFlow   = Object.values(liveMap).reduce((s, v) => {
+    const f = Number(v.flow);
+    return s + (isNaN(f) || f < 0 ? 0 : f);
+  }, 0);
 
   document.getElementById('gauge-stats').textContent =
     `${hierarchyData.length} rivers · ${totalGauges} gauges · ${reporting} reporting`;
 
-  const fmtTotal = totalFlow >= 1e6 ? (totalFlow/1e6).toFixed(2)+'M cfs'
-                 : totalFlow >= 1e3 ? Math.round(totalFlow/1e3)+'k cfs'
-                 : Math.round(totalFlow)+' cfs';
+  const fmtTotal = totalFlow >= 1e6 ? (totalFlow/1e6).toFixed(1)+'M'
+                 : totalFlow >= 1e3 ? Math.round(totalFlow/1e3)+'k'
+                 : Math.round(totalFlow);
   document.getElementById('map-total').innerHTML =
-    `Measured total: <strong>${fmtTotal}</strong> · ${reporting} gauges`;
+    `Measured total: <strong>${fmtTotal} cfs</strong> · ${reporting} gauges`;
 
   buildPage();
   initMap();
@@ -378,15 +396,19 @@ async function loadData() {
 
 // ── Page builder ───────────────────────────────────────────────────
 function buildPage(filter) {
-  const q = (filter || '').trim().toLowerCase();
-  const container = document.getElementById('basin-sections');
+  const q          = (filter || '').trim().toLowerCase();
+  const isSearching = q.length > 0;
+  const container  = document.getElementById('basin-sections');
   container.innerHTML = '';
+
+  // Disconnect observer — will reconnect for newly visible elements below
+  if (chartObserver) chartObserver.disconnect();
 
   // Group rivers by basin
   const basinMap = new Map();
   for (const river of hierarchyData) {
     const basinName = BASIN_LOOKUP.get(river.name) || 'Other Montana';
-    const matchedGauges = q
+    const matchedGauges = isSearching
       ? river.gauges.filter(g =>
           g.name.toLowerCase().includes(q) ||
           river.name.toLowerCase().includes(q) ||
@@ -403,24 +425,50 @@ function buildPage(filter) {
     const rivers      = basinMap.get(basinName);
     const totalGauges = rivers.reduce((s, r) => s + r.gauges.length, 0);
 
-    const basinEl  = document.createElement('div');
-    basinEl.className = 'basin-section';
+    const basinEl = document.createElement('div');
+    basinEl.className = isSearching ? 'basin-section open' : 'basin-section';
 
     const basinHdr = document.createElement('div');
     basinHdr.className = 'basin-header';
     basinHdr.innerHTML =
+      `<span class="basin-toggle">▶</span>` +
       `<span class="basin-name">${basinName}</span>` +
       `<span class="basin-count">${totalGauges} gauge${totalGauges !== 1 ? 's' : ''}</span>`;
+    basinHdr.addEventListener('click', () => {
+      basinEl.classList.toggle('open');
+      // When expanding a basin, start observing any newly visible chart containers
+      if (basinEl.classList.contains('open') && chartObserver) {
+        basinEl.querySelectorAll('.gauge-grid').forEach(grid => {
+          // Only observe if parent river-group is also open
+          if (grid.parentElement.classList.contains('open')) {
+            grid.querySelectorAll('.chart-container[data-loaded="false"]').forEach(el => {
+              chartObserver.observe(el);
+            });
+          }
+        });
+      }
+    });
     basinEl.appendChild(basinHdr);
+
+    const basinContent = document.createElement('div');
+    basinContent.className = 'basin-content';
 
     for (const river of rivers) {
       const group = document.createElement('div');
-      group.className = 'river-group';
+      group.className = isSearching ? 'river-group open' : 'river-group';
 
       const groupHdr = document.createElement('div');
       groupHdr.className = 'river-group-header';
       groupHdr.innerHTML =
-        `${river.name} <span>· ${river.gauges.length}</span>`;
+        `<span class="rg-toggle">▶</span>${river.name} <span>· ${river.gauges.length}</span>`;
+      groupHdr.addEventListener('click', () => {
+        group.classList.toggle('open');
+        if (group.classList.contains('open') && chartObserver) {
+          group.querySelectorAll('.chart-container[data-loaded="false"]').forEach(el => {
+            chartObserver.observe(el);
+          });
+        }
+      });
       group.appendChild(groupHdr);
 
       const grid = document.createElement('div');
@@ -428,7 +476,7 @@ function buildPage(filter) {
 
       for (const gauge of river.gauges) {
         const live   = liveMap[gauge.id] || {};
-        const color  = clsColor(live.cls);
+        const color  = gaugeColor(live);
         const cfsStr = fmtCfs(live.flow);
         const ts     = live.ts ? live.ts.slice(0, 10) : null;
 
@@ -443,7 +491,7 @@ function buildPage(filter) {
             </div>
             <div class="gauge-card-right">
               <div>
-                <span class="gauge-card-cfs" style="color:${cfsStr ? color : NO_DATA_COLOR}">${cfsStr || '—'}</span>
+                <span class="gauge-card-cfs" style="color:${color}">${cfsStr || '—'}</span>
                 <span class="gauge-card-unit">cfs</span>
               </div>
               <div class="gauge-card-cls" style="background:${color}18;color:${color}">${clsLabel(live.cls)}</div>
@@ -461,14 +509,16 @@ function buildPage(filter) {
       }
 
       group.appendChild(grid);
-      basinEl.appendChild(group);
+      basinContent.appendChild(group);
     }
 
+    basinEl.appendChild(basinContent);
     container.appendChild(basinEl);
   }
 
+  // Re-attach observer to any visible containers (open sections during search)
   if (chartObserver) {
-    document.querySelectorAll('.chart-container[data-loaded="false"]').forEach(el => {
+    document.querySelectorAll('.river-group.open .chart-container[data-loaded="false"]').forEach(el => {
       chartObserver.observe(el);
     });
   }
@@ -485,18 +535,16 @@ function setupObserver() {
       chartObserver.unobserve(c);
       loadGaugeChart(c);
     }
-  }, { rootMargin: '500px' });
+  }, { rootMargin: '400px' });
 
-  document.querySelectorAll('.chart-container[data-loaded="false"]').forEach(el => {
-    chartObserver.observe(el);
-  });
+  // Initially nothing is open so nothing to observe yet
 }
 
 // ── Gauge chart loader ─────────────────────────────────────────────
 async function loadGaugeChart(container) {
   const siteId      = container.dataset.siteId;
-  const cls         = parseInt(container.dataset.cls) || 0;
-  const lineColor   = CLS_COLOR[cls] || '#4a8fba';
+  const live        = liveMap[siteId] || {};
+  const lineColor   = gaugeColor(live);
   const canvas      = container.querySelector('canvas');
   const placeholder = container.querySelector('.chart-placeholder');
 
@@ -515,7 +563,7 @@ async function loadGaugeChart(container) {
     if (!dvCache.has(siteId))    dvCache.set(siteId, dvData);
     if (!statsCache.has(siteId)) statsCache.set(siteId, statsText);
 
-    // Parse USGS stats RDB → map 'MM-DD' → {p10,p25,p50,p75,p90}
+    // Parse USGS stats RDB → 'MM-DD' → percentiles
     const doyMap = new Map();
     if (statsText) {
       const lines   = statsText.split('\n').filter(l => l && !l.startsWith('#'));
@@ -523,9 +571,9 @@ async function loadGaugeChart(container) {
       for (const line of lines.slice(2)) {
         const cols = line.split('\t');
         if (cols.length < headers.length) continue;
-        const row  = Object.fromEntries(headers.map((h, i) => [h, cols[i]]));
-        const m    = (row.month_nu || '').padStart(2, '0');
-        const d    = (row.day_nu   || '').padStart(2, '0');
+        const row = Object.fromEntries(headers.map((h, i) => [h, cols[i]]));
+        const m   = (row.month_nu || '').padStart(2, '0');
+        const d   = (row.day_nu   || '').padStart(2, '0');
         if (!m || !d || isNaN(parseInt(m, 10))) continue;
         doyMap.set(`${m}-${d}`, {
           p10: parseStat(row.p10_va), p25: parseStat(row.p25_va),
@@ -535,7 +583,7 @@ async function loadGaugeChart(container) {
       }
     }
 
-    // Parse USGS DV JSON → map 'YYYY-MM-DD' → cfs
+    // Parse USGS DV JSON → 'YYYY-MM-DD' → cfs
     const flowMap = new Map();
     if (dvData) {
       const fs = (dvData?.value?.timeSeries || [])
@@ -553,9 +601,9 @@ async function loadGaugeChart(container) {
 
     for (const {m, days: md} of WY_MONTHS) {
       for (let day = 1; day <= md; day++) {
-        const mStr   = String(m).padStart(2, '0');
-        const dStr   = String(day).padStart(2, '0');
-        const yr     = m >= 10 ? 2025 : 2026;
+        const mStr    = String(m).padStart(2, '0');
+        const dStr    = String(day).padStart(2, '0');
+        const yr      = m >= 10 ? 2025 : 2026;
         const dateStr = `${yr}-${mStr}-${dStr}`;
         if (dateStr > todayStr) continue;
         labels.push(day === 1 ? MONTH_ABBR[m] : '');
@@ -592,7 +640,7 @@ async function loadGaugeChart(container) {
           tooltip: {
             mode: 'index', intersect: false,
             filter: item => item.datasetIndex >= 4,
-            backgroundColor: 'rgba(14,28,45,0.95)',
+            backgroundColor: 'rgba(8,15,24,0.96)',
             titleColor: '#455a70', bodyColor: '#d4dde8',
             borderColor: '#1a2f45', borderWidth: 1, padding: 7,
             titleFont: { family: "'JetBrains Mono',monospace", size: 9 },
@@ -644,68 +692,110 @@ function initMap() {
   const popup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, offset: 8 });
 
   overviewMap.on('load', () => {
-    const features = [];
+    // Build river polylines (one LineString per river connecting its gauges)
+    const lineFeatures = [];
+    const dotFeatures  = [];
+
     for (const river of hierarchyData) {
+      const coords = river.gauges
+        .filter(g => g.coords && g.coords.length === 2)
+        .map(g => g.coords);
+
+      if (coords.length >= 2) {
+        lineFeatures.push({
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates: coords },
+          properties: { name: river.name },
+        });
+      }
+
       for (const gauge of river.gauges) {
         if (!gauge.coords || gauge.coords.length < 2) continue;
-        const live = liveMap[gauge.id] || {};
-        features.push({
+        const live  = liveMap[gauge.id] || {};
+        const flow  = live.flow != null ? Number(live.flow) : -1;
+        const color = gaugeColor(live);
+        dotFeatures.push({
           type: 'Feature',
           geometry: { type: 'Point', coordinates: gauge.coords },
-          properties: {
-            id:    gauge.id,
-            name:  gauge.name,
-            flow:  live.flow != null ? Number(live.flow) : -1,
-            color: clsColor(live.cls),
-          },
+          properties: { id: gauge.id, name: gauge.name, flow, color },
         });
       }
     }
 
-    overviewMap.addSource('gauges', {
+    // River lines — drawn first so dots sit on top
+    overviewMap.addSource('rivers', {
       type: 'geojson',
-      data: { type: 'FeatureCollection', features },
+      data: { type: 'FeatureCollection', features: lineFeatures },
+    });
+    overviewMap.addLayer({
+      id: 'river-lines',
+      type: 'line',
+      source: 'rivers',
+      paint: {
+        'line-color': '#1e4060',
+        'line-width': 1,
+        'line-opacity': 0.55,
+      },
     });
 
+    // Gauge dots — sized by log10(flow), colored by CLS
+    overviewMap.addSource('gauges', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: dotFeatures },
+    });
     overviewMap.addLayer({
       id: 'gauge-dots',
       type: 'circle',
       source: 'gauges',
       paint: {
-        // Size dots proportionally to log10(flow+1) — large rivers appear larger
         'circle-radius': [
           'interpolate', ['linear'],
           ['log10', ['+', ['max', ['coalesce', ['get', 'flow'], 0], 0], 1]],
-          0, 3,     // ~0 cfs
-          1, 4,     // ~10 cfs
-          2, 5.5,   // ~100 cfs
-          3, 8,     // ~1,000 cfs
-          4, 12,    // ~10,000 cfs
-          5, 16,    // ~100,000 cfs
+          0, 3,
+          1, 4,
+          2, 5.5,
+          3, 8,
+          4, 12,
+          5, 16,
         ],
-        'circle-color':         ['get', 'color'],
-        'circle-opacity':        0.88,
-        'circle-stroke-width':   0.8,
-        'circle-stroke-color':  'rgba(0,0,0,0.35)',
+        'circle-color':        ['get', 'color'],
+        'circle-opacity':       0.92,
+        'circle-stroke-width':  0.8,
+        'circle-stroke-color': 'rgba(0,0,0,0.4)',
       },
     });
 
-    // Click → scroll to gauge card
+    // Click → scroll to gauge card (expand its basin + river group first)
     overviewMap.on('click', 'gauge-dots', e => {
       const id = e.features[0]?.properties?.id;
-      const el = id && document.getElementById(`gauge-${id}`);
-      if (el) window.scrollTo({
-        top: el.getBoundingClientRect().top + window.scrollY - 60,
-        behavior: 'smooth',
-      });
+      if (!id) return;
+      // Expand the containing basin and river group
+      const cardEl = document.getElementById(`gauge-${id}`);
+      if (cardEl) {
+        const group  = cardEl.closest('.river-group');
+        const basin  = cardEl.closest('.basin-section');
+        if (basin  && !basin.classList.contains('open'))  basin.classList.add('open');
+        if (group  && !group.classList.contains('open'))  {
+          group.classList.add('open');
+          // Trigger chart observation for newly revealed cards
+          if (chartObserver) {
+            group.querySelectorAll('.chart-container[data-loaded="false"]').forEach(el => {
+              chartObserver.observe(el);
+            });
+          }
+        }
+        setTimeout(() => {
+          window.scrollTo({ top: cardEl.getBoundingClientRect().top + window.scrollY - 60, behavior: 'smooth' });
+        }, 50);
+      }
     });
 
-    // Hover → popup with name + flow
+    // Hover → popup
     overviewMap.on('mouseenter', 'gauge-dots', e => {
       const p = e.features[0]?.properties;
       if (!p) return;
       const flowNum = Number(p.flow);
-      const flowStr = flowNum > 0 ? `${fmtCfs(flowNum)} cfs` : 'No data';
+      const flowStr = flowNum >= 0 ? `${fmtCfs(flowNum)} cfs` : 'No data';
       popup.setLngLat(e.lngLat)
         .setHTML(`<div class="popup-name">${p.name}</div>` +
                  `<div class="popup-cfs" style="color:${p.color}">${flowStr}</div>`)
@@ -721,13 +811,7 @@ function initMap() {
 
 // ── Search ─────────────────────────────────────────────────────────
 document.getElementById('search-box').addEventListener('input', e => {
-  if (chartObserver) chartObserver.disconnect();
   buildPage(e.target.value);
-  if (chartObserver) {
-    document.querySelectorAll('.chart-container[data-loaded="false"]').forEach(el => {
-      chartObserver.observe(el);
-    });
-  }
 });
 
 loadData();
