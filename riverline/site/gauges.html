@@ -417,6 +417,7 @@ let overviewMap    = null;
 let overviewChart  = null;
 let chartObserver  = null;
 let chartLogScale  = true;
+let dotFeatures    = [];
 const dvCache     = new Map();
 const statsCache  = new Map();
 
@@ -451,6 +452,7 @@ async function loadData() {
   initMap();
   setupObserver();
   buildOverviewChart();
+  computePercentileClasses(); // non-blocking; updates map colors + card badges when done
 
   const overlay = document.getElementById('loading-overlay');
   overlay.classList.add('fade');
@@ -904,7 +906,7 @@ function initMap() {
       },
     });
 
-    const dotFeatures = [];
+    dotFeatures = [];
     for (const river of hierarchyData) {
       for (const gauge of river.gauges) {
         if (!gauge.coords || gauge.coords.length < 2) continue;
@@ -988,6 +990,90 @@ function initMap() {
       overviewMap.getCanvas().style.cursor = '';
     });
   });
+}
+
+// ── Self-computed CLS (percentile classes) ─────────────────────────
+// USGS /api/gauges/mt returns cls:null for most MT gauges. We fetch the
+// USGS Stats API directly, find today's p10/p25/p75/p90 for each site,
+// compare against live flow, and assign cls 1–5.
+async function computePercentileClasses() {
+  const today  = new Date();
+  const monthNu = today.getMonth() + 1;
+  const dayNu   = today.getDate();
+
+  const activeIds = Object.entries(liveMap)
+    .filter(([, v]) => v.flow != null && Number(v.flow) >= 0)
+    .map(([id]) => id);
+  if (!activeIds.length) return;
+
+  const BATCH = 50;
+  for (let i = 0; i < activeIds.length; i += BATCH) {
+    const batch = activeIds.slice(i, i + BATCH);
+    const url   = `https://waterservices.usgs.gov/nwis/stat/?format=rdb` +
+                  `&sites=${batch.join(',')}` +
+                  `&parameterCd=00060&statReportType=daily` +
+                  `&statType=p10,p25,p50,p75,p90`;
+    let text;
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) continue;
+      text = await resp.text();
+    } catch { continue; }
+
+    // RDB: comment lines start with #, then header row, then type row, then data
+    const lines = text.split('\n');
+    let headers = null;
+    for (const line of lines) {
+      if (!line.trim() || line.startsWith('#')) continue;
+      if (!headers) { headers = line.split('\t'); continue; }
+      // Skip the RDB type-definition row (entries like "5s", "15n", "10d")
+      if (/^\d+[a-z]$/.test((line.split('\t')[0] || '').trim())) continue;
+
+      const cols = line.split('\t');
+      if (cols.length < 8) continue;
+
+      const siteNo = cols[headers.indexOf('site_no')]?.trim();
+      const mo     = parseInt(cols[headers.indexOf('month_nu')]);
+      const dy     = parseInt(cols[headers.indexOf('day_nu')]);
+      if (mo !== monthNu || dy !== dayNu) continue;
+      if (!siteNo || !liveMap[siteNo]) continue;
+
+      const p10  = parseFloat(cols[headers.indexOf('p10_va')]);
+      const p25  = parseFloat(cols[headers.indexOf('p25_va')]);
+      const p75  = parseFloat(cols[headers.indexOf('p75_va')]);
+      const p90  = parseFloat(cols[headers.indexOf('p90_va')]);
+      if (isNaN(p10) || isNaN(p90)) continue;
+
+      const flow = Number(liveMap[siteNo].flow);
+      liveMap[siteNo].cls =
+        flow < p10 ? 1 :
+        flow < p25 ? 2 :
+        flow < p75 ? 3 :
+        flow < p90 ? 4 : 5;
+    }
+  }
+
+  // Re-color map dots
+  if (overviewMap && overviewMap.getSource('gauges') && dotFeatures.length) {
+    for (const feat of dotFeatures) {
+      feat.properties.color = gaugeColor(liveMap[feat.properties.id] || {});
+    }
+    overviewMap.getSource('gauges').setData({
+      type: 'FeatureCollection',
+      features: dotFeatures,
+    });
+  }
+
+  // Update visible card CLS labels
+  for (const [id, live] of Object.entries(liveMap)) {
+    if (live.cls == null) continue;
+    const el = document.querySelector(`#gauge-${id} .gauge-card-cls`);
+    if (!el) continue;
+    const color = CLS_COLOR[live.cls] || REPORTING_COLOR;
+    el.textContent = CLS_LABEL[live.cls] || '';
+    el.style.background = color + '18';
+    el.style.color      = color;
+  }
 }
 
 // ── Search ─────────────────────────────────────────────────────────
