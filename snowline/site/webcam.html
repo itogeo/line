@@ -210,14 +210,14 @@
 <nav class="top-nav">
   <span class="nav-brand">itogeospatial</span>
   <div class="nav-links">
-    <a href="https://snow.line.itogeospatial.com" class="active">Snow Cover</a>
-    <a href="https://river.line.itogeospatial.com">River</a>
+    <a href="https://line.itogeospatial.com/snow" class="active">Snow Cover</a>
+    <a href="https://line.itogeospatial.com/river">River</a>
   </div>
   <span class="nav-sep">/</span>
   <div class="nav-links">
-    <a href="/">Map</a>
-    <a href="/webcam.html" class="active">Webcams</a>
-    <a href="/metadata.html">Data</a>
+    <a href="/snow/">Map</a>
+    <a href="/snow/webcam.html" class="active">Webcams</a>
+    <a href="/snow/metadata.html">Data</a>
   </div>
   <div class="nav-right">
     <span class="nav-count" id="nav-count"></span>
@@ -301,8 +301,8 @@ const BADGE = {
 
 function camSrc(cam, ts) {
   if (cam.type === 'img')   return cam.src + '?t=' + ts;
-  if (cam.type === 'proxy') return '/api/camproxy?url=' + encodeURIComponent(cam.src) + '&t=' + ts;
-  if (cam.type === 'mdt')   return '/api/mdtcam?id=' + cam.src + '&t=' + ts;
+  if (cam.type === 'proxy') return '/snow/api/camproxy?url=' + encodeURIComponent(cam.src) + '&t=' + ts;
+  if (cam.type === 'mdt')   return '/snow/api/mdtcam?id=' + cam.src + '&t=' + ts;
   return '';
 }
 

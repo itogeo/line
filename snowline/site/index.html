@@ -505,21 +505,21 @@
   .mapboxgl-ctrl-group button .mapboxgl-ctrl-icon { filter: invert(1) brightness(0.7); }
   .mapboxgl-ctrl-attrib { display: none !important; }
 </style>
-<script src="/shared/freshness.js"></script>
+<script src="/snow/shared/freshness.js"></script>
 </head>
 <body>
 
 <nav class="top-nav">
   <span class="nav-brand">itogeospatial</span>
   <div class="nav-links">
-    <a href="https://snow.line.itogeospatial.com" class="active">Snow Cover</a>
-    <a href="https://river.line.itogeospatial.com">River</a>
+    <a href="https://line.itogeospatial.com/snow" class="active">Snow Cover</a>
+    <a href="https://line.itogeospatial.com/river">River</a>
   </div>
   <span class="nav-sep">/</span>
   <div class="nav-links">
-    <a href="/" class="active">Map</a>
-    <a href="/webcam.html">Webcams</a>
-    <a href="/metadata.html">Data</a>
+    <a href="/snow/" class="active">Map</a>
+    <a href="/snow/webcam.html">Webcams</a>
+    <a href="/snow/metadata.html">Data</a>
   </div>
 </nav>
 
@@ -984,7 +984,7 @@ async function preloadRecentSnow(n = 3) {
       // Kick off image fetches in parallel; let them race in the cache
       for (const tile of meta.tiles) {
         const img = new Image();
-        img.src = `/api/tile/${dateStr}/${tile.file}`;
+        img.src = `/snow/api/tile/${dateStr}/${tile.file}`;
       }
     } catch (e) { /* preload is best-effort */ }
   }
@@ -1035,7 +1035,7 @@ async function loadDate(dateStr) {
     layersAdded = true;
   } else {
     // Swap image sources
-    const basePath = (data.chunks || (data.tiles && data.tiles.length > 0)) ? `/api/tile/${dateStr}` : `data/${dateStr}`;
+    const basePath = (data.chunks || (data.tiles && data.tiles.length > 0)) ? `/snow/api/tile/${dateStr}` : `data/${dateStr}`;
 
     if (data.no_imagery) {
       // TODAY mode with no fresh snowline image — clear all per-tile snow
@@ -1404,7 +1404,7 @@ function addOverlayLayers() {
   const d = CURRENT_DATA;
   const b = d.bounds;
   const coords = [[b.west, b.north], [b.east, b.north], [b.east, b.south], [b.west, b.south]];
-  const basePath = (d.chunks || d.tiles) ? `/api/tile/${d.scene_date}` : `data/${d.scene_date}`;
+  const basePath = (d.chunks || d.tiles) ? `/snow/api/tile/${d.scene_date}` : `data/${d.scene_date}`;
 
   // Terrain DEM + hillshade
   if (!map.getSource('mapbox-dem')) {
@@ -1665,9 +1665,9 @@ async function onWebcamClick(e) {
     if (p.img && p.img !== '') {
       imgSrc = p.img + '?t=' + ts;
     } else if (p.proxy && p.proxy !== '') {
-      imgSrc = '/api/camproxy?url=' + encodeURIComponent(p.proxy) + '&t=' + ts;
+      imgSrc = '/snow/api/camproxy?url=' + encodeURIComponent(p.proxy) + '&t=' + ts;
     } else if (p.mdt && p.mdt !== '') {
-      imgSrc = '/api/mdtcam?id=' + p.mdt + '&t=' + ts;
+      imgSrc = '/snow/api/mdtcam?id=' + p.mdt + '&t=' + ts;
     }
     if (imgSrc) {
       bodyHtml = '<img src="' + imgSrc + '" alt="' + p.name + '" style="width:100%;border-radius:6px;margin:6px 0" onerror="this.style.display=\'none\'">';
@@ -2928,7 +2928,7 @@ document.getElementById('fb-send').addEventListener('click', async () => {
   btn.textContent = 'Sending...';
 
   try {
-    const resp = await fetch('/api/feedback', {
+    const resp = await fetch('/snow/api/feedback', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text, date: CURRENT_DATE }),

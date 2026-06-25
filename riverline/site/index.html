@@ -274,9 +274,9 @@
     <h1>River Conditions</h1>
     <span class="region">Montana</span>
     <div class="network-tabs">
-      <a href="https://snow.line.itogeospatial.com">Snow Cover</a>
-      <a href="https://river.line.itogeospatial.com" class="active">River</a>
-      <a href="/gauges.html">Gauges</a>
+      <a href="https://line.itogeospatial.com/snow">Snow Cover</a>
+      <a href="https://line.itogeospatial.com/river" class="active">River</a>
+      <a href="/river/gauges.html">Gauges</a>
     </div>
   </div>
   <div id="lp-filter">
@@ -300,7 +300,7 @@
     <div class="dot" style="background:var(--teal)"></div>
     <span>DNRC gauges</span>
   </div>
-  <div class="layer-toggle on" id="toggle-snotel" data-layers="snotel-points">
+  <div class="layer-toggle" id="toggle-snotel" data-layers="snotel-points">
     <div class="dot" style="background:var(--gold)"></div>
     <span>SNOTEL</span>
   </div>
@@ -471,6 +471,12 @@ function closePanel() {
   if (window._clearBasinHighlight) window._clearBasinHighlight();
   if (window._clearRiverHighlight) window._clearRiverHighlight();
   if (window._clearStationHighlight) window._clearStationHighlight();
+  if (typeof map !== 'undefined' && map.getLayer && map.getLayer('snotel-points')) {
+    map.setFilter('snotel-points', null);
+    map.setLayoutProperty('snotel-points', 'visibility', 'none');
+    const t = document.getElementById('toggle-snotel');
+    if (t) t.classList.remove('on');
+  }
 }
 
 function openPanel(name, id, badgeClass) {
@@ -510,6 +516,15 @@ async function openUsgsPanel(feature) {
   currentSiteId = id;
   currentPanelType = 'usgs';
   openPanel(name, id, 'badge-usgs');
+  const upstreamTriplets = window._gaugeData?.[id]?.upstream_snotel || [];
+  if (typeof map !== 'undefined' && map.getLayer && map.getLayer('snotel-points')) {
+    if (upstreamTriplets.length) {
+      map.setFilter('snotel-points', ['in', ['get', 'triplet'], ['literal', upstreamTriplets]]);
+      map.setLayoutProperty('snotel-points', 'visibility', 'visible');
+    } else {
+      map.setLayoutProperty('snotel-points', 'visibility', 'none');
+    }
+  }
   const rangeBtns = document.getElementById('range-btns');
   rangeBtns.innerHTML = `
     <button class="range-btn active" data-range="14">14D</button>
@@ -581,8 +596,8 @@ async function loadUsgsChart(siteId, days) {
   // NOAA: allSettled so stageflow failure doesn't kill the metadata fetch
   const noaaP = noaaLid
     ? Promise.allSettled([
-        fetch(`/api/noaa/${noaaLid}/stageflow`).then(r => { if (!r.ok) throw r.status; return r.json(); }),
-        fetch(`/api/noaa/${noaaLid}`).then(r => { if (!r.ok) throw r.status; return r.json(); }),
+        fetch(`/river/api/noaa/${noaaLid}/stageflow`).then(r => { if (!r.ok) throw r.status; return r.json(); }),
+        fetch(`/river/api/noaa/${noaaLid}`).then(r => { if (!r.ok) throw r.status; return r.json(); }),
       ])
     : Promise.resolve(null);
 
@@ -931,7 +946,7 @@ async function openDnrcPanel(feature) {
   if (dnrcSrcEl) dnrcSrcEl.innerHTML = `<a href="https://gis.dnrc.mt.gov/apps/stage/gage-report/location/${id}" target="_blank" rel="noopener" style="color:var(--muted);font-size:9px;font-family:var(--mono);text-decoration:none">DNRC ↗</a>`;
 
   try {
-    const data = await fetch(`/api/dnrc/${id}?days=14`).then(r => r.json());
+    const data = await fetch(`/river/api/dnrc/${id}?days=14`).then(r => r.json());
     const readings = data?.rows || [];
     if (!readings.length) {
       cfsHero.innerHTML = '<div class="cfs-loading">No discharge data</div>';
@@ -1018,8 +1033,8 @@ async function loadSnotelChart(feature, days) {
   const { triplet, elevation_ft, county } = feature.properties;
   try {
     const [rawArr, normArr] = await Promise.all([
-      fetch(`/api/snotel?triplet=${encodeURIComponent(triplet)}&days=${days}`).then(r => r.json()),
-      fetch(`/api/nrcs/normals?triplet=${encodeURIComponent(triplet)}`).then(r => r.json()).catch(() => []),
+      fetch(`/river/api/snotel?triplet=${encodeURIComponent(triplet)}&days=${days}`).then(r => r.json()),
+      fetch(`/river/api/nrcs/normals?triplet=${encodeURIComponent(triplet)}`).then(r => r.json()).catch(() => []),
     ]);
     const blocks = rawArr?.[0]?.data || [];
 
@@ -1179,8 +1194,8 @@ async function fetchWrqs() {
     const b = map.getBounds();
     const q = `xmin=${b.getWest().toFixed(4)}&ymin=${b.getSouth().toFixed(4)}&xmax=${b.getEast().toFixed(4)}&ymax=${b.getNorth().toFixed(4)}`;
     const [pods, res] = await Promise.all([
-      fetch(`/api/wrqs?layer=1&where=${encodeURIComponent("SOURCE_TYPE='SURFACE' AND WR_STATUS='ACTIVE'")}&${q}`).then(r => r.json()).catch(() => null),
-      fetch(`/api/wrqs?layer=3&where=${encodeURIComponent("WR_STATUS='ACTIVE'")}&${q}`).then(r => r.json()).catch(() => null),
+      fetch(`/river/api/wrqs?layer=1&where=${encodeURIComponent("SOURCE_TYPE='SURFACE' AND WR_STATUS='ACTIVE'")}&${q}`).then(r => r.json()).catch(() => null),
+      fetch(`/river/api/wrqs?layer=3&where=${encodeURIComponent("WR_STATUS='ACTIVE'")}&${q}`).then(r => r.json()).catch(() => null),
     ]);
     if (pods && map.getSource('src-wrqs-pods')) map.getSource('src-wrqs-pods').setData(pods);
     if (res  && map.getSource('src-wrqs-res'))  map.getSource('src-wrqs-res').setData(res);
@@ -1340,7 +1355,7 @@ async function loadCompareChart(station, idx, canvasId, days, gen) {
         options: compactChartOptions(),
       });
     } else if (station.type === 'snotel') {
-      const rawArr = await fetch(`/api/snotel?triplet=${encodeURIComponent(station.id)}&days=${days}`).then(r => r.json());
+      const rawArr = await fetch(`/river/api/snotel?triplet=${encodeURIComponent(station.id)}&days=${days}`).then(r => r.json());
       if (gen !== compareGeneration) return;
       const blocks = rawArr?.[0]?.data || [];
       const sweBlock = blocks.find(x => x.stationElement?.elementCode === 'WTEQ');
@@ -1393,7 +1408,7 @@ function dismissLoading() {
 }
 
 async function loadHierarchy(usgsData, snotelData) {
-  const hierarchy = await fetch('/data/river_hierarchy.json').then(r => r.json()).catch(() => null);
+  const hierarchy = await fetch('/river/data/river_hierarchy.json').then(r => r.json()).catch(() => null);
   if (!hierarchy) return;
   const { rivers, snotel: snotelMeta } = hierarchy;
 
@@ -1414,6 +1429,7 @@ async function loadHierarchy(usgsData, snotelData) {
       }
     }
   }
+  window._gaugeData = gaugeData;
 
   map.addSource('usgs-hl-src',   { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
   map.addSource('snotel-hl-src', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
@@ -1580,14 +1596,14 @@ map.on('load', async () => {
 
     const [usgsResult, dnrcResult, snotelResult, basinsResult, riversResult, noaaResult, lakesResult, dnrcSnotelResult] =
       await Promise.allSettled([
-        fetch('/data/usgs_gauges.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
-        fetch('/data/dnrc_gauges.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
-        fetch('/data/snotel_stations.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
-        fetch('/data/mt_basins.geojson').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
-        fetch('/data/mt_rivers.geojson').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
-        fetch('/data/noaa_gauges.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
-        fetch('/data/mt_lakes.geojson').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
-        fetch('/data/dnrc_snotel_links.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+        fetch('/river/data/usgs_gauges.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+        fetch('/river/data/dnrc_gauges.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+        fetch('/river/data/snotel_stations.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+        fetch('/river/data/mt_basins.geojson').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+        fetch('/river/data/mt_rivers.geojson').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+        fetch('/river/data/noaa_gauges.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+        fetch('/river/data/mt_lakes.geojson').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+        fetch('/river/data/dnrc_snotel_links.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
       ]);
 
     const usgsData    = usgsResult.status       === 'fulfilled' ? usgsResult.value       : null;
@@ -1872,6 +1888,7 @@ map.on('load', async () => {
       map.addSource('snotel-stations', { type: 'geojson', data: snotelData });
       map.addLayer({
         id: 'snotel-points', type: 'circle', source: 'snotel-stations',
+        layout: { visibility: 'none' },
         paint: {
           'circle-color': 'rgba(212,148,58,0.82)',
           'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 4.5, 10, 8],

@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RiverLine — Montana Gauges</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&family=Playfair+Display:ital,wght@0,700;1,400&display=swap" rel="stylesheet">
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.css" rel="stylesheet">
 <style>
   :root {
     --base:    #080f18;
@@ -14,18 +15,13 @@
     --muted:   #455a70;
     --dim:     #2a3f55;
     --accent:  #4a8fba;
-    --teal:    #3aab8a;
-    --gold:    #d4943a;
-    --warn:    #c8973a;
     --mono:    'JetBrains Mono', monospace;
     --serif:   'Playfair Display', serif;
     --sans:    'Inter', sans-serif;
     --nav-h:   44px;
   }
   *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: var(--sans); background: var(--base); color: var(--text); padding-top: var(--nav-h); }
-  a { color: var(--accent); text-decoration: none; }
-  a:hover { text-decoration: underline; }
+  html, body { height: 100%; overflow: hidden; font-family: var(--sans); background: var(--base); color: var(--text); }
 
   /* Nav */
   .top-nav {
@@ -40,86 +36,75 @@
   .nav-links a:hover { background: rgba(74,143,186,0.1); color: var(--accent); }
   .nav-links a.active { background: rgba(74,143,186,0.12); color: var(--accent); }
 
-  /* Page layout */
-  .page { max-width: 1200px; margin: 0 auto; padding: 32px 24px 64px; }
+  /* Map */
+  #map { position: absolute; top: var(--nav-h); left: 0; right: 0; bottom: 0; }
 
-  .page-header { margin-bottom: 28px; }
-  .page-header h1 { font-family: var(--serif); font-size: 28px; font-weight: 700; color: var(--text); }
-  .page-header .subtitle { color: var(--muted); font-size: 13px; font-family: var(--sans); margin-top: 5px; line-height: 1.5; }
+  /* Legend */
+  #legend {
+    position: absolute; bottom: 28px; left: 16px; z-index: 100;
+    background: rgba(14,28,45,0.88); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 13px; backdrop-filter: blur(6px);
+  }
+  .legend-title { font-family: var(--mono); font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 7px; }
+  .legend-row { display: flex; align-items: center; gap: 7px; margin-bottom: 4px; font-family: var(--mono); font-size: 10px; color: var(--text); }
+  .legend-row:last-child { margin-bottom: 0; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 
-  /* Stats strip */
-  .stats-strip { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
-  .stat-pill { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; }
-  .stat-pill .sv { font-family: var(--mono); font-size: 20px; font-weight: 700; color: var(--accent); }
-  .stat-pill .sl { font-size: 10px; color: var(--muted); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
+  /* Stats chip */
+  #stats-chip {
+    position: absolute; bottom: 28px; right: 16px; z-index: 100;
+    background: rgba(14,28,45,0.88); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 14px; backdrop-filter: blur(6px);
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+  }
+  #stats-chip strong { color: var(--accent); }
 
-  /* Filters */
-  .filter-bar { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
-  .filter-label { font-family: var(--mono); font-size: 9px; color: var(--dim); text-transform: uppercase; letter-spacing: 1px; margin-right: 2px; }
-  .filter-btn { padding: 4px 10px; border-radius: 4px; cursor: pointer; font-family: var(--mono); font-size: 10px; background: rgba(255,255,255,0.03); color: var(--muted); border: 1px solid rgba(255,255,255,0.05); transition: background 0.12s, color 0.12s; }
-  .filter-btn:hover { background: rgba(74,143,186,0.08); color: var(--accent); }
-  .filter-btn.on { background: rgba(74,143,186,0.12); color: var(--accent); border-color: rgba(74,143,186,0.2); }
-  .search-box { flex: 1; min-width: 180px; max-width: 300px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: var(--sans); font-size: 12px; padding: 5px 10px; outline: none; }
-  .search-box:focus { border-color: var(--accent); }
-
-  /* Table */
-  .table-wrap { overflow-x: auto; }
-  table { width: 100%; border-collapse: collapse; font-size: 11px; font-family: var(--mono); }
-  thead th { text-align: left; padding: 8px 10px; background: rgba(74,143,186,0.06); color: var(--accent); font-size: 9px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid var(--border); position: sticky; top: var(--nav-h); cursor: pointer; user-select: none; white-space: nowrap; }
-  thead th:hover { background: rgba(74,143,186,0.1); }
-  thead th .arrow { margin-left: 3px; font-size: 8px; color: var(--dim); }
-  thead th.sorted .arrow { color: var(--accent); }
-  tbody td { padding: 6px 10px; border-bottom: 1px solid rgba(255,255,255,0.025); }
-  tbody tr:hover { background: rgba(74,143,186,0.03); }
-  tbody tr.clickable { cursor: pointer; }
-  .td-name { color: var(--text); font-weight: 500; }
-  .td-id { color: var(--muted); font-size: 10px; }
-  .td-state { font-size: 10px; color: var(--muted); }
-  .td-cfs { font-weight: 600; }
-  .td-cfs.high { color: var(--warn); }
-  .td-cfs.normal { color: var(--accent); }
-  .td-cfs.low { color: var(--teal); }
-  .td-cfs.na { color: var(--dim); }
-  .badge { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 8px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
-  .b-active { background: rgba(74,143,186,0.15); color: #4a8fba; }
-  .b-inactive { background: rgba(84,110,122,0.15); color: #78909c; }
-  .b-usgs { background: rgba(74,143,186,0.12); color: var(--accent); }
-
-  .no-data { font-family: var(--mono); font-size: 12px; color: var(--dim); padding: 40px 0; text-align: center; }
-  .loading { font-family: var(--mono); font-size: 12px; color: var(--dim); padding: 40px 0; text-align: center; }
-
-  /* Detail panel (side-sheet on large, bottom sheet on mobile) */
-  #detail-overlay { position: fixed; inset: 0; background: rgba(8,15,24,0.6); z-index: 300; display: none; }
+  /* Detail panel */
   #detail-panel {
-    position: fixed; right: 0; top: 0; bottom: 0; width: 360px; z-index: 400;
+    position: absolute; top: var(--nav-h); right: 0; bottom: 0; width: 320px; z-index: 150;
     background: var(--surface); border-left: 1px solid var(--border);
-    overflow-y: auto; transform: translateX(100%); transition: transform 0.2s ease;
-    display: flex; flex-direction: column;
+    transform: translateX(100%); transition: transform 0.2s ease;
+    display: flex; flex-direction: column; overflow: hidden;
   }
   #detail-panel.open { transform: translateX(0); }
-  #detail-panel.open ~ #detail-overlay { display: block; }
-  .dp-head { padding: 16px 18px 12px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: flex-start; }
-  .dp-title { font-family: var(--serif); font-size: 15px; font-weight: 700; color: var(--text); line-height: 1.2; }
+  .dp-head { padding: 16px 16px 12px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: flex-start; flex-shrink: 0; }
+  .dp-title { font-family: var(--serif); font-size: 14px; font-weight: 700; color: var(--text); line-height: 1.3; max-width: 240px; }
   .dp-id { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 3px; }
-  .dp-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 18px; padding: 0; line-height: 1; }
+  .dp-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 17px; padding: 0; line-height: 1; flex-shrink: 0; }
   .dp-close:hover { color: var(--text); }
-  .dp-body { padding: 14px 18px; flex: 1; }
-  .dp-cfs { font-family: var(--mono); font-size: 36px; font-weight: 700; color: var(--accent); margin-bottom: 4px; }
-  .dp-cfs span { font-size: 14px; color: var(--muted); font-weight: 400; margin-left: 4px; }
-  .dp-ts { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-bottom: 16px; }
+  .dp-body { padding: 14px 16px; flex: 1; overflow-y: auto; }
+  .dp-cfs { font-family: var(--mono); font-size: 38px; font-weight: 700; margin-bottom: 3px; }
+  .dp-cfs span { font-size: 13px; color: var(--muted); font-weight: 400; margin-left: 4px; }
+  .dp-ts { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-bottom: 14px; }
+  .dp-class-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 4px; margin-bottom: 14px;
+    font-family: var(--mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .dp-class-dot { width: 8px; height: 8px; border-radius: 50%; }
   .dp-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.03); font-size: 11px; }
   .dp-row .lbl { color: var(--muted); }
   .dp-row .val { font-family: var(--mono); color: var(--text); }
-  .dp-links { padding: 14px 18px; border-top: 1px solid var(--border); display: flex; gap: 8px; flex-wrap: wrap; }
+  .dp-links { padding: 12px 16px; border-top: 1px solid var(--border); display: flex; gap: 8px; flex-shrink: 0; }
   .dp-links a { font-family: var(--mono); font-size: 10px; padding: 5px 12px; border-radius: 5px; background: rgba(74,143,186,0.1); color: var(--accent); text-decoration: none; border: 1px solid rgba(74,143,186,0.2); }
-  .dp-links a:hover { background: rgba(74,143,186,0.18); text-decoration: none; }
+  .dp-links a:hover { background: rgba(74,143,186,0.18); }
+  .dp-loading { font-family: var(--mono); font-size: 11px; color: var(--muted); padding: 20px 0; }
+
+  /* Loading overlay */
+  #map-loading {
+    position: absolute; top: var(--nav-h); left: 0; right: 0; bottom: 0; z-index: 120;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--base); pointer-events: none;
+    font-family: var(--mono); font-size: 12px; color: var(--muted);
+    transition: opacity 0.4s;
+  }
+  #map-loading.hidden { opacity: 0; }
 
   @media (max-width: 640px) {
-    .page { padding: 20px 14px 48px; }
-    #detail-panel { right: 0; left: 0; top: auto; bottom: 0; width: 100%; height: 60vh; border-left: none; border-top: 1px solid var(--border); transform: translateY(100%); }
+    #detail-panel { top: auto; right: 0; left: 0; width: 100%; height: 55vh; border-left: none; border-top: 1px solid var(--border); transform: translateY(100%); }
     #detail-panel.open { transform: translateY(0); }
-    .top-nav { padding: 0 12px; gap: 6px; }
-    .nav-links a { padding: 3px 7px; font-size: 9px; }
+    #legend { bottom: 62vh; }
+    #stats-chip { display: none; }
   }
 </style>
 </head>
@@ -128,56 +113,31 @@
 <nav class="top-nav">
   <span class="nav-brand">itogeospatial</span>
   <div class="nav-links">
-    <a href="https://snow.line.itogeospatial.com">Snow Cover</a>
-    <a href="https://river.line.itogeospatial.com" class="active">River</a>
+    <a href="https://line.itogeospatial.com/snow">Snow Cover</a>
+    <a href="https://line.itogeospatial.com/river" class="active">River</a>
   </div>
   <span class="nav-sep">/</span>
   <div class="nav-links">
-    <a href="/">Map</a>
-    <a href="/gauges.html" class="active">Gauges</a>
+    <a href="/river/">Map</a>
+    <a href="/river/gauges.html" class="active">Gauges</a>
   </div>
 </nav>
 
-<div class="page">
-  <div class="page-header">
-    <h1>Montana Gauges</h1>
-    <div class="subtitle">Active USGS streamflow stations across Montana — click any row for live data</div>
-  </div>
+<div id="map-loading">Loading Montana gauges…</div>
+<div id="map"></div>
 
-  <div class="stats-strip" id="stats-strip">
-    <div class="stat-pill"><div class="sv" id="stat-total">—</div><div class="sl">Active gauges</div></div>
-    <div class="stat-pill"><div class="sv" id="stat-reporting">—</div><div class="sl">Reporting now</div></div>
-    <div class="stat-pill"><div class="sv" id="stat-rivers">—</div><div class="sl">Unique rivers</div></div>
-  </div>
-
-  <div class="filter-bar">
-    <span class="filter-label">Status</span>
-    <button class="filter-btn on" data-filter="status" data-val="all">All</button>
-    <button class="filter-btn" data-filter="status" data-val="active">Active</button>
-    <button class="filter-btn" data-filter="status" data-val="reporting">Reporting</button>
-    <input type="search" class="search-box" id="search-box" placeholder="Filter by name or ID…">
-  </div>
-
-  <div id="loading" class="loading">Loading gauges…</div>
-  <div class="table-wrap" style="display:none" id="table-wrap">
-    <table id="gauge-table">
-      <thead>
-        <tr>
-          <th data-col="name">Station Name <span class="arrow">↕</span></th>
-          <th data-col="id">Site ID <span class="arrow">↕</span></th>
-          <th data-col="county">County <span class="arrow">↕</span></th>
-          <th data-col="huc">HUC8 <span class="arrow">↕</span></th>
-          <th data-col="cfs">Flow (cfs) <span class="arrow">↕</span></th>
-          <th data-col="status">Status <span class="arrow">↕</span></th>
-        </tr>
-      </thead>
-      <tbody id="gauge-tbody"></tbody>
-    </table>
-    <div id="no-results" class="no-data" style="display:none">No gauges match.</div>
-  </div>
+<div id="legend">
+  <div class="legend-title">Flow vs. Normal</div>
+  <div class="legend-row"><div class="legend-dot" style="background:#c05040"></div>Much Below Normal</div>
+  <div class="legend-row"><div class="legend-dot" style="background:#c8973a"></div>Below Normal</div>
+  <div class="legend-row"><div class="legend-dot" style="background:#4a8fba"></div>Normal</div>
+  <div class="legend-row"><div class="legend-dot" style="background:#4aabba"></div>Above Normal</div>
+  <div class="legend-row"><div class="legend-dot" style="background:#4a5fba"></div>Much Above Normal</div>
+  <div class="legend-row"><div class="legend-dot" style="background:#455a70"></div>No Data</div>
 </div>
 
-<div id="detail-overlay"></div>
+<div id="stats-chip"><strong id="stat-total">—</strong> active gauges · <strong id="stat-reporting">—</strong> with flow data</div>
+
 <div id="detail-panel">
   <div class="dp-head">
     <div>
@@ -187,253 +147,176 @@
     <button class="dp-close" id="dp-close">✕</button>
   </div>
   <div class="dp-body" id="dp-body">
-    <div class="loading">Loading…</div>
+    <div class="dp-loading">Select a gauge on the map.</div>
   </div>
   <div class="dp-links" id="dp-links"></div>
 </div>
 
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.js"></script>
 <script>
-// ── Data + state ─────────────────────────────────────────────────────────────
-let allGauges = [];
-let sortCol = 'name';
-let sortAsc = true;
-let filterStatus = 'all';
-let searchTerm = '';
+mapboxgl.accessToken = 'pk.eyJ1IjoiaXRvZ2VvIiwiYSI6ImNta3ByYnA1bzBsYW0zZG9mMnMxdWZwMjUifQ.Q7pwAuAEKdBHD_dqaVBhvw';
 
-// ── Fetch USGS IV sites for Montana ──────────────────────────────────────────
-async function loadGauges() {
+const CLS_COLOR = {
+  1: '#c05040',
+  2: '#c8973a',
+  3: '#4a8fba',
+  4: '#4aabba',
+  5: '#4a5fba',
+};
+const CLS_LABEL = {
+  1: 'Much Below Normal',
+  2: 'Below Normal',
+  3: 'Normal',
+  4: 'Above Normal',
+  5: 'Much Above Normal',
+};
+const NO_DATA_COLOR = '#455a70';
+
+const map = new mapboxgl.Map({
+  container: 'map',
+  style: 'mapbox://styles/mapbox/dark-v11',
+  center: [-109.5, 47.0],
+  zoom: 5.2,
+  minZoom: 4,
+});
+
+map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
+
+let gaugeFeatures = {};
+
+map.on('load', async () => {
+  let geojson;
   try {
-    // USGS NWIS site service — all active streamflow gauges in Montana
-    const url = 'https://waterservices.usgs.gov/nwis/site/?format=rdb&stateCd=MT&siteType=ST&siteStatus=active&hasDataTypeCd=iv&outputDataTypeCd=iv';
-    const resp = await fetch(url);
-    const text = await resp.text();
-    allGauges = parseNwisRdb(text);
-    renderStats();
-    renderTable();
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('table-wrap').style.display = '';
+    const resp = await fetch('/river/api/gauges/mt');
+    if (!resp.ok) throw new Error(resp.status);
+    geojson = await resp.json();
   } catch (e) {
-    document.getElementById('loading').textContent = 'Failed to load gauges. Check console.';
+    document.getElementById('map-loading').textContent = 'Failed to load gauge data. Try again soon.';
+    return;
   }
-}
 
-function parseNwisRdb(text) {
-  const lines = text.split('\n').filter(l => !l.startsWith('#') && l.trim());
-  if (lines.length < 3) return [];
-  // First non-comment line = headers, second = format hints, rest = data
-  const headers = lines[0].split('\t').map(h => h.trim().toLowerCase());
-  const rows = [];
-  for (const line of lines.slice(2)) {
-    const cols = line.split('\t');
-    if (cols.length < 3) continue;
-    const obj = {};
-    headers.forEach((h, i) => { obj[h] = (cols[i] || '').trim(); });
-    if (!obj.site_no) continue;
-    rows.push({
-      id:      obj.site_no,
-      name:    titleCase(obj.station_nm || ''),
-      county:  obj.county_cd || '',
-      huc:     obj.huc_cd || '',
-      lat:     parseFloat(obj.dec_lat_va) || null,
-      lng:     parseFloat(obj.dec_long_va) || null,
-      cfs:     null,
-      ts:      null,
-      status:  'active',
-    });
+  // Index features by site id
+  for (const f of (geojson.features || [])) {
+    gaugeFeatures[f.properties.id] = f.properties;
   }
-  return rows;
-}
 
-function titleCase(s) {
-  return s.toLowerCase().replace(/\b\w/g, c => c.toUpperCase()).replace(/\bAt\b/g, 'at').replace(/\bNr\b/g, 'nr').replace(/\bBl\b/g, 'bl').replace(/\bAbv\b/g, 'abv');
-}
+  // Stats
+  const total = geojson.features.length;
+  const reporting = geojson.features.filter(f => f.properties.flow != null).length;
+  document.getElementById('stat-total').textContent = total;
+  document.getElementById('stat-reporting').textContent = reporting;
 
-// ── Fetch live IV values for visible gauges (batch up to 100) ────────────────
-async function fetchLiveValues(siteIds) {
-  if (!siteIds.length) return;
-  const chunks = [];
-  for (let i = 0; i < siteIds.length; i += 100) chunks.push(siteIds.slice(i, i + 100));
-  for (const chunk of chunks) {
-    try {
-      const url = `https://waterservices.usgs.gov/nwis/iv/?sites=${chunk.join(',')}&parameterCd=00060&format=json&period=PT1H`;
-      const resp = await fetch(url);
-      const data = await resp.json();
-      const series = data?.value?.timeSeries || [];
-      for (const ts of series) {
-        const siteId = ts.sourceInfo?.siteCode?.[0]?.value;
-        const vals = ts.values?.[0]?.value || [];
-        if (!siteId || !vals.length) continue;
-        const last = vals.filter(v => v.value !== '-999999').pop();
-        if (!last) continue;
-        const g = allGauges.find(g => g.id === siteId);
-        if (g) {
-          g.cfs = parseFloat(last.value);
-          g.ts  = last.dateTime;
-          g.status = 'reporting';
-        }
-      }
-    } catch (_) {}
-  }
-  renderStats();
-  renderTable();
-}
+  // Add source
+  map.addSource('gauges', { type: 'geojson', data: geojson });
 
-// ── Stats ─────────────────────────────────────────────────────────────────────
-function renderStats() {
-  const reporting = allGauges.filter(g => g.status === 'reporting');
-  const rivers = new Set(allGauges.map(g => g.name.split(' at ')[0].split(' nr ')[0].trim()));
-  document.getElementById('stat-total').textContent = allGauges.length;
-  document.getElementById('stat-reporting').textContent = reporting.length;
-  document.getElementById('stat-rivers').textContent = rivers.size;
-}
+  // Color expression: cls → color
+  const colorExpr = [
+    'case',
+    ['==', ['get', 'cls'], 1], '#c05040',
+    ['==', ['get', 'cls'], 2], '#c8973a',
+    ['==', ['get', 'cls'], 3], '#4a8fba',
+    ['==', ['get', 'cls'], 4], '#4aabba',
+    ['==', ['get', 'cls'], 5], '#4a5fba',
+    NO_DATA_COLOR,
+  ];
 
-// ── Table render ──────────────────────────────────────────────────────────────
-function filteredGauges() {
-  return allGauges.filter(g => {
-    if (filterStatus === 'active'    && g.status === 'inactive') return false;
-    if (filterStatus === 'reporting' && g.status !== 'reporting') return false;
-    if (searchTerm) {
-      const t = searchTerm.toLowerCase();
-      if (!g.name.toLowerCase().includes(t) && !g.id.includes(t) && !g.county.toLowerCase().includes(t)) return false;
-    }
-    return true;
-  });
-}
-
-function sortedGauges() {
-  const arr = filteredGauges().slice();
-  arr.sort((a, b) => {
-    let av = a[sortCol], bv = b[sortCol];
-    if (sortCol === 'cfs') { av = av ?? -Infinity; bv = bv ?? -Infinity; }
-    if (av == null) return 1; if (bv == null) return -1;
-    const cmp = av < bv ? -1 : av > bv ? 1 : 0;
-    return sortAsc ? cmp : -cmp;
-  });
-  return arr;
-}
-
-function cfsClass(cfs) {
-  if (cfs == null) return 'na';
-  if (cfs > 5000) return 'high';
-  if (cfs < 50)   return 'low';
-  return 'normal';
-}
-
-function renderTable() {
-  const tbody = document.getElementById('gauge-tbody');
-  const arr   = sortedGauges();
-  document.getElementById('no-results').style.display = arr.length ? 'none' : '';
-  tbody.innerHTML = arr.map(g => `
-    <tr class="clickable" data-id="${g.id}">
-      <td class="td-name">${g.name}</td>
-      <td class="td-id">${g.id}</td>
-      <td class="td-state">${g.county}</td>
-      <td class="td-state">${g.huc || '—'}</td>
-      <td class="td-cfs ${cfsClass(g.cfs)}">${g.cfs != null ? g.cfs >= 1000 ? (g.cfs/1000).toFixed(1)+'k' : g.cfs.toFixed(0) : '—'}</td>
-      <td><span class="badge ${g.status === 'reporting' ? 'b-active' : 'b-inactive'}">${g.status}</span></td>
-    </tr>
-  `).join('');
-
-  // Click rows to open detail panel
-  tbody.querySelectorAll('tr').forEach(row => {
-    row.addEventListener('click', () => openDetail(row.dataset.id));
+  // Halo layer
+  map.addLayer({
+    id: 'gauges-halo',
+    type: 'circle',
+    source: 'gauges',
+    paint: {
+      'circle-radius': 10,
+      'circle-color': colorExpr,
+      'circle-opacity': 0.18,
+      'circle-blur': 0.5,
+    },
   });
 
-  // Update sort arrows
-  document.querySelectorAll('thead th').forEach(th => {
-    const arrow = th.querySelector('.arrow');
-    th.classList.toggle('sorted', th.dataset.col === sortCol);
-    if (arrow && th.dataset.col === sortCol) arrow.textContent = sortAsc ? '↑' : '↓';
-    else if (arrow) arrow.textContent = '↕';
+  // Main dot layer
+  map.addLayer({
+    id: 'gauges-dots',
+    type: 'circle',
+    source: 'gauges',
+    paint: {
+      'circle-radius': [
+        'interpolate', ['linear'], ['zoom'],
+        4, 4,
+        8, 7,
+        12, 10,
+      ],
+      'circle-color': colorExpr,
+      'circle-stroke-color': 'rgba(255,255,255,0.25)',
+      'circle-stroke-width': 1,
+      'circle-opacity': 0.9,
+    },
   });
+
+  // Pointer cursor
+  map.on('mouseenter', 'gauges-dots', () => { map.getCanvas().style.cursor = 'pointer'; });
+  map.on('mouseleave', 'gauges-dots', () => { map.getCanvas().style.cursor = ''; });
+
+  // Click to open panel
+  map.on('click', 'gauges-dots', (e) => {
+    const f = e.features[0];
+    if (!f) return;
+    openPanel(f.properties);
+  });
+
+  // Dismiss loading overlay
+  const overlay = document.getElementById('map-loading');
+  overlay.classList.add('hidden');
+  setTimeout(() => { overlay.style.display = 'none'; }, 400);
+});
+
+function clsColor(cls) {
+  return CLS_COLOR[cls] || NO_DATA_COLOR;
 }
 
-// ── Detail panel ──────────────────────────────────────────────────────────────
-async function openDetail(siteId) {
-  const g = allGauges.find(x => x.id === siteId);
-  if (!g) return;
-  document.getElementById('dp-title').textContent = g.name;
-  document.getElementById('dp-id').textContent = `USGS ${g.id}`;
-  document.getElementById('dp-body').innerHTML = '<div class="loading">Loading…</div>';
-  document.getElementById('dp-links').innerHTML = '';
+function openPanel(props) {
+  const { id, name, flow, ts, cls } = props;
+  document.getElementById('dp-title').textContent = name || id;
+  document.getElementById('dp-id').textContent = `USGS ${id}`;
+
+  const cfsStr = flow != null
+    ? Number(flow) >= 1000
+      ? (Number(flow) / 1000).toFixed(1) + 'k'
+      : Number(flow).toFixed(0)
+    : '—';
+
+  const tsFmt = ts ? ts.slice(0, 16).replace('T', ' ') + ' UTC' : '—';
+  const color = clsColor(cls);
+  const label = cls ? (CLS_LABEL[cls] || 'Unknown') : 'No Data';
+
+  document.getElementById('dp-body').innerHTML = `
+    <div class="dp-cfs" style="color:${color}">${cfsStr}<span>cfs</span></div>
+    <div class="dp-ts">${tsFmt}</div>
+    <div class="dp-class-badge" style="background:${color}20; color:${color}">
+      <div class="dp-class-dot" style="background:${color}"></div>
+      ${label}
+    </div>
+    <div class="dp-row"><span class="lbl">Site ID</span><span class="val">${id}</span></div>
+    <div class="dp-row"><span class="lbl">Network</span><span class="val">USGS NWIS</span></div>
+  `;
+
+  document.getElementById('dp-links').innerHTML = `
+    <a href="https://waterdata.usgs.gov/monitoring-location/${id}/" target="_blank" rel="noopener">USGS Data ↗</a>
+    <a href="https://waterdata.usgs.gov/nwis/uv?site_no=${id}" target="_blank" rel="noopener">Live Graph ↗</a>
+  `;
+
   document.getElementById('detail-panel').classList.add('open');
-
-  // Fetch 7-day IV
-  try {
-    const url = `https://waterservices.usgs.gov/nwis/iv/?sites=${siteId}&parameterCd=00060,00065&format=json&period=P7D`;
-    const data = await fetch(url).then(r => r.json());
-    const series = data?.value?.timeSeries || [];
-    const flowSeries = series.find(s => s.variable?.variableCode?.[0]?.value === '00060');
-    const stageSeries = series.find(s => s.variable?.variableCode?.[0]?.value === '00065');
-    const flowVals = (flowSeries?.values?.[0]?.value || []).filter(v => v.value !== '-999999');
-    const stageVals = (stageSeries?.values?.[0]?.value || []).filter(v => v.value !== '-999999');
-
-    const lastFlow  = flowVals.length  ? flowVals[flowVals.length - 1]   : null;
-    const lastStage = stageVals.length ? stageVals[stageVals.length - 1] : null;
-
-    const cfs    = lastFlow  ? parseFloat(lastFlow.value)   : null;
-    const ft     = lastStage ? parseFloat(lastStage.value)  : null;
-    const ts     = lastFlow  ? lastFlow.dateTime : lastStage?.dateTime;
-    const tsFmt  = ts ? ts.slice(0, 16).replace('T', ' ') + ' MT' : '—';
-
-    const rows = [];
-    if (cfs  != null) rows.push({ lbl: 'Flow',        val: cfs.toLocaleString(undefined, {maximumFractionDigits:0}) + ' cfs' });
-    if (ft   != null) rows.push({ lbl: 'Gage height',  val: ft.toFixed(2) + ' ft' });
-    if (g.huc)        rows.push({ lbl: 'HUC8',         val: g.huc });
-    if (g.county)     rows.push({ lbl: 'County',       val: g.county });
-    if (g.lat)        rows.push({ lbl: 'Coords',        val: `${g.lat.toFixed(4)}, ${g.lng.toFixed(4)}` });
-    rows.push({ lbl: 'Network', val: 'USGS NWIS' });
-
-    document.getElementById('dp-body').innerHTML = `
-      <div class="dp-cfs">${cfs != null ? cfs.toLocaleString(undefined,{maximumFractionDigits:0}) : '—'}<span>cfs</span></div>
-      <div class="dp-ts">${tsFmt}</div>
-      ${rows.map(r => `<div class="dp-row"><span class="lbl">${r.lbl}</span><span class="val">${r.val}</span></div>`).join('')}
-    `;
-    document.getElementById('dp-links').innerHTML = `
-      <a href="https://waterdata.usgs.gov/monitoring-location/${siteId}/" target="_blank" rel="noopener">USGS Data ↗</a>
-      <a href="https://waterdata.usgs.gov/nwis/uv?site_no=${siteId}" target="_blank" rel="noopener">Live Graph ↗</a>
-    `;
-  } catch (e) {
-    document.getElementById('dp-body').innerHTML = '<div class="loading">Fetch error</div>';
-    document.getElementById('dp-links').innerHTML = `<a href="https://waterdata.usgs.gov/monitoring-location/${siteId}/" target="_blank" rel="noopener">USGS Data ↗</a>`;
-  }
 }
-
-// ── Sort + filter event wiring ────────────────────────────────────────────────
-document.querySelectorAll('thead th[data-col]').forEach(th => {
-  th.addEventListener('click', () => {
-    if (sortCol === th.dataset.col) sortAsc = !sortAsc;
-    else { sortCol = th.dataset.col; sortAsc = true; }
-    renderTable();
-  });
-});
-
-document.querySelectorAll('.filter-btn[data-filter="status"]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.filter-btn[data-filter="status"]').forEach(b => b.classList.remove('on'));
-    btn.classList.add('on');
-    filterStatus = btn.dataset.val;
-    renderTable();
-  });
-});
-
-document.getElementById('search-box').addEventListener('input', e => {
-  searchTerm = e.target.value.trim();
-  renderTable();
-});
 
 document.getElementById('dp-close').addEventListener('click', () => {
   document.getElementById('detail-panel').classList.remove('open');
 });
-document.getElementById('detail-overlay').addEventListener('click', () => {
-  document.getElementById('detail-panel').classList.remove('open');
-});
 
-// ── Boot ──────────────────────────────────────────────────────────────────────
-loadGauges().then(() => {
-  // After table renders, fetch live IV for all gauges in batches
-  const ids = allGauges.map(g => g.id);
-  fetchLiveValues(ids);
+// Close panel on map click (not on a gauge)
+map.on('click', (e) => {
+  const features = map.queryRenderedFeatures(e.point, { layers: ['gauges-dots'] });
+  if (!features.length) {
+    document.getElementById('detail-panel').classList.remove('open');
+  }
 });
 </script>
 </body>

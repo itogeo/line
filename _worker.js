@@ -4,18 +4,48 @@ export default {
     const host = url.hostname;
     const path = url.pathname;
 
-    // ── SHARED (all Line Network sites) ──────────────────────────────────────
-    if (path.startsWith('/shared/')) {
-      const sharedPath = '/_shared' + path.slice('/shared'.length);
+    // ── REDIRECT OLD SUBDOMAINS ────────────────────────────────────────────────
+    // Old: snow.line.*, snowline.*, river.line.*, riverline.*
+    // New: line.itogeospatial.com/snow  and  line.itogeospatial.com/river
+    if (!host.endsWith('.pages.dev') && host !== 'line.itogeospatial.com') {
+      let newBase = null;
+      if (host.includes('snow')) newBase = 'https://line.itogeospatial.com/snow';
+      else if (host.includes('river')) newBase = 'https://line.itogeospatial.com/river';
+      if (newBase) {
+        const suffix = path === '/' ? '' : path;
+        return Response.redirect(newBase + suffix + url.search, 301);
+      }
+    }
+
+    // ── DETERMINE SITE + EFFECTIVE PATH ───────────────────────────────────────
+    // Path prefix wins; hostname fallback for .pages.dev testing
+    let site = null;
+    let effectivePath = path;
+
+    if (path === '/snow' || path.startsWith('/snow/')) {
+      site = 'snow';
+      effectivePath = path.slice('/snow'.length) || '/';
+    } else if (path === '/river' || path.startsWith('/river/')) {
+      site = 'river';
+      effectivePath = path.slice('/river'.length) || '/';
+    } else if (host.includes('snow')) {
+      site = 'snow';
+    } else if (host.includes('river')) {
+      site = 'river';
+    }
+
+    // ── SHARED (all Line Network sites) ───────────────────────────────────────
+    if (effectivePath.startsWith('/shared/')) {
+      const sharedPath = '/_shared' + effectivePath.slice('/shared'.length);
       return env.ASSETS.fetch(new Request(new URL(sharedPath, url), request));
     }
 
     // ── SNOW ──────────────────────────────────────────────────────────────────
 
-    if (host.includes('snow')) {
+    if (site === 'snow') {
       // R2 tile serving — fall back to git-committed tiles if not in R2
-      if (path.startsWith('/api/tile/')) {
-        const tilePath = path.slice('/api/tile'.length);
+      if (effectivePath.startsWith('/api/tile/')) {
+        const tilePath = effectivePath.slice('/api/tile'.length);
         const key = 'tiles' + tilePath;
         if (env.SNOWLINE_BUCKET) {
           const obj = await env.SNOWLINE_BUCKET.get(key);
@@ -36,7 +66,7 @@ export default {
       }
 
       // Image proxy (webcams blocked by CORS)
-      if (path === '/api/camproxy' && url.searchParams.get('url')) {
+      if (effectivePath === '/api/camproxy' && url.searchParams.get('url')) {
         const imgUrl = url.searchParams.get('url');
         const allowed = ['nps.gov', 'mdt.mt.gov', 'ipcamlive.com', 'mediaassets.kbzk.com'];
         const imgHost = new URL(imgUrl).hostname;
@@ -59,7 +89,7 @@ export default {
       }
 
       // MDT camera API proxy
-      if (path === '/api/mdtcam' && url.searchParams.get('id')) {
+      if (effectivePath === '/api/mdtcam' && url.searchParams.get('id')) {
         const posId = url.searchParams.get('id');
         try {
           const r = await fetch(`https://app.mdt.mt.gov/atms/public/camera/lastFiveImages/${posId}`);
@@ -83,7 +113,7 @@ export default {
       }
 
       // SNOTEL API proxy (CORS)
-      if (path === '/api/snotel' && url.searchParams.get('triplets')) {
+      if (effectivePath === '/api/snotel' && url.searchParams.get('triplets')) {
         const triplets = url.searchParams.get('triplets');
         const begin = url.searchParams.get('begin') || '2025-10-01';
         const end = url.searchParams.get('end') || new Date().toISOString().slice(0, 10);
@@ -104,7 +134,7 @@ export default {
       }
 
       // Feedback POST → creates issue in itogeo/line
-      if (path === '/api/feedback' && request.method === 'POST') {
+      if (effectivePath === '/api/feedback' && request.method === 'POST') {
         try {
           const { text, date } = await request.json();
           if (!text || text.trim().length === 0) {
@@ -113,7 +143,7 @@ export default {
           const title = 'Feedback: ' + text.substring(0, 60) + (text.length > 60 ? '...' : '');
           const body =
             text +
-            '\n\n---\n*Submitted from snow.line.itogeospatial.com*\n*Date viewed: ' +
+            '\n\n---\n*Submitted from line.itogeospatial.com/snow*\n*Date viewed: ' +
             (date || 'unknown') +
             '*\n*' +
             new Date().toISOString() +
@@ -139,7 +169,7 @@ export default {
       }
 
       // CORS preflight
-      if (path.startsWith('/api/') && request.method === 'OPTIONS') {
+      if (effectivePath.startsWith('/api/') && request.method === 'OPTIONS') {
         return new Response(null, {
           status: 204,
           headers: {
@@ -151,15 +181,14 @@ export default {
       }
 
       // Static assets → rewrite to snowline/site/ prefix
-      // Use trailing slash for root — ASSETS normalizes /dir/index.html → /dir/ with 308
-      const snowPath = path === '/' ? '/snowline/site/' : '/snowline/site' + path;
+      const snowPath = effectivePath === '/' ? '/snowline/site/' : '/snowline/site' + effectivePath;
       return env.ASSETS.fetch(new Request(new URL(snowPath, url), request));
     }
 
     // ── RIVER ──────────────────────────────────────────────────────────────────
 
-    if (host.includes('river')) {
-      if (path === '/api/current') {
+    if (site === 'river') {
+      if (effectivePath === '/api/current') {
         const val = await env.RIVERLINE_KV.get('gateway:current');
         if (!val) return new Response('No data yet', { status: 503 });
         return new Response(val, {
@@ -171,18 +200,18 @@ export default {
         });
       }
 
-      if (path === '/api/chart') {
-        const site = url.searchParams.get('site') || '06043500';
+      if (effectivePath === '/api/chart') {
+        const siteParam = url.searchParams.get('site') || '06043500';
         const [hist, bands] = await Promise.all([
           env.RIVERLINE_DB.prepare(
             'SELECT date, cfs FROM daily_flow WHERE site_id = ? ORDER BY date DESC LIMIT 90',
-          ).bind(site).all(),
+          ).bind(siteParam).all(),
           env.RIVERLINE_DB.prepare(
             'SELECT doy, p10, p25, p50, p75, p90 FROM doy_stats WHERE site_id = ? ORDER BY doy',
-          ).bind(site).all(),
+          ).bind(siteParam).all(),
         ]);
         return new Response(
-          JSON.stringify({ site, history: hist.results, bands: bands.results }),
+          JSON.stringify({ site: siteParam, history: hist.results, bands: bands.results }),
           {
             headers: {
               'Content-Type': 'application/json',
@@ -193,8 +222,72 @@ export default {
         );
       }
 
+      // All active MT USGS gauges with WaterWatch percentile class → GeoJSON
+      if (effectivePath === '/api/gauges/mt') {
+        const usgsUrl = 'https://waterservices.usgs.gov/nwis/iv/?stateCd=mt&parameterCd=00060&format=json&siteStatus=active';
+        const wwUrl = 'https://waterwatch.usgs.gov/webservices/realtime?region=mt&format=json';
+        const [usgsResult, wwResult] = await Promise.allSettled([
+          fetch(usgsUrl, { headers: { 'User-Agent': 'riverline/1.0' } }).then(r => r.json()),
+          fetch(wwUrl, { headers: { 'User-Agent': 'riverline/1.0' } }).then(r => r.json()),
+        ]);
+
+        const series = usgsResult.status === 'fulfilled'
+          ? (usgsResult.value?.value?.timeSeries || [])
+          : [];
+
+        // Build WaterWatch class lookup (cls 1=low … 5=high)
+        const clsMap = {};
+        if (wwResult.status === 'fulfilled') {
+          const wwRaw = wwResult.value;
+          const stations = Array.isArray(wwRaw)
+            ? wwRaw
+            : (wwRaw?.sites || wwRaw?.stations || []);
+          for (const s of stations) {
+            const sno = s.site_no || s.siteNo || s.siteNumber;
+            const cls = parseInt(s.class || s.percentile_class || s.cls) || null;
+            if (sno && cls) clsMap[sno] = cls;
+          }
+        }
+
+        const features = [];
+        for (const ts of series) {
+          const loc = ts.sourceInfo?.geoLocation?.geogLocation;
+          if (!loc) continue;
+          const lng = parseFloat(loc.longitude);
+          const lat = parseFloat(loc.latitude);
+          if (!isFinite(lng) || !isFinite(lat)) continue;
+
+          const id = ts.sourceInfo?.siteCode?.[0]?.value;
+          if (!id) continue;
+          const name = ts.sourceInfo?.siteName || id;
+          const vals = ts.values?.[0]?.value || [];
+          const lastVal = vals[vals.length - 1];
+          const flow = lastVal ? parseFloat(lastVal.value) : null;
+          const tsStr = lastVal?.dateTime || null;
+
+          if (flow == null || !isFinite(flow) || flow < 0) continue;
+
+          features.push({
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [lng, lat] },
+            properties: { id, name, flow: Math.round(flow), ts: tsStr, cls: clsMap[id] || null },
+          });
+        }
+
+        return new Response(
+          JSON.stringify({ type: 'FeatureCollection', features }),
+          {
+            headers: {
+              'Content-Type': 'application/geo+json',
+              'Access-Control-Allow-Origin': '*',
+              'Cache-Control': 'public, max-age=900',
+            },
+          },
+        );
+      }
+
       // SNOTEL proxy — AWDB has no CORS headers; proxy single station's 30-day data
-      if (path === '/api/snotel' && url.searchParams.get('triplet')) {
+      if (effectivePath === '/api/snotel' && url.searchParams.get('triplet')) {
         const triplet = url.searchParams.get('triplet');
         const today = new Date().toISOString().slice(0, 10);
         const thirtyAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -218,8 +311,8 @@ export default {
       }
 
       // NOAA NWPS stageflow proxy — NOAA has no CORS headers
-      if (path.startsWith('/api/noaa/') && path.endsWith('/stageflow')) {
-        const parts = path.split('/');
+      if (effectivePath.startsWith('/api/noaa/') && effectivePath.endsWith('/stageflow')) {
+        const parts = effectivePath.split('/');
         const lid = parts[3];
         if (!/^[A-Z0-9]{3,10}$/i.test(lid)) {
           return new Response('Invalid lid', { status: 400 });
@@ -244,8 +337,8 @@ export default {
       }
 
       // DNRC StAGE tsQuery proxy — async GP job pattern, returns 14/30-day discharge JSON
-      if (path.startsWith('/api/dnrc/') && url.searchParams.has('days')) {
-        const locationId = path.split('/')[3] || '';
+      if (effectivePath.startsWith('/api/dnrc/') && url.searchParams.has('days')) {
+        const locationId = effectivePath.split('/')[3] || '';
         if (!/^[a-f0-9]{32}$/i.test(locationId)) {
           return new Response('Invalid locationId', { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } });
         }
@@ -371,7 +464,7 @@ export default {
       }
 
       // DNRC WRQS proxy — FeatureServer has no CORS headers
-      if (path.startsWith('/api/wrqs')) {
+      if (effectivePath.startsWith('/api/wrqs')) {
         const layer = url.searchParams.get('layer') || '1';
         const xmin = url.searchParams.get('xmin');
         const ymin = url.searchParams.get('ymin');
@@ -399,13 +492,8 @@ export default {
         }
       }
 
-      // Shared freshness utilities
-      if (path === '/shared/freshness.js') {
-        return env.ASSETS.fetch(new Request(new URL('/_shared/freshness.js', url), request));
-      }
-
       // CORS preflight
-      if (path.startsWith('/api/') && request.method === 'OPTIONS') {
+      if (effectivePath.startsWith('/api/') && request.method === 'OPTIONS') {
         return new Response(null, {
           status: 204,
           headers: {
@@ -417,8 +505,7 @@ export default {
       }
 
       // Static assets → rewrite to riverline/site/ prefix
-      // /gallatin and /gallatin/ both route to riverline/site/gallatin/
-      const riverPath = path === '/' ? '/riverline/site/' : '/riverline/site' + path;
+      const riverPath = effectivePath === '/' ? '/riverline/site/' : '/riverline/site' + effectivePath;
       return env.ASSETS.fetch(new Request(new URL(riverPath, url), request));
     }
 

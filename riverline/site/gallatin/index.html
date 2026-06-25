@@ -635,7 +635,7 @@ async function selectGauge(siteId) {
     el.classList.toggle('active', el.dataset.site === siteId);
   });
   try {
-    const chart = await fetch('/api/chart?site=' + siteId).then(r => r.json());
+    const chart = await fetch('/river/api/chart?site=' + siteId).then(r => r.json());
     const histWrap = document.getElementById('historyChart-wrap');
     if (!histWrap) return;
     histWrap.innerHTML = '<canvas id="historyChart"></canvas>';
@@ -657,8 +657,8 @@ async function render() {
   let current, chart;
   try {
     [current, chart] = await Promise.all([
-      fetch('/api/current').then(r => r.json()),
-      fetch('/api/chart?site=' + activeGauge).then(r => r.json()),
+      fetch('/river/api/current').then(r => r.json()),
+      fetch('/river/api/chart?site=' + activeGauge).then(r => r.json()),
     ]);
   } catch (e) {
     root.innerHTML = `<div class="error-banner">Could not load river data. Check back soon.</div>`;
