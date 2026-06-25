@@ -231,8 +231,19 @@ const CLS_LABEL = {
   1: 'Much Below Normal', 2: 'Below Normal', 3: 'Normal',
   4: 'Above Normal',      5: 'Much Above Normal',
 };
-const REPORTING_COLOR = '#4a8fba';  // has flow but no CLS classification
-const OFFLINE_COLOR   = '#2a3f55';  // no data at all
+const OFFLINE_COLOR = '#2a3f55';  // no data at all
+
+// Small creeks run red; big rivers run deep blue — same direction as CLS scale.
+function flowMagnitudeColor(cfs) {
+  if (cfs <    10) return '#8b3a30';
+  if (cfs <    50) return '#c05040';
+  if (cfs <   200) return '#cc7030';
+  if (cfs <   600) return '#8a7840';
+  if (cfs <  1500) return '#6a8a9a';
+  if (cfs <  5000) return '#28a8e0';
+  if (cfs < 15000) return '#1878d0';
+  return '#0a50c8';
+}
 
 const WY_START  = '2025-10-01';
 const WY_MONTHS = [
@@ -243,12 +254,12 @@ const WY_MONTHS = [
 ];
 const MONTH_ABBR = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-// Return the color for a live gauge entry.
-// Priority: CLS classification → reporting (has flow) → offline
+// Priority: USGS CLS percentile class → flow-magnitude color → offline gray
 function gaugeColor(live) {
   const cls = parseInt(live.cls);
   if (cls >= 1 && cls <= 5) return CLS_COLOR[cls];
-  if (live.flow != null && Number(live.flow) >= 0) return REPORTING_COLOR;
+  const flow = live.flow != null ? Number(live.flow) : -1;
+  if (flow >= 0) return flowMagnitudeColor(flow);
   return OFFLINE_COLOR;
 }
 function clsLabel(cls) { return CLS_LABEL[parseInt(cls)] || 'No Data'; }
@@ -732,9 +743,9 @@ function initMap() {
       type: 'line',
       source: 'rivers',
       paint: {
-        'line-color': '#1e4060',
-        'line-width': 1,
-        'line-opacity': 0.55,
+        'line-color': '#2a5a7a',
+        'line-width': 1.2,
+        'line-opacity': 0.7,
       },
     });
 
