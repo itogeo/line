@@ -452,8 +452,8 @@ async function loadData() {
   buildPage();
   initMap();
   setupObserver();
-  buildOverviewChart();
-  computePercentileClasses(); // non-blocking; updates map colors + card badges when done
+  await buildOverviewChart();       // chart gets all 6 connections first
+  computePercentileClasses();       // then stats run in background
 
   const overlay = document.getElementById('loading-overlay');
   overlay.classList.add('fade');
@@ -1080,28 +1080,46 @@ async function computePercentileClasses() {
       text = await resp.text();
     } catch { continue; }
 
-    // RDB: comment lines start with #, then header row, then type row, then data rows
+    // RDB: comment lines start with #, then header row, then type-def row, then data
     const lines = text.split('\n');
     let headers = null;
+    let typeRowSkipped = false;
+    // Build per-site text accumulator so statsCache can be populated
+    const siteLines = new Map(); // siteNo → [lines for that site]
+    let siteHeaderLines = []; // the # comments + header + type row
+
     for (const line of lines) {
-      if (!line.trim() || line.startsWith('#')) continue;
+      if (!line.trim()) continue;
+      if (line.startsWith('#')) { siteHeaderLines.push(line); continue; }
       if (!headers) {
         headers = line.split('\t').map(h => h.trim());
+        siteHeaderLines.push(line);
         continue;
       }
-      // Skip the RDB type-definition row (entries like "5s", "15n", "10d")
-      if (/^\d+[a-z]$/.test((line.split('\t')[0] || '').trim())) continue;
+      // Skip the RDB type-definition row (second non-comment, non-header row; all cells match \d+[a-zA-Z]+)
+      if (!typeRowSkipped) {
+        const cells = line.split('\t');
+        if (cells.every(c => /^\d+[a-zA-Z]+$/.test(c.trim()))) {
+          siteHeaderLines.push(line);
+          typeRowSkipped = true;
+          continue;
+        }
+        typeRowSkipped = true; // no type row present — treat as data
+      }
 
       const cols   = line.split('\t').map(c => c.trim());
       if (cols.length < 8) continue;
 
-      // Only process today's day-of-year
+      const siteNo = cols[headers.indexOf('site_no')];
+      if (!siteNo) continue;
+      if (!siteLines.has(siteNo)) siteLines.set(siteNo, []);
+      siteLines.get(siteNo).push(line);
+
+      // Only process today's day-of-year for CLS
       const mo = parseInt(cols[headers.indexOf('month_nu')]);
       const dy = parseInt(cols[headers.indexOf('day_nu')]);
       if (mo !== monthNu || dy !== dayNu) continue;
-
-      const siteNo = cols[headers.indexOf('site_no')];
-      if (!siteNo || !liveMap[siteNo]) continue;
+      if (!liveMap[siteNo]) continue;
 
       const p10 = parseFloat(cols[headers.indexOf('p10_va')]);
       const p25 = parseFloat(cols[headers.indexOf('p25_va')]);
@@ -1117,6 +1135,13 @@ async function computePercentileClasses() {
         flow < p25 ? 2 :
         flow < p75 ? 3 :
         flow < p90 ? 4 : 5;
+    }
+
+    // Populate statsCache per gauge so loadGaugeChart() doesn't re-fetch
+    for (const [siteNo, dataLines] of siteLines) {
+      if (!statsCache.has(siteNo)) {
+        statsCache.set(siteNo, [...siteHeaderLines, ...dataLines].join('\n'));
+      }
     }
   }
 
