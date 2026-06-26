@@ -6,6 +6,7 @@
 <title>RiverLine — Montana Gauges</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.js"></script>
@@ -97,6 +98,7 @@
   .leg-row[data-cls] { cursor: pointer; border-radius: 4px; padding: 1px 4px; margin: 0 -4px; transition: opacity 0.15s, background 0.12s; }
   .leg-row[data-cls]:hover { background: rgba(255,255,255,0.06); }
   .leg-row[data-cls].cls-off { opacity: 0.28; }
+  .leg-row[data-cls].cls-on  { background: rgba(255,255,255,0.09); opacity: 1; }
 
   /* ── Page body ───────────────────────────────────────────────────── */
   .page-body { max-width: 1360px; margin: 0 auto; padding: 0 16px 60px; }
@@ -450,7 +452,7 @@ let chartObserver  = null;
 let chartLogScale  = false;
 let dotFeatures       = [];
 let chartGaugeIds     = [];
-let activeCls         = new Set([1, 2, 3, 4, 5, 0]);
+let activeCls         = new Set(); // empty = no filter (show all)
 let viewportGaugeIds  = null;
 let pinnedBasins      = new Set();
 let pinnedGaugeIds    = null;
@@ -742,7 +744,7 @@ async function loadGaugeChart(container) {
         const yr      = m >= 10 ? 2025 : 2026;
         const dateStr = `${yr}-${mStr}-${dStr}`;
         if (dateStr > todayStr) continue;
-        labels.push(day === 1 ? MONTH_ABBR[m] : '');
+        labels.push(dateStr);
         const stats = doyMap.get(`${mStr}-${dStr}`) || {};
         p10.push(stats.p10 ?? null); p25.push(stats.p25 ?? null);
         p50.push(stats.p50 ?? null); p75.push(stats.p75 ?? null);
@@ -793,13 +795,15 @@ async function loadGaugeChart(container) {
         },
         scales: {
           x: {
-            ticks: { color: '#455a70', font: { family: "'Inter',sans-serif", size: 7 }, maxTicksLimit: 13, maxRotation: 0 },
-            grid: { color: 'rgba(255,255,255,0.025)' }, border: { color: '#1a2f45' },
+            type: 'time',
+            time: { unit: 'month', displayFormats: { month: 'MMM' }, tooltipFormat: 'MMM d' },
+            ticks: { color: '#5a7892', font: { family: "'Inter',sans-serif", size: 7 }, maxRotation: 0, maxTicksLimit: 10 },
+            grid: { color: 'rgba(255,255,255,0.025)' }, border: { color: '#1e3f60' },
           },
           y: {
-            ticks: { color: '#455a70', font: { family: "'Inter',sans-serif", size: 7 }, maxTicksLimit: 4,
+            ticks: { color: '#5a7892', font: { family: "'Inter',sans-serif", size: 7 }, maxTicksLimit: 4,
               callback: v => v >= 1000 ? (v/1000).toFixed(1)+'k' : v },
-            grid: { color: 'rgba(255,255,255,0.035)' }, border: { color: '#1a2f45' },
+            grid: { color: 'rgba(255,255,255,0.035)' }, border: { color: '#1e3f60' },
           },
         },
       },
@@ -815,7 +819,7 @@ async function loadGaugeChart(container) {
 // ── Overview spaghetti chart — all gauges, one canvas ─────────────
 function buildDateSpine() {
   const todayStr = new Date().toISOString().slice(0, 10);
-  const dates = [], labels = [];
+  const dates = [];
   outer: for (const {m, days: md} of WY_MONTHS) {
     for (let day = 1; day <= md; day++) {
       const mStr    = String(m).padStart(2, '0');
@@ -824,10 +828,9 @@ function buildDateSpine() {
       const dateStr = `${yr}-${mStr}-${dStr}`;
       if (dateStr > todayStr) break outer;
       dates.push(dateStr);
-      labels.push(day === 1 ? MONTH_ABBR[m] : '');
     }
   }
-  return { dates, labels };
+  return { dates, labels: dates };
 }
 
 function hexToRgba(hex, alpha) {
@@ -943,16 +946,18 @@ async function buildOverviewChart() {
       },
       scales: {
         x: {
-          ticks: { color: '#455a70', font: { family: "'Inter',sans-serif", size: 8 }, maxTicksLimit: 13, maxRotation: 0 },
+          type: 'time',
+          time: { unit: 'month', displayFormats: { month: "MMM ''yy", day: 'MMM d' }, tooltipFormat: 'MMM d' },
+          ticks: { color: '#5a7892', font: { family: "'Inter',sans-serif", size: 9 }, maxRotation: 0, maxTicksLimit: 12 },
           grid:  { color: 'rgba(255,255,255,0.025)' },
-          border:{ color: '#1a2f45' },
+          border:{ color: '#1e3f60' },
         },
         y: {
           type: 'linear',
           min:  0,
-          ticks: { color: '#455a70', font: { family: "'Inter',sans-serif", size: 8 }, callback: tickCb },
+          ticks: { color: '#5a7892', font: { family: "'Inter',sans-serif", size: 8 }, callback: tickCb },
           grid:   { color: 'rgba(255,255,255,0.035)' },
-          border: { color: '#1a2f45' },
+          border: { color: '#1e3f60' },
         },
       },
     },
@@ -1177,20 +1182,20 @@ function initMap() {
   document.querySelectorAll('#map-legend .leg-row[data-cls]').forEach(row => {
     row.addEventListener('click', () => {
       const cls = Number(row.dataset.cls);
-      if (activeCls.has(cls)) {
-        activeCls.delete(cls);
-        row.classList.add('cls-off');
-      } else {
-        activeCls.add(cls);
-        row.classList.remove('cls-off');
-      }
+      if (activeCls.has(cls)) { activeCls.delete(cls); } else { activeCls.add(cls); }
+      const allRows = document.querySelectorAll('#map-legend .leg-row[data-cls]');
       if (activeCls.size === 0) {
-        activeCls = new Set([1, 2, 3, 4, 5, 0]);
-        document.querySelectorAll('#map-legend .leg-row[data-cls]').forEach(r => r.classList.remove('cls-off'));
+        allRows.forEach(r => r.classList.remove('cls-off', 'cls-on'));
+      } else {
+        allRows.forEach(r => {
+          const c = Number(r.dataset.cls);
+          r.classList.toggle('cls-on',  activeCls.has(c));
+          r.classList.toggle('cls-off', !activeCls.has(c));
+        });
       }
       if (overviewMap && overviewMap.getLayer('gauge-dots')) {
         overviewMap.setFilter('gauge-dots',
-          activeCls.size >= 6 ? null : ['in', ['get', 'cls'], ['literal', [...activeCls]]]
+          activeCls.size === 0 ? null : ['in', ['get', 'cls'], ['literal', [...activeCls]]]
         );
       }
       applyChartFilter();
@@ -1199,8 +1204,8 @@ function initMap() {
 
   // CLS legend "All" reset button
   document.getElementById('cls-filter-reset').addEventListener('click', () => {
-    activeCls = new Set([1, 2, 3, 4, 5, 0]);
-    document.querySelectorAll('#map-legend .leg-row[data-cls]').forEach(r => r.classList.remove('cls-off'));
+    activeCls = new Set();
+    document.querySelectorAll('#map-legend .leg-row[data-cls]').forEach(r => r.classList.remove('cls-off', 'cls-on'));
     if (overviewMap && overviewMap.getLayer('gauge-dots')) {
       overviewMap.setFilter('gauge-dots', null);
     }
@@ -1213,7 +1218,7 @@ function applyChartFilter() {
   if (!overviewChart) return;
   chartGaugeIds.forEach((g, i) => {
     const cls  = liveMap[g.id]?.cls ?? 0;
-    const clsOk  = activeCls.size >= 6 || activeCls.has(cls);
+    const clsOk  = activeCls.size === 0 || activeCls.has(cls);
     const vpOk   = viewportGaugeIds === null || viewportGaugeIds.has(g.id);
     const pinOk  = pinnedGaugeIds === null || pinnedGaugeIds.has(g.id);
     overviewChart.setDatasetVisibility(i, clsOk && vpOk && pinOk);
