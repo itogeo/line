@@ -12,12 +12,12 @@
 <link href="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.css" rel="stylesheet">
 <style>
   :root {
-    --base:    #080f18;
-    --surface: #0e1c2d;
-    --border:  #1a2f45;
+    --base:    #0d2040;
+    --surface: #132d52;
+    --border:  #1e3f60;
     --text:    #d4dde8;
-    --muted:   #455a70;
-    --dim:     #2a3f55;
+    --muted:   #5a7892;
+    --dim:     #2e4d6a;
     --accent:  #4a8fba;
     --mono:    'Inter', sans-serif;
     --serif:   'Inter', sans-serif;
@@ -53,13 +53,13 @@
   /* ── Overview map ────────────────────────────────────────────────── */
   #overview-map { height: 460px; width: 100%; background: var(--surface); border-bottom: 1px solid var(--border); position: relative; }
   .mapboxgl-ctrl-logo, .mapboxgl-ctrl-attrib { display: none !important; }
-  .mapboxgl-ctrl-group { background: rgba(14,28,45,0.92) !important; border: 1px solid var(--border) !important; }
+  .mapboxgl-ctrl-group { background: rgba(19,45,82,0.92) !important; border: 1px solid var(--border) !important; }
   .mapboxgl-ctrl-group button { background-color: transparent !important; }
   .mapboxgl-ctrl-icon { filter: invert(0.7); }
   #map-legend {
     position: absolute; bottom: 14px; right: 14px; z-index: 10;
-    background: rgba(8,15,24,0.90); border: 1px solid var(--border); border-radius: 7px;
-    padding: 10px 12px; pointer-events: none; display: flex; gap: 20px;
+    background: rgba(13,32,64,0.90); border: 1px solid var(--border); border-radius: 7px;
+    padding: 10px 12px; pointer-events: auto; display: flex; gap: 20px;
   }
   .leg-col { display: flex; flex-direction: column; gap: 5px; }
   .leg-title { font-family: var(--mono); font-size: 8px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); margin-bottom: 2px; }
@@ -202,8 +202,8 @@
 
   /* ── Mapbox popup ────────────────────────────────────────────────── */
   .mapboxgl-popup-content {
-    background: rgba(8,15,24,0.96) !important;
-    border: 1px solid #1a2f45 !important;
+    background: rgba(13,32,64,0.96) !important;
+    border: 1px solid var(--border) !important;
     border-radius: 6px !important;
     padding: 7px 11px !important;
     box-shadow: none !important;
@@ -211,6 +211,24 @@
   .mapboxgl-popup-tip { display: none; }
   .popup-name { font-family: 'Inter',sans-serif; font-size: 11px; font-weight: 600; color: #d4dde8; }
   .popup-cfs  { font-family: 'Inter',sans-serif; font-size: 11px; margin-top: 2px; }
+
+  /* ── Basin pin button ────────────────────────────────────────────── */
+  .basin-pin {
+    background: none; border: 1px solid rgba(74,143,186,0.25); border-radius: 4px;
+    color: var(--muted); font-size: 11px; cursor: pointer; padding: 2px 6px;
+    flex-shrink: 0; transition: all 0.15s; line-height: 1;
+  }
+  .basin-pin:hover { border-color: rgba(74,143,186,0.5); color: var(--accent); }
+  .basin-pin.pinned { background: rgba(74,143,186,0.16); border-color: rgba(74,143,186,0.4); color: var(--accent); }
+
+  /* ── CLS reset button ────────────────────────────────────────────── */
+  #cls-filter-reset {
+    font-family: var(--mono); font-size: 8px; font-weight: 600; letter-spacing: 0.3px;
+    text-transform: uppercase; padding: 1px 5px; cursor: pointer; margin-left: auto;
+    background: transparent; border: 1px solid rgba(74,143,186,0.25); color: var(--muted);
+    border-radius: 3px; transition: all 0.15s;
+  }
+  #cls-filter-reset:hover { background: rgba(74,143,186,0.1); color: var(--accent); }
 </style>
 </head>
 <body>
@@ -240,7 +258,7 @@
       <div class="leg-row"><div class="leg-dot-wrap"><div class="leg-dot" style="width:24px;height:24px;background:#3a6a88"></div></div><span class="leg-txt">> 15k cfs</span></div>
     </div>
     <div class="leg-col">
-      <div class="leg-title">Color = vs. Normal</div>
+      <div class="leg-title" style="display:flex;align-items:center">Color = vs. Normal <button id="cls-filter-reset">All</button></div>
       <div class="leg-row" data-cls="1"><div class="leg-dot-wrap"><div class="leg-dot" style="width:8px;height:8px;background:#c84030"></div></div><span class="leg-txt">Much Below</span></div>
       <div class="leg-row" data-cls="2"><div class="leg-dot-wrap"><div class="leg-dot" style="width:8px;height:8px;background:#cc6020"></div></div><span class="leg-txt">Below Normal</span></div>
       <div class="leg-row" data-cls="3"><div class="leg-dot-wrap"><div class="leg-dot" style="width:8px;height:8px;background:#6a8a9a"></div></div><span class="leg-txt">Normal</span></div>
@@ -434,6 +452,9 @@ let dotFeatures       = [];
 let chartGaugeIds     = [];
 let activeCls         = new Set([1, 2, 3, 4, 5, 0]);
 let viewportGaugeIds  = null;
+let pinnedBasins      = new Set();
+let pinnedGaugeIds    = null;
+let chartHoverSave    = null;
 const dvCache     = new Map();
 const statsCache  = new Map();
 
@@ -521,7 +542,34 @@ function buildPage(filter) {
       `<span class="basin-toggle">▶</span>` +
       `<span class="basin-name">${basinName}</span>` +
       `<span class="basin-rivers">(${riverPreview})</span>` +
-      `<span class="basin-count">${totalGauges} gauge${totalGauges !== 1 ? 's' : ''}</span>`;
+      `<span class="basin-count">${totalGauges} gauge${totalGauges !== 1 ? 's' : ''}</span>` +
+      `<button class="basin-pin${pinnedBasins.has(basinName) ? ' pinned' : ''}" data-basin="${basinName}">${pinnedBasins.has(basinName) ? '✓' : '+'}</button>`;
+
+    basinHdr.querySelector('.basin-pin').addEventListener('click', e => {
+      e.stopPropagation();
+      const btn = e.currentTarget;
+      const name = btn.dataset.basin;
+      if (pinnedBasins.has(name)) {
+        pinnedBasins.delete(name);
+        btn.classList.remove('pinned');
+        btn.textContent = '+';
+      } else {
+        pinnedBasins.add(name);
+        btn.classList.add('pinned');
+        btn.textContent = '✓';
+      }
+      if (pinnedBasins.size === 0) {
+        pinnedGaugeIds = null;
+      } else {
+        pinnedGaugeIds = new Set();
+        for (const river of hierarchyData) {
+          const bName = BASIN_LOOKUP.get(river.name) || 'Other Montana';
+          if (pinnedBasins.has(bName)) river.gauges.forEach(g => pinnedGaugeIds.add(g.id));
+        }
+      }
+      applyChartFilter();
+    });
+
     basinHdr.addEventListener('click', () => {
       basinEl.classList.toggle('open');
       // When expanding a basin, start observing any newly visible chart containers
@@ -728,9 +776,9 @@ async function loadGaugeChart(container) {
           tooltip: {
             mode: 'index', intersect: false,
             filter: item => item.datasetIndex >= 4,
-            backgroundColor: 'rgba(8,15,24,0.96)',
-            titleColor: '#455a70', bodyColor: '#d4dde8',
-            borderColor: '#1a2f45', borderWidth: 1, padding: 7,
+            backgroundColor: 'rgba(13,32,64,0.96)',
+            titleColor: '#5a7892', bodyColor: '#d4dde8',
+            borderColor: '#1e3f60', borderWidth: 1, padding: 7,
             titleFont: { family: "'Inter',sans-serif", size: 9 },
             bodyFont:  { family: "'Inter',sans-serif", size: 10, weight: '600' },
             callbacks: {
@@ -870,10 +918,10 @@ async function buildOverviewChart() {
         tooltip: {
           mode: 'nearest',
           intersect: false,
-          backgroundColor: 'rgba(8,15,24,0.96)',
+          backgroundColor: 'rgba(13,32,64,0.96)',
           titleColor: '#8ab4c8',
           bodyColor:  '#d4dde8',
-          borderColor: '#1a2f45',
+          borderColor: '#1e3f60',
           borderWidth: 1,
           padding: 8,
           titleFont: { family: "'Inter',sans-serif", size: 9 },
@@ -963,7 +1011,7 @@ function initMap() {
   overviewMap.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
 
   const zoomEl = document.createElement('div');
-  zoomEl.style.cssText = "position:absolute;bottom:14px;left:14px;z-index:10;font-family:'Inter',sans-serif;font-size:10px;color:#455a70;background:rgba(8,15,24,0.85);border:1px solid #1a2f45;border-radius:4px;padding:3px 8px;pointer-events:none";
+  zoomEl.style.cssText = "position:absolute;bottom:14px;left:14px;z-index:10;font-family:'Inter',sans-serif;font-size:10px;color:#5a7892;background:rgba(13,32,64,0.85);border:1px solid #1e3f60;border-radius:4px;padding:3px 8px;pointer-events:none";
   document.getElementById('overview-map').appendChild(zoomEl);
   const syncZoom = () => { zoomEl.textContent = 'z ' + overviewMap.getZoom().toFixed(2); };
   overviewMap.on('zoom', syncZoom);
@@ -1077,10 +1125,39 @@ function initMap() {
                  `<div class="popup-cfs" style="color:${p.color}">${flowStr}</div>`)
         .addTo(overviewMap);
       overviewMap.getCanvas().style.cursor = 'pointer';
+
+      if (overviewChart) {
+        const matchIdx = chartGaugeIds.findIndex(g => g.id === p.id);
+        chartHoverSave = overviewChart.data.datasets.map(ds => ({
+          borderColor: ds.borderColor,
+          borderWidth: ds.borderWidth,
+        }));
+        overviewChart.data.datasets.forEach((ds, i) => {
+          if (i === matchIdx) {
+            ds.borderColor = hexToRgba(gaugeColor(liveMap[p.id] || {}), 1.0);
+            ds.borderWidth = 2.5;
+          } else {
+            ds.borderColor = 'rgba(255,255,255,0.04)';
+            ds.borderWidth = 0.5;
+          }
+        });
+        overviewChart.update('none');
+      }
     });
     overviewMap.on('mouseleave', 'gauge-dots', () => {
       popup.remove();
       overviewMap.getCanvas().style.cursor = '';
+
+      if (overviewChart && chartHoverSave) {
+        overviewChart.data.datasets.forEach((ds, i) => {
+          if (chartHoverSave[i]) {
+            ds.borderColor = chartHoverSave[i].borderColor;
+            ds.borderWidth = chartHoverSave[i].borderWidth;
+          }
+        });
+        chartHoverSave = null;
+        overviewChart.update('none');
+      }
     });
 
     // Viewport → spaghetti auto-filter: show only datasets for gauges visible on map
@@ -1119,16 +1196,27 @@ function initMap() {
       applyChartFilter();
     });
   });
+
+  // CLS legend "All" reset button
+  document.getElementById('cls-filter-reset').addEventListener('click', () => {
+    activeCls = new Set([1, 2, 3, 4, 5, 0]);
+    document.querySelectorAll('#map-legend .leg-row[data-cls]').forEach(r => r.classList.remove('cls-off'));
+    if (overviewMap && overviewMap.getLayer('gauge-dots')) {
+      overviewMap.setFilter('gauge-dots', null);
+    }
+    applyChartFilter();
+  });
 }
 
-// ── Combined chart filter (CLS + viewport) ─────────────────────────
+// ── Combined chart filter (CLS + viewport + basin pin) ─────────────
 function applyChartFilter() {
   if (!overviewChart) return;
   chartGaugeIds.forEach((g, i) => {
     const cls  = liveMap[g.id]?.cls ?? 0;
-    const clsOk = activeCls.size >= 6 || activeCls.has(cls);
-    const vpOk  = viewportGaugeIds === null || viewportGaugeIds.has(g.id);
-    overviewChart.setDatasetVisibility(i, clsOk && vpOk);
+    const clsOk  = activeCls.size >= 6 || activeCls.has(cls);
+    const vpOk   = viewportGaugeIds === null || viewportGaugeIds.has(g.id);
+    const pinOk  = pinnedGaugeIds === null || pinnedGaugeIds.has(g.id);
+    overviewChart.setDatasetVisibility(i, clsOk && vpOk && pinOk);
   });
   overviewChart.update('none');
 }

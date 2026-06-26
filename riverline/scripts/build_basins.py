@@ -42,8 +42,8 @@ ROOT = Path(__file__).resolve().parents[2]          # repos/line/
 RAW  = ROOT / "riverline" / "raw"
 DATA = ROOT / "riverline" / "site" / "data"
 
-# Montana bbox — slightly inset to trim border noise
-BBOX = (-116.5, 44.0, -103.5, 49.2)
+# Montana bbox — extended east to capture Missouri River bridge basins at MT/ND border
+BBOX = (-116.5, 44.0, -102.0, 49.5)
 
 # Simplification tolerances (degrees, ~111km per degree at lat 47°)
 PRE_SIMPLIFY  = 0.001   # ~110m — good balance for level-12 basins at web zoom 8-12
