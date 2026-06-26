@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CWIS Condition Class — Test</title>
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.js"></script>
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.css" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #080f18; color: #d4dde8; font-family: 'Courier New', monospace; }
+  #header {
+    padding: 12px 16px; background: #0e1c2d; border-bottom: 1px solid #1a2f45;
+    display: flex; align-items: center; gap: 16px;
+  }
+  #header h1 { font-size: 13px; font-weight: 600; color: #4a8fba; }
+  #status { font-size: 11px; color: #455a70; }
+  #map { width: 100%; height: calc(100vh - 44px); }
+  #legend {
+    position: absolute; bottom: 20px; right: 16px;
+    background: rgba(8,15,24,0.92); border: 1px solid #1a2f45; border-radius: 7px;
+    padding: 10px 14px; z-index: 10; font-size: 11px;
+  }
+  .leg-title { font-size: 9px; text-transform: uppercase; letter-spacing: 0.6px; color: #455a70; margin-bottom: 6px; }
+  .leg-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .leg-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .leg-label { font-size: 10px; color: #8090a0; }
+  .mapboxgl-ctrl-logo, .mapboxgl-ctrl-attrib { display: none !important; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1>CWIS CurrentConditions — Montana Streamflow</h1>
+  <span id="status">loading…</span>
+</div>
+<div style="position:relative">
+  <div id="map"></div>
+  <div id="legend">
+    <div class="leg-title">Condition Class</div>
+    <div class="leg-row"><div class="leg-dot" style="background:#c84030"></div><div class="leg-label">Much below normal (P0–P10)</div></div>
+    <div class="leg-row"><div class="leg-dot" style="background:#cc6020"></div><div class="leg-label">Below normal (P10–P25)</div></div>
+    <div class="leg-row"><div class="leg-dot" style="background:#6a8a9a"></div><div class="leg-label">Normal (P25–P75)</div></div>
+    <div class="leg-row"><div class="leg-dot" style="background:#28a8e0"></div><div class="leg-label">Above normal (P75–P90)</div></div>
+    <div class="leg-row"><div class="leg-dot" style="background:#1468d4"></div><div class="leg-label">Much above normal (P90–P100)</div></div>
+    <div class="leg-row"><div class="leg-dot" style="background:#2a3f55"></div><div class="leg-label">No data / not ranked</div></div>
+  </div>
+</div>
+
+<script>
+const STATUS_COLOR = {
+  'P0':      '#c84030',  // all-time low — same as much below
+  'P0_10':   '#c84030',  // much below normal
+  'P10_25':  '#cc6020',  // below normal
+  'P25_75':  '#6a8a9a',  // normal
+  'P75_90':  '#28a8e0',  // above normal
+  'P90_100': '#1468d4',  // much above normal
+  'P100':    '#1468d4',  // all-time high — same as much above
+};
+const OFFLINE_COLOR = '#2a3f55';
+
+mapboxgl.accessToken = 'pk.eyJ1IjoiaXRvZ2VvIiwiYSI6ImNtMjNmcjZkdDA0bGgya3M0ZWI4OG5kdnkifQ.VFaCECkdvUTRvS7o7JXaUA';
+
+const map = new mapboxgl.Map({
+  container: 'map',
+  style: 'mapbox://styles/mapbox/dark-v11',
+  center: [-110, 47],
+  zoom: 5.5,
+  minZoom: 4,
+  maxZoom: 14,
+});
+
+map.dragRotate.disable();
+map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
+
+map.on('load', async () => {
+  const statusEl = document.getElementById('status');
+
+  try {
+    const url = new URL('https://dashboard.waterdata.usgs.gov/service/cwis/1.0/odata/CurrentConditions');
+    url.searchParams.set('$filter', "StateCode eq '30' and ParameterCode eq '00060' and IsPrimary eq true");
+    url.searchParams.set('$select', 'SiteNumber,SiteName,Value,Latitude,Longitude,StatisticStatusCode,StatisticStatusDescription');
+    url.searchParams.set('$top', '300');
+
+    statusEl.textContent = 'fetching CWIS…';
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const records = data.value || [];
+
+    const features = records
+      .filter(r => r.Latitude && r.Longitude)
+      .map(r => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [r.Longitude, r.Latitude] },
+        properties: {
+          siteNo: r.SiteNumber,
+          siteName: r.SiteName,
+          value: r.Value,
+          code: r.StatisticStatusCode,
+          description: r.StatisticStatusDescription,
+          color: STATUS_COLOR[r.StatisticStatusCode] || OFFLINE_COLOR,
+        }
+      }));
+
+    map.addSource('gauges', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features }
+    });
+
+    map.addLayer({
+      id: 'gauge-dots-shadow',
+      type: 'circle',
+      source: 'gauges',
+      paint: {
+        'circle-radius': 8,
+        'circle-color': '#000000',
+        'circle-opacity': 0.25,
+        'circle-translate': [1, 1],
+      }
+    });
+
+    map.addLayer({
+      id: 'gauge-dots',
+      type: 'circle',
+      source: 'gauges',
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 4, 8, 7, 12, 10],
+        'circle-color': ['get', 'color'],
+        'circle-stroke-width': 1.5,
+        'circle-stroke-color': 'rgba(255,255,255,0.18)',
+        'circle-opacity': 0.92,
+      }
+    });
+
+    // Popup on click
+    const popup = new mapboxgl.Popup({ closeButton: false, className: 'gauge-popup' });
+    map.on('click', 'gauge-dots', e => {
+      const p = e.features[0].properties;
+      const cfs = p.value != null ? `${Number(p.value).toLocaleString()} cfs` : '—';
+      const desc = p.description || p.code || 'No data';
+      popup.setLngLat(e.features[0].geometry.coordinates)
+        .setHTML(`<div style="font-family:monospace;font-size:12px;background:#0e1c2d;color:#d4dde8;padding:8px 10px;border-radius:5px;border:1px solid #1a2f45;min-width:180px">
+          <div style="font-size:10px;color:#455a70;margin-bottom:3px">${p.siteNo}</div>
+          <div style="font-weight:600;margin-bottom:4px">${p.siteName}</div>
+          <div style="font-size:13px;color:#4a8fba;font-weight:700;margin-bottom:2px">${cfs}</div>
+          <div style="font-size:10px;color:#8090a0">${desc}</div>
+        </div>`)
+        .addTo(map);
+    });
+    map.on('mouseenter', 'gauge-dots', () => { map.getCanvas().style.cursor = 'pointer'; });
+    map.on('mouseleave', 'gauge-dots', () => { map.getCanvas().style.cursor = ''; popup.remove(); });
+
+    // Count by condition
+    const counts = {};
+    features.forEach(f => { const c = f.properties.code || 'null'; counts[c] = (counts[c] || 0) + 1; });
+    const summary = Object.entries(counts).sort((a,b) => b[1]-a[1]).map(([k,v]) => `${k}:${v}`).join('  ');
+    statusEl.textContent = `${features.length} gauges  |  ${summary}`;
+
+  } catch (err) {
+    statusEl.textContent = `Error: ${err.message}`;
+    console.error(err);
+  }
+});
+</script>
+</body>
+</html>

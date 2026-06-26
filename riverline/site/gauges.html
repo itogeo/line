@@ -1047,103 +1047,42 @@ function initMap() {
 }
 
 // ── Self-computed CLS (percentile classes) ─────────────────────────
-// USGS /api/gauges/mt returns cls:null for most MT gauges. Fetch
-// the USGS Stats API directly for today's p10/p25/p75/p90 per site.
+// Fetch pre-computed condition classes from the USGS CWIS OData API.
+// dashboard.waterdata.usgs.gov is a different domain than waterservices.usgs.gov,
+// so these fetches don't count against the chart's 6-connection limit.
 async function computePercentileClasses() {
-  const today   = new Date();
-  const monthNu = today.getMonth() + 1;
-  const dayNu   = today.getDate();
-
-  const activeIds = Object.entries(liveMap)
-    .filter(([, v]) => v.flow != null && Number(v.flow) >= 0)
-    .map(([id]) => id);
-  if (!activeIds.length) return;
-
-  // Wait for map to be loaded so dotFeatures is populated before we setData()
+  // Wait for map to be loaded so dotFeatures is populated before setData()
   if (overviewMap && !overviewMap.loaded()) {
     await new Promise(resolve => overviewMap.once('load', resolve));
   }
 
-  // USGS Stats API: fetch all days (no date filter param exists); filter client-side.
-  // Note: p90_va is systematically absent from responses — estimate it as p75 + IQR.
-  const BATCH = 50;
-  for (let i = 0; i < activeIds.length; i += BATCH) {
-    const batch = activeIds.slice(i, i + BATCH);
-    const url = `https://waterservices.usgs.gov/nwis/stat/?format=rdb` +
-                `&sites=${batch.join(',')}` +
-                `&parameterCd=00060&statReportType=daily` +
-                `&statType=p10,p25,p50,p75,p90`;
-    let text;
-    try {
-      const resp = await fetch(url);
-      if (!resp.ok) continue;
-      text = await resp.text();
-    } catch { continue; }
+  const CWIS_STATUS_TO_CLS = {
+    'P0':      1,  // all-time low — treat as much below normal
+    'P0_10':   1,  // much below normal
+    'P10_25':  2,  // below normal
+    'P25_75':  3,  // normal
+    'P75_90':  4,  // above normal
+    'P90_100': 5,  // much above normal
+    'P100':    5,  // all-time high — treat as much above normal
+  };
 
-    // RDB: comment lines start with #, then header row, then type-def row, then data
-    const lines = text.split('\n');
-    let headers = null;
-    let typeRowSkipped = false;
-    // Build per-site text accumulator so statsCache can be populated
-    const siteLines = new Map(); // siteNo → [lines for that site]
-    let siteHeaderLines = []; // the # comments + header + type row
+  try {
+    const url = new URL('https://dashboard.waterdata.usgs.gov/service/cwis/1.0/odata/CurrentConditions');
+    url.searchParams.set('$filter', "StateCode eq '30' and ParameterCode eq '00060' and IsPrimary eq true");
+    url.searchParams.set('$select', 'SiteNumber,StatisticStatusCode');
+    url.searchParams.set('$top', '300');
 
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      if (line.startsWith('#')) { siteHeaderLines.push(line); continue; }
-      if (!headers) {
-        headers = line.split('\t').map(h => h.trim());
-        siteHeaderLines.push(line);
-        continue;
-      }
-      // Skip the RDB type-definition row (second non-comment, non-header row; all cells match \d+[a-zA-Z]+)
-      if (!typeRowSkipped) {
-        const cells = line.split('\t');
-        if (cells.every(c => /^\d+[a-zA-Z]+$/.test(c.trim()))) {
-          siteHeaderLines.push(line);
-          typeRowSkipped = true;
-          continue;
-        }
-        typeRowSkipped = true; // no type row present — treat as data
-      }
+    const resp = await fetch(url);
+    if (!resp.ok) return;
+    const data = await resp.json();
 
-      const cols   = line.split('\t').map(c => c.trim());
-      if (cols.length < 8) continue;
-
-      const siteNo = cols[headers.indexOf('site_no')];
-      if (!siteNo) continue;
-      if (!siteLines.has(siteNo)) siteLines.set(siteNo, []);
-      siteLines.get(siteNo).push(line);
-
-      // Only process today's day-of-year for CLS
-      const mo = parseInt(cols[headers.indexOf('month_nu')]);
-      const dy = parseInt(cols[headers.indexOf('day_nu')]);
-      if (mo !== monthNu || dy !== dayNu) continue;
+    for (const r of (data.value || [])) {
+      const siteNo = r.SiteNumber;
       if (!liveMap[siteNo]) continue;
-
-      const p10 = parseFloat(cols[headers.indexOf('p10_va')]);
-      const p25 = parseFloat(cols[headers.indexOf('p25_va')]);
-      const p75 = parseFloat(cols[headers.indexOf('p75_va')]);
-      if (isNaN(p10) || isNaN(p25) || isNaN(p75)) continue;
-
-      // p90_va is absent from USGS responses — estimate via IQR extension
-      const p90 = parseFloat(cols[headers.indexOf('p90_va')]) || (p75 + (p75 - p25));
-
-      const flow = Number(liveMap[siteNo].flow);
-      liveMap[siteNo].cls =
-        flow < p10 ? 1 :
-        flow < p25 ? 2 :
-        flow < p75 ? 3 :
-        flow < p90 ? 4 : 5;
+      const cls = CWIS_STATUS_TO_CLS[r.StatisticStatusCode];
+      if (cls) liveMap[siteNo].cls = cls;
     }
-
-    // Populate statsCache per gauge so loadGaugeChart() doesn't re-fetch
-    for (const [siteNo, dataLines] of siteLines) {
-      if (!statsCache.has(siteNo)) {
-        statsCache.set(siteNo, [...siteHeaderLines, ...dataLines].join('\n'));
-      }
-    }
-  }
+  } catch { return; }
 
   // Re-color map dots
   if (overviewMap && overviewMap.getSource('gauges') && dotFeatures.length) {
