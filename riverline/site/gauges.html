@@ -426,7 +426,6 @@ let overviewChart  = null;
 let chartObserver  = null;
 let chartLogScale  = true;
 let dotFeatures       = [];
-let riverSegFeatures  = [];
 let chartGaugeIds     = [];  // parallel to overviewChart.data.datasets — {id, name}
 const dvCache     = new Map();
 const statsCache  = new Map();
@@ -506,7 +505,11 @@ function buildPage(filter) {
 
     const basinHdr = document.createElement('div');
     basinHdr.className = 'basin-header';
-    const riverPreview = rivers.slice(0, 4).map(r => r.name).join(', ') + (rivers.length > 4 ? ', …' : '');
+    const sortedBySize = [...rivers].sort((a, b) => {
+      const maxFlow = r => Math.max(...r.gauges.map(g => Number(liveMap[g.id]?.flow ?? -1)));
+      return maxFlow(b) - maxFlow(a);
+    });
+    const riverPreview = sortedBySize.slice(0, 5).map(r => r.name).join(', ') + (rivers.length > 5 ? ', …' : '');
     basinHdr.innerHTML =
       `<span class="basin-toggle">▶</span>` +
       `<span class="basin-name">${basinName}</span>` +
@@ -961,18 +964,17 @@ function initMap() {
       'source-layer': 'waterway',
       filter: ['match', ['get', 'class'], ['river', 'stream', 'canal'], true, false],
       paint: {
-        'line-color': ['interpolate', ['linear'], ['zoom'],
-          3, '#2878c0',
-          6, '#3898d8',
-          9, '#50b8ec',
-        ],
+        'line-color': '#2060a0',
         'line-width': ['interpolate', ['linear'], ['zoom'],
-          3, 1.0,
-          5, 1.5,
-          7, 2.5,
-          10, 4,
+          5, 0.6,
+          8, 1.2,
+          11, 2,
         ],
-        'line-opacity': 0.75,
+        'line-opacity': ['interpolate', ['linear'], ['zoom'],
+          4.5, 0,
+          5.5, 0.28,
+          9, 0.38,
+        ],
       },
     });
 
@@ -1016,65 +1018,6 @@ function initMap() {
         'circle-stroke-width':  0.8,
         'circle-stroke-color': 'rgba(0,0,0,0.4)',
       },
-    });
-
-    // River segment layers — LineStrings connecting consecutive gauges on each river
-    riverSegFeatures = [];
-    for (const river of hierarchyData) {
-      const valid = river.gauges.filter(g => g.coords && g.coords.length >= 2);
-      for (let i = 0; i < valid.length - 1; i++) {
-        const from = valid[i];
-        const to   = valid[i + 1];
-        const live = liveMap[from.id] || {};
-        riverSegFeatures.push({
-          type: 'Feature',
-          geometry: { type: 'LineString', coordinates: [from.coords, to.coords] },
-          properties: { fromId: from.id, color: gaugeColor(live), flow: live.flow != null ? Number(live.flow) : -1 },
-        });
-      }
-    }
-    overviewMap.addSource('river-segments', {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: riverSegFeatures },
-    });
-    overviewMap.addLayer({
-      id: 'river-cls',
-      type: 'line',
-      source: 'river-segments',
-      paint: {
-        'line-color': ['get', 'color'],
-        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1.5, 8, 3.5],
-        'line-opacity': 0.72,
-      },
-    }, 'gauge-dots');
-    overviewMap.addLayer({
-      id: 'river-discharge',
-      type: 'line',
-      source: 'river-segments',
-      layout: { visibility: 'none' },
-      paint: {
-        'line-color': '#4a8fba',
-        'line-width': [
-          'interpolate', ['linear'],
-          ['log10', ['+', ['max', ['coalesce', ['get', 'flow'], 0], 0], 1]],
-          0, 0.5, 1, 1.5, 2, 3, 3, 6, 4, 10, 5, 14,
-        ],
-        'line-opacity': 0.55,
-      },
-    }, 'gauge-dots');
-
-    // Layer toggle button for discharge-width layer
-    const dischargeBtn = document.createElement('button');
-    dischargeBtn.id = 'toggle-discharge';
-    dischargeBtn.className = 'scale-btn';
-    dischargeBtn.textContent = 'Discharge Width';
-    dischargeBtn.style.cssText = 'position:absolute;top:14px;left:14px;z-index:10;border-radius:4px;border-left:1px solid rgba(74,143,186,0.25)';
-    document.getElementById('overview-map').appendChild(dischargeBtn);
-    dischargeBtn.addEventListener('click', () => {
-      const vis = overviewMap.getLayoutProperty('river-discharge', 'visibility');
-      const on  = vis !== 'visible';
-      overviewMap.setLayoutProperty('river-discharge', 'visibility', on ? 'visible' : 'none');
-      dischargeBtn.classList.toggle('active', on);
     });
 
     // Click → scroll to gauge card (expand its basin + river group first)
@@ -1167,19 +1110,6 @@ async function computePercentileClasses() {
     overviewMap.getSource('gauges').setData({
       type: 'FeatureCollection',
       features: dotFeatures,
-    });
-  }
-
-  // Re-color river segments by upstream gauge CLS
-  if (overviewMap && overviewMap.getSource('river-segments') && riverSegFeatures.length) {
-    for (const feat of riverSegFeatures) {
-      feat.properties.color = gaugeColor(liveMap[feat.properties.fromId] || {});
-      const live = liveMap[feat.properties.fromId] || {};
-      feat.properties.flow  = live.flow != null ? Number(live.flow) : -1;
-    }
-    overviewMap.getSource('river-segments').setData({
-      type: 'FeatureCollection',
-      features: riverSegFeatures,
     });
   }
 
