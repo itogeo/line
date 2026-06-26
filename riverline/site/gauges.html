@@ -1064,16 +1064,15 @@ async function computePercentileClasses() {
     await new Promise(resolve => overviewMap.once('load', resolve));
   }
 
+  // USGS Stats API: fetch all days (no date filter param exists); filter client-side.
+  // Note: p90_va is systematically absent from responses — estimate it as p75 + IQR.
   const BATCH = 50;
   for (let i = 0; i < activeIds.length; i += BATCH) {
     const batch = activeIds.slice(i, i + BATCH);
-    // Filter to today's day-of-year only — 1 row per gauge instead of 366
     const url = `https://waterservices.usgs.gov/nwis/stat/?format=rdb` +
                 `&sites=${batch.join(',')}` +
                 `&parameterCd=00060&statReportType=daily` +
-                `&statType=p10,p25,p50,p75,p90` +
-                `&beginMonth=${monthNu}&endMonth=${monthNu}` +
-                `&beginDay=${dayNu}&endDay=${dayNu}`;
+                `&statType=p10,p25,p50,p75,p90`;
     let text;
     try {
       const resp = await fetch(url);
@@ -1081,7 +1080,7 @@ async function computePercentileClasses() {
       text = await resp.text();
     } catch { continue; }
 
-    // RDB: comment lines start with #, then header row, then type row, then data
+    // RDB: comment lines start with #, then header row, then type row, then data rows
     const lines = text.split('\n');
     let headers = null;
     for (const line of lines) {
@@ -1096,14 +1095,21 @@ async function computePercentileClasses() {
       const cols   = line.split('\t').map(c => c.trim());
       if (cols.length < 8) continue;
 
+      // Only process today's day-of-year
+      const mo = parseInt(cols[headers.indexOf('month_nu')]);
+      const dy = parseInt(cols[headers.indexOf('day_nu')]);
+      if (mo !== monthNu || dy !== dayNu) continue;
+
       const siteNo = cols[headers.indexOf('site_no')];
       if (!siteNo || !liveMap[siteNo]) continue;
 
       const p10 = parseFloat(cols[headers.indexOf('p10_va')]);
       const p25 = parseFloat(cols[headers.indexOf('p25_va')]);
       const p75 = parseFloat(cols[headers.indexOf('p75_va')]);
-      const p90 = parseFloat(cols[headers.indexOf('p90_va')]);
-      if (isNaN(p10) || isNaN(p90)) continue;
+      if (isNaN(p10) || isNaN(p25) || isNaN(p75)) continue;
+
+      // p90_va is absent from USGS responses — estimate via IQR extension
+      const p90 = parseFloat(cols[headers.indexOf('p90_va')]) || (p75 + (p75 - p25));
 
       const flow = Number(liveMap[siteNo].flow);
       liveMap[siteNo].cls =
