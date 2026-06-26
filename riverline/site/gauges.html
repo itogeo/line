@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RiverLine — Montana Gauges</title>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&family=Playfair+Display:ital,wght@0,700;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.js"></script>
 <link href="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.css" rel="stylesheet">
@@ -17,8 +17,8 @@
     --muted:   #455a70;
     --dim:     #2a3f55;
     --accent:  #4a8fba;
-    --mono:    'JetBrains Mono', monospace;
-    --serif:   'Playfair Display', serif;
+    --mono:    'Inter', sans-serif;
+    --serif:   'Inter', sans-serif;
     --sans:    'Inter', sans-serif;
     --nav-h:   44px;
   }
@@ -81,13 +81,17 @@
   }
   #overview-chart-status { font-family: var(--mono); font-size: 9px; color: var(--dim); }
   #overview-chart-wrap { position: relative; height: 300px; }
-  .scale-toggle {
+  .scale-toggle-group { display: flex; gap: 0; }
+  .scale-btn {
     font-family: var(--mono); font-size: 9px; font-weight: 600; text-transform: uppercase;
-    letter-spacing: 0.5px; padding: 3px 8px; border-radius: 4px; cursor: pointer;
-    background: rgba(74,143,186,0.1); border: 1px solid rgba(74,143,186,0.25); color: var(--accent);
-    transition: background 0.15s, border-color 0.15s;
+    letter-spacing: 0.5px; padding: 3px 9px; cursor: pointer;
+    background: transparent; border: 1px solid rgba(74,143,186,0.25); color: var(--muted);
+    transition: background 0.15s, color 0.15s;
   }
-  .scale-toggle:hover { background: rgba(74,143,186,0.2); border-color: rgba(74,143,186,0.5); }
+  .scale-btn:first-child { border-radius: 4px 0 0 4px; }
+  .scale-btn:last-child  { border-radius: 0 4px 4px 0; border-left: none; }
+  .scale-btn.active { background: rgba(74,143,186,0.18); color: var(--accent); }
+  .scale-btn:hover:not(.active) { background: rgba(74,143,186,0.08); color: var(--text); }
 
   /* ── Page body ───────────────────────────────────────────────────── */
   .page-body { max-width: 1360px; margin: 0 auto; padding: 0 16px 60px; }
@@ -118,7 +122,8 @@
   .basin-header:hover { border-color: var(--accent); }
   .basin-toggle { font-size: 11px; color: var(--muted); width: 14px; flex-shrink: 0; transition: transform 0.2s; }
   .basin-name { font-family: var(--serif); font-style: italic; font-size: 16px; color: var(--accent); }
-  .basin-count { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+  .basin-rivers { font-family: var(--mono); font-size: 10px; color: var(--muted); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .basin-count { font-family: var(--mono); font-size: 10px; color: var(--muted); flex-shrink: 0; }
   .basin-content { display: none; }
   .basin-section.open > .basin-content { display: block; }
   .basin-section.open > .basin-header > .basin-toggle { transform: rotate(90deg); }
@@ -199,8 +204,8 @@
     box-shadow: none !important;
   }
   .mapboxgl-popup-tip { display: none; }
-  .popup-name { font-family: 'JetBrains Mono',monospace; font-size: 11px; font-weight: 600; color: #d4dde8; }
-  .popup-cfs  { font-family: 'JetBrains Mono',monospace; font-size: 11px; margin-top: 2px; }
+  .popup-name { font-family: 'Inter',sans-serif; font-size: 11px; font-weight: 600; color: #d4dde8; }
+  .popup-cfs  { font-family: 'Inter',sans-serif; font-size: 11px; margin-top: 2px; }
 </style>
 </head>
 <body>
@@ -245,7 +250,10 @@
   <div class="chart-section-bar">
     <span class="chart-section-title">All Gauges · Water Year 2026 · Discharge (cfs)</span>
     <span id="overview-chart-status">Loading…</span>
-    <button class="scale-toggle" id="scale-toggle" style="display:none">Linear</button>
+    <div class="scale-toggle-group" id="scale-toggle-group" style="display:none">
+      <button class="scale-btn active" id="scale-log">Log</button>
+      <button class="scale-btn" id="scale-linear">Linear</button>
+    </div>
   </div>
   <div id="overview-chart-wrap">
     <canvas id="overview-chart-canvas"></canvas>
@@ -417,8 +425,9 @@ let overviewMap    = null;
 let overviewChart  = null;
 let chartObserver  = null;
 let chartLogScale  = true;
-let dotFeatures    = [];
-let chartGaugeIds  = [];  // parallel to overviewChart.data.datasets — {id, name}
+let dotFeatures       = [];
+let riverSegFeatures  = [];
+let chartGaugeIds     = [];  // parallel to overviewChart.data.datasets — {id, name}
 const dvCache     = new Map();
 const statsCache  = new Map();
 
@@ -452,12 +461,13 @@ async function loadData() {
   buildPage();
   initMap();
   setupObserver();
-  await buildOverviewChart();       // chart gets all 6 connections first
-  computePercentileClasses();       // then stats run in background
 
   const overlay = document.getElementById('loading-overlay');
   overlay.classList.add('fade');
   setTimeout(() => overlay.remove(), 350);
+
+  buildOverviewChart();       // async — runs without blocking page display
+  computePercentileClasses(); // async — CWIS on separate domain, no connection contention
 }
 
 // ── Page builder ───────────────────────────────────────────────────
@@ -496,9 +506,11 @@ function buildPage(filter) {
 
     const basinHdr = document.createElement('div');
     basinHdr.className = 'basin-header';
+    const riverPreview = rivers.slice(0, 4).map(r => r.name).join(', ') + (rivers.length > 4 ? ', …' : '');
     basinHdr.innerHTML =
       `<span class="basin-toggle">▶</span>` +
       `<span class="basin-name">${basinName}</span>` +
+      `<span class="basin-rivers">(${riverPreview})</span>` +
       `<span class="basin-count">${totalGauges} gauge${totalGauges !== 1 ? 's' : ''}</span>`;
     basinHdr.addEventListener('click', () => {
       basinEl.classList.toggle('open');
@@ -709,8 +721,8 @@ async function loadGaugeChart(container) {
             backgroundColor: 'rgba(8,15,24,0.96)',
             titleColor: '#455a70', bodyColor: '#d4dde8',
             borderColor: '#1a2f45', borderWidth: 1, padding: 7,
-            titleFont: { family: "'JetBrains Mono',monospace", size: 9 },
-            bodyFont:  { family: "'JetBrains Mono',monospace", size: 10, weight: '600' },
+            titleFont: { family: "'Inter',sans-serif", size: 9 },
+            bodyFont:  { family: "'Inter',sans-serif", size: 10, weight: '600' },
             callbacks: {
               label: ctx => {
                 if (ctx.parsed.y == null) return '';
@@ -723,11 +735,11 @@ async function loadGaugeChart(container) {
         },
         scales: {
           x: {
-            ticks: { color: '#455a70', font: { family: "'JetBrains Mono',monospace", size: 7 }, maxTicksLimit: 13, maxRotation: 0 },
+            ticks: { color: '#455a70', font: { family: "'Inter',sans-serif", size: 7 }, maxTicksLimit: 13, maxRotation: 0 },
             grid: { color: 'rgba(255,255,255,0.025)' }, border: { color: '#1a2f45' },
           },
           y: {
-            ticks: { color: '#455a70', font: { family: "'JetBrains Mono',monospace", size: 7 }, maxTicksLimit: 4,
+            ticks: { color: '#455a70', font: { family: "'Inter',sans-serif", size: 7 }, maxTicksLimit: 4,
               callback: v => v >= 1000 ? (v/1000).toFixed(1)+'k' : v },
             grid: { color: 'rgba(255,255,255,0.035)' }, border: { color: '#1a2f45' },
           },
@@ -811,8 +823,7 @@ async function buildOverviewChart() {
 
   for (const [id, fMap] of allFlowData) {
     const live  = liveMap[id] || {};
-    const flow  = live.flow != null ? Number(live.flow) : -1;
-    const color = flow >= 0 ? flowMagnitudeColor(flow) : REPORTING_COLOR;
+    const color = gaugeColor(live);
     chartGaugeIds.push({ id, name: gaugeNameMap.get(id) || id });
     datasets.push({
       label:           gaugeNameMap.get(id) || id,
@@ -855,8 +866,8 @@ async function buildOverviewChart() {
           borderColor: '#1a2f45',
           borderWidth: 1,
           padding: 8,
-          titleFont: { family: "'JetBrains Mono',monospace", size: 9 },
-          bodyFont:  { family: "'JetBrains Mono',monospace", size: 11, weight: '600' },
+          titleFont: { family: "'Inter',sans-serif", size: 9 },
+          bodyFont:  { family: "'Inter',sans-serif", size: 11, weight: '600' },
           callbacks: {
             title: items => items[0]?.dataset?.label || '',
             label: ctx => {
@@ -869,14 +880,14 @@ async function buildOverviewChart() {
       },
       scales: {
         x: {
-          ticks: { color: '#455a70', font: { family: "'JetBrains Mono',monospace", size: 8 }, maxTicksLimit: 13, maxRotation: 0 },
+          ticks: { color: '#455a70', font: { family: "'Inter',sans-serif", size: 8 }, maxTicksLimit: 13, maxRotation: 0 },
           grid:  { color: 'rgba(255,255,255,0.025)' },
           border:{ color: '#1a2f45' },
         },
         y: {
           type: 'logarithmic',
           min:  1,
-          ticks: { color: '#455a70', font: { family: "'JetBrains Mono',monospace", size: 8 }, callback: tickCb },
+          ticks: { color: '#455a70', font: { family: "'Inter',sans-serif", size: 8 }, callback: tickCb },
           grid:   { color: 'rgba(255,255,255,0.035)' },
           border: { color: '#1a2f45' },
         },
@@ -907,15 +918,20 @@ async function buildOverviewChart() {
     }, 50);
   });
 
-  const toggleBtn = document.getElementById('scale-toggle');
-  toggleBtn.style.display = '';
-  toggleBtn.addEventListener('click', () => {
-    chartLogScale = !chartLogScale;
-    overviewChart.options.scales.y.type = chartLogScale ? 'logarithmic' : 'linear';
-    overviewChart.options.scales.y.min  = chartLogScale ? 1 : 0;
-    toggleBtn.textContent = chartLogScale ? 'Linear' : 'Log';
+  const toggleGroup = document.getElementById('scale-toggle-group');
+  const logBtn      = document.getElementById('scale-log');
+  const linBtn      = document.getElementById('scale-linear');
+  toggleGroup.style.display = '';
+  function setScale(isLog) {
+    chartLogScale = isLog;
+    overviewChart.options.scales.y.type = isLog ? 'logarithmic' : 'linear';
+    overviewChart.options.scales.y.min  = isLog ? 1 : 0;
+    logBtn.classList.toggle('active', isLog);
+    linBtn.classList.toggle('active', !isLog);
     overviewChart.update();
-  });
+  }
+  logBtn.addEventListener('click',  () => setScale(true));
+  linBtn.addEventListener('click',  () => setScale(false));
 }
 
 // ── Mapbox overview map ────────────────────────────────────────────
@@ -1000,6 +1016,65 @@ function initMap() {
         'circle-stroke-width':  0.8,
         'circle-stroke-color': 'rgba(0,0,0,0.4)',
       },
+    });
+
+    // River segment layers — LineStrings connecting consecutive gauges on each river
+    riverSegFeatures = [];
+    for (const river of hierarchyData) {
+      const valid = river.gauges.filter(g => g.coords && g.coords.length >= 2);
+      for (let i = 0; i < valid.length - 1; i++) {
+        const from = valid[i];
+        const to   = valid[i + 1];
+        const live = liveMap[from.id] || {};
+        riverSegFeatures.push({
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates: [from.coords, to.coords] },
+          properties: { fromId: from.id, color: gaugeColor(live), flow: live.flow != null ? Number(live.flow) : -1 },
+        });
+      }
+    }
+    overviewMap.addSource('river-segments', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: riverSegFeatures },
+    });
+    overviewMap.addLayer({
+      id: 'river-cls',
+      type: 'line',
+      source: 'river-segments',
+      paint: {
+        'line-color': ['get', 'color'],
+        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1.5, 8, 3.5],
+        'line-opacity': 0.72,
+      },
+    }, 'gauge-dots');
+    overviewMap.addLayer({
+      id: 'river-discharge',
+      type: 'line',
+      source: 'river-segments',
+      layout: { visibility: 'none' },
+      paint: {
+        'line-color': '#4a8fba',
+        'line-width': [
+          'interpolate', ['linear'],
+          ['log10', ['+', ['max', ['coalesce', ['get', 'flow'], 0], 0], 1]],
+          0, 0.5, 1, 1.5, 2, 3, 3, 6, 4, 10, 5, 14,
+        ],
+        'line-opacity': 0.55,
+      },
+    }, 'gauge-dots');
+
+    // Layer toggle button for discharge-width layer
+    const dischargeBtn = document.createElement('button');
+    dischargeBtn.id = 'toggle-discharge';
+    dischargeBtn.className = 'scale-btn';
+    dischargeBtn.textContent = 'Discharge Width';
+    dischargeBtn.style.cssText = 'position:absolute;top:14px;left:14px;z-index:10;border-radius:4px;border-left:1px solid rgba(74,143,186,0.25)';
+    document.getElementById('overview-map').appendChild(dischargeBtn);
+    dischargeBtn.addEventListener('click', () => {
+      const vis = overviewMap.getLayoutProperty('river-discharge', 'visibility');
+      const on  = vis !== 'visible';
+      overviewMap.setLayoutProperty('river-discharge', 'visibility', on ? 'visible' : 'none');
+      dischargeBtn.classList.toggle('active', on);
     });
 
     // Click → scroll to gauge card (expand its basin + river group first)
@@ -1093,6 +1168,30 @@ async function computePercentileClasses() {
       type: 'FeatureCollection',
       features: dotFeatures,
     });
+  }
+
+  // Re-color river segments by upstream gauge CLS
+  if (overviewMap && overviewMap.getSource('river-segments') && riverSegFeatures.length) {
+    for (const feat of riverSegFeatures) {
+      feat.properties.color = gaugeColor(liveMap[feat.properties.fromId] || {});
+      const live = liveMap[feat.properties.fromId] || {};
+      feat.properties.flow  = live.flow != null ? Number(live.flow) : -1;
+    }
+    overviewMap.getSource('river-segments').setData({
+      type: 'FeatureCollection',
+      features: riverSegFeatures,
+    });
+  }
+
+  // Re-color overview spaghetti chart lines by CLS
+  if (overviewChart) {
+    overviewChart.data.datasets.forEach((ds, i) => {
+      const gauge = chartGaugeIds[i];
+      if (!gauge) return;
+      const color = gaugeColor(liveMap[gauge.id] || {});
+      ds.borderColor = hexToRgba(color, 0.5);
+    });
+    overviewChart.update('none');
   }
 
   // Update visible card CLS labels
