@@ -6,6 +6,8 @@
 <title>RiverLine — Montana Gauges</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.js"></script>
 <link href="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.css" rel="stylesheet">
 <style>
@@ -92,6 +94,9 @@
   .scale-btn:last-child  { border-radius: 0 4px 4px 0; border-left: none; }
   .scale-btn.active { background: rgba(74,143,186,0.18); color: var(--accent); }
   .scale-btn:hover:not(.active) { background: rgba(74,143,186,0.08); color: var(--text); }
+  .leg-row[data-cls] { cursor: pointer; border-radius: 4px; padding: 1px 4px; margin: 0 -4px; transition: opacity 0.15s, background 0.12s; }
+  .leg-row[data-cls]:hover { background: rgba(255,255,255,0.06); }
+  .leg-row[data-cls].cls-off { opacity: 0.28; }
 
   /* ── Page body ───────────────────────────────────────────────────── */
   .page-body { max-width: 1360px; margin: 0 auto; padding: 0 16px 60px; }
@@ -121,7 +126,7 @@
   }
   .basin-header:hover { border-color: var(--accent); }
   .basin-toggle { font-size: 11px; color: var(--muted); width: 14px; flex-shrink: 0; transition: transform 0.2s; }
-  .basin-name { font-family: var(--serif); font-style: italic; font-size: 16px; color: var(--accent); }
+  .basin-name { font-family: var(--serif); font-size: 16px; color: var(--accent); }
   .basin-rivers { font-family: var(--mono); font-size: 10px; color: var(--muted); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .basin-count { font-family: var(--mono); font-size: 10px; color: var(--muted); flex-shrink: 0; }
   .basin-content { display: none; }
@@ -236,12 +241,12 @@
     </div>
     <div class="leg-col">
       <div class="leg-title">Color = vs. Normal</div>
-      <div class="leg-row"><div class="leg-dot-wrap"><div class="leg-dot" style="width:8px;height:8px;background:#c84030"></div></div><span class="leg-txt">Much Below</span></div>
-      <div class="leg-row"><div class="leg-dot-wrap"><div class="leg-dot" style="width:8px;height:8px;background:#cc6020"></div></div><span class="leg-txt">Below Normal</span></div>
-      <div class="leg-row"><div class="leg-dot-wrap"><div class="leg-dot" style="width:8px;height:8px;background:#6a8a9a"></div></div><span class="leg-txt">Normal</span></div>
-      <div class="leg-row"><div class="leg-dot-wrap"><div class="leg-dot" style="width:8px;height:8px;background:#28a8e0"></div></div><span class="leg-txt">Above Normal</span></div>
-      <div class="leg-row"><div class="leg-dot-wrap"><div class="leg-dot" style="width:8px;height:8px;background:#1468d4"></div></div><span class="leg-txt">Much Above</span></div>
-      <div class="leg-row"><div class="leg-dot-wrap"><div class="leg-dot" style="width:8px;height:8px;background:#3a6a88"></div></div><span class="leg-txt">No class data</span></div>
+      <div class="leg-row" data-cls="1"><div class="leg-dot-wrap"><div class="leg-dot" style="width:8px;height:8px;background:#c84030"></div></div><span class="leg-txt">Much Below</span></div>
+      <div class="leg-row" data-cls="2"><div class="leg-dot-wrap"><div class="leg-dot" style="width:8px;height:8px;background:#cc6020"></div></div><span class="leg-txt">Below Normal</span></div>
+      <div class="leg-row" data-cls="3"><div class="leg-dot-wrap"><div class="leg-dot" style="width:8px;height:8px;background:#6a8a9a"></div></div><span class="leg-txt">Normal</span></div>
+      <div class="leg-row" data-cls="4"><div class="leg-dot-wrap"><div class="leg-dot" style="width:8px;height:8px;background:#28a8e0"></div></div><span class="leg-txt">Above Normal</span></div>
+      <div class="leg-row" data-cls="5"><div class="leg-dot-wrap"><div class="leg-dot" style="width:8px;height:8px;background:#1468d4"></div></div><span class="leg-txt">Much Above</span></div>
+      <div class="leg-row" data-cls="0"><div class="leg-dot-wrap"><div class="leg-dot" style="width:8px;height:8px;background:#3a6a88"></div></div><span class="leg-txt">No class data</span></div>
     </div>
   </div>
 </div>
@@ -251,8 +256,8 @@
     <span class="chart-section-title">All Gauges · Water Year 2026 · Discharge (cfs)</span>
     <span id="overview-chart-status">Loading…</span>
     <div class="scale-toggle-group" id="scale-toggle-group" style="display:none">
-      <button class="scale-btn active" id="scale-log">Log</button>
-      <button class="scale-btn" id="scale-linear">Linear</button>
+      <button class="scale-btn" id="scale-log">Log</button>
+      <button class="scale-btn active" id="scale-linear">Linear</button>
     </div>
   </div>
   <div id="overview-chart-wrap">
@@ -424,9 +429,11 @@ let hierarchyData  = [];
 let overviewMap    = null;
 let overviewChart  = null;
 let chartObserver  = null;
-let chartLogScale  = true;
+let chartLogScale  = false;
 let dotFeatures       = [];
-let chartGaugeIds     = [];  // parallel to overviewChart.data.datasets — {id, name}
+let chartGaugeIds     = [];
+let activeCls         = new Set([1, 2, 3, 4, 5, 0]);
+let viewportGaugeIds  = null;
 const dvCache     = new Map();
 const statsCache  = new Map();
 
@@ -880,6 +887,11 @@ async function buildOverviewChart() {
             },
           },
         },
+        zoom: {
+          zoom:  { wheel: { enabled: true, speed: 0.08 }, pinch: { enabled: true }, mode: 'x' },
+          pan:   { enabled: true, mode: 'x' },
+          limits: { x: { min: 'original', max: 'original' } },
+        },
       },
       scales: {
         x: {
@@ -888,8 +900,8 @@ async function buildOverviewChart() {
           border:{ color: '#1a2f45' },
         },
         y: {
-          type: 'logarithmic',
-          min:  1,
+          type: 'linear',
+          min:  0,
           ticks: { color: '#455a70', font: { family: "'Inter',sans-serif", size: 8 }, callback: tickCb },
           grid:   { color: 'rgba(255,255,255,0.035)' },
           border: { color: '#1a2f45' },
@@ -897,6 +909,8 @@ async function buildOverviewChart() {
       },
     },
   });
+
+  canvas.addEventListener('dblclick', () => { if (overviewChart) overviewChart.resetZoom(); });
 
   // Click a line → expand basin/river and scroll to the gauge card
   canvas.addEventListener('click', e => {
@@ -948,6 +962,13 @@ function initMap() {
   overviewMap.dragRotate.disable();
   overviewMap.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
 
+  const zoomEl = document.createElement('div');
+  zoomEl.style.cssText = "position:absolute;bottom:14px;left:14px;z-index:10;font-family:'Inter',sans-serif;font-size:10px;color:#455a70;background:rgba(8,15,24,0.85);border:1px solid #1a2f45;border-radius:4px;padding:3px 8px;pointer-events:none";
+  document.getElementById('overview-map').appendChild(zoomEl);
+  const syncZoom = () => { zoomEl.textContent = 'z ' + overviewMap.getZoom().toFixed(2); };
+  overviewMap.on('zoom', syncZoom);
+  overviewMap.on('load', syncZoom);
+
   const popup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, offset: 8 });
 
   overviewMap.on('load', () => {
@@ -966,14 +987,14 @@ function initMap() {
       paint: {
         'line-color': '#2060a0',
         'line-width': ['interpolate', ['linear'], ['zoom'],
-          5, 0.6,
-          8, 1.2,
-          11, 2,
+          3, 0.4,
+          7, 1.0,
+          11, 1.8,
         ],
         'line-opacity': ['interpolate', ['linear'], ['zoom'],
-          4.5, 0,
-          5.5, 0.28,
-          9, 0.38,
+          2.5, 0,
+          3.5, 0.22,
+          8, 0.35,
         ],
       },
     });
@@ -988,7 +1009,7 @@ function initMap() {
         dotFeatures.push({
           type: 'Feature',
           geometry: { type: 'Point', coordinates: gauge.coords },
-          properties: { id: gauge.id, name: gauge.name, flow, color },
+          properties: { id: gauge.id, name: gauge.name, flow, color, cls: live.cls ?? 0 },
         });
       }
     }
@@ -1014,7 +1035,7 @@ function initMap() {
           5, 16,
         ],
         'circle-color':        ['get', 'color'],
-        'circle-opacity':       0.92,
+        'circle-opacity':       0.58,
         'circle-stroke-width':  0.8,
         'circle-stroke-color': 'rgba(0,0,0,0.4)',
       },
@@ -1061,7 +1082,55 @@ function initMap() {
       popup.remove();
       overviewMap.getCanvas().style.cursor = '';
     });
+
+    // Viewport → spaghetti auto-filter: show only datasets for gauges visible on map
+    overviewMap.on('moveend', () => {
+      if (!overviewChart || !dotFeatures.length) return;
+      const bounds = overviewMap.getBounds();
+      const ids = new Set();
+      for (const feat of dotFeatures) {
+        if (bounds.contains(feat.geometry.coordinates)) ids.add(feat.properties.id);
+      }
+      viewportGaugeIds = ids;
+      applyChartFilter();
+    });
   });
+
+  // CLS legend rows → toggle filter on map + spaghetti
+  document.querySelectorAll('#map-legend .leg-row[data-cls]').forEach(row => {
+    row.addEventListener('click', () => {
+      const cls = Number(row.dataset.cls);
+      if (activeCls.has(cls)) {
+        activeCls.delete(cls);
+        row.classList.add('cls-off');
+      } else {
+        activeCls.add(cls);
+        row.classList.remove('cls-off');
+      }
+      if (activeCls.size === 0) {
+        activeCls = new Set([1, 2, 3, 4, 5, 0]);
+        document.querySelectorAll('#map-legend .leg-row[data-cls]').forEach(r => r.classList.remove('cls-off'));
+      }
+      if (overviewMap && overviewMap.getLayer('gauge-dots')) {
+        overviewMap.setFilter('gauge-dots',
+          activeCls.size >= 6 ? null : ['in', ['get', 'cls'], ['literal', [...activeCls]]]
+        );
+      }
+      applyChartFilter();
+    });
+  });
+}
+
+// ── Combined chart filter (CLS + viewport) ─────────────────────────
+function applyChartFilter() {
+  if (!overviewChart) return;
+  chartGaugeIds.forEach((g, i) => {
+    const cls  = liveMap[g.id]?.cls ?? 0;
+    const clsOk = activeCls.size >= 6 || activeCls.has(cls);
+    const vpOk  = viewportGaugeIds === null || viewportGaugeIds.has(g.id);
+    overviewChart.setDatasetVisibility(i, clsOk && vpOk);
+  });
+  overviewChart.update('none');
 }
 
 // ── Self-computed CLS (percentile classes) ─────────────────────────
@@ -1105,7 +1174,9 @@ async function computePercentileClasses() {
   // Re-color map dots
   if (overviewMap && overviewMap.getSource('gauges') && dotFeatures.length) {
     for (const feat of dotFeatures) {
-      feat.properties.color = gaugeColor(liveMap[feat.properties.id] || {});
+      const live = liveMap[feat.properties.id] || {};
+      feat.properties.color = gaugeColor(live);
+      feat.properties.cls   = live.cls ?? 0;
     }
     overviewMap.getSource('gauges').setData({
       type: 'FeatureCollection',
@@ -1122,6 +1193,7 @@ async function computePercentileClasses() {
       ds.borderColor = hexToRgba(color, 0.5);
     });
     overviewChart.update('none');
+    applyChartFilter();
   }
 
   // Update visible card CLS labels
