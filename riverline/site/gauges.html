@@ -418,6 +418,7 @@ let overviewChart  = null;
 let chartObserver  = null;
 let chartLogScale  = true;
 let dotFeatures    = [];
+let chartGaugeIds  = [];  // parallel to overviewChart.data.datasets — {id, name}
 const dvCache     = new Map();
 const statsCache  = new Map();
 
@@ -800,19 +801,30 @@ async function buildOverviewChart() {
 
   const { dates, labels } = buildDateSpine();
   const datasets = [];
+  chartGaugeIds  = [];
+
+  // Build a fast id→name lookup from hierarchy
+  const gaugeNameMap = new Map();
+  for (const river of hierarchyData) {
+    for (const g of river.gauges) gaugeNameMap.set(g.id, g.name);
+  }
 
   for (const [id, fMap] of allFlowData) {
     const live  = liveMap[id] || {};
     const flow  = live.flow != null ? Number(live.flow) : -1;
     const color = flow >= 0 ? flowMagnitudeColor(flow) : REPORTING_COLOR;
+    chartGaugeIds.push({ id, name: gaugeNameMap.get(id) || id });
     datasets.push({
-      data:        dates.map(d => fMap.get(d) ?? null),
-      borderColor: hexToRgba(color, 0.5),
-      borderWidth: 0.9,
-      fill:        false,
-      pointRadius: 0,
-      tension:     0.3,
-      spanGaps:    false,
+      label:           gaugeNameMap.get(id) || id,
+      data:            dates.map(d => fMap.get(d) ?? null),
+      borderColor:     hexToRgba(color, 0.5),
+      borderWidth:     0.9,
+      hoverBorderWidth: 2.5,
+      fill:            false,
+      pointRadius:     0,
+      pointHoverRadius: 3,
+      tension:         0.3,
+      spanGaps:        false,
     });
   }
 
@@ -833,24 +845,66 @@ async function buildOverviewChart() {
       maintainAspectRatio: false,
       animation: false,
       plugins: {
-        legend:  { display: false },
-        tooltip: { enabled: false },
+        legend: { display: false },
+        tooltip: {
+          mode: 'nearest',
+          intersect: false,
+          backgroundColor: 'rgba(8,15,24,0.96)',
+          titleColor: '#8ab4c8',
+          bodyColor:  '#d4dde8',
+          borderColor: '#1a2f45',
+          borderWidth: 1,
+          padding: 8,
+          titleFont: { family: "'JetBrains Mono',monospace", size: 9 },
+          bodyFont:  { family: "'JetBrains Mono',monospace", size: 11, weight: '600' },
+          callbacks: {
+            title: items => items[0]?.dataset?.label || '',
+            label: ctx => {
+              const v = ctx.parsed.y;
+              if (v == null) return '';
+              return v >= 1000 ? `${(v/1000).toFixed(1)}k cfs` : `${v.toFixed(0)} cfs`;
+            },
+          },
+        },
       },
       scales: {
         x: {
-          ticks: { color: '#455a70', font: { family: "'JetBrains Mono',monospace", size: 7 }, maxTicksLimit: 13, maxRotation: 0 },
+          ticks: { color: '#455a70', font: { family: "'JetBrains Mono',monospace", size: 8 }, maxTicksLimit: 13, maxRotation: 0 },
           grid:  { color: 'rgba(255,255,255,0.025)' },
           border:{ color: '#1a2f45' },
         },
         y: {
           type: 'logarithmic',
           min:  1,
-          ticks: { color: '#455a70', font: { family: "'JetBrains Mono',monospace", size: 7 }, callback: tickCb },
+          ticks: { color: '#455a70', font: { family: "'JetBrains Mono',monospace", size: 8 }, callback: tickCb },
           grid:   { color: 'rgba(255,255,255,0.035)' },
           border: { color: '#1a2f45' },
         },
       },
     },
+  });
+
+  // Click a line → expand basin/river and scroll to the gauge card
+  canvas.addEventListener('click', e => {
+    if (!overviewChart) return;
+    const els = overviewChart.getElementsAtEventForMode(e, 'nearest', { intersect: false }, true);
+    if (!els.length) return;
+    const gauge = chartGaugeIds[els[0].datasetIndex];
+    if (!gauge) return;
+    const cardEl = document.getElementById(`gauge-${gauge.id}`);
+    if (!cardEl) return;
+    const group = cardEl.closest('.river-group');
+    const basin = cardEl.closest('.basin-section');
+    if (basin && !basin.classList.contains('open'))  basin.classList.add('open');
+    if (group && !group.classList.contains('open')) {
+      group.classList.add('open');
+      if (chartObserver) {
+        group.querySelectorAll('.chart-container[data-loaded="false"]').forEach(el => chartObserver.observe(el));
+      }
+    }
+    setTimeout(() => {
+      window.scrollTo({ top: cardEl.getBoundingClientRect().top + window.scrollY - 60, behavior: 'smooth' });
+    }, 50);
   });
 
   const toggleBtn = document.getElementById('scale-toggle');
@@ -993,11 +1047,10 @@ function initMap() {
 }
 
 // ── Self-computed CLS (percentile classes) ─────────────────────────
-// USGS /api/gauges/mt returns cls:null for most MT gauges. We fetch the
-// USGS Stats API directly, find today's p10/p25/p75/p90 for each site,
-// compare against live flow, and assign cls 1–5.
+// USGS /api/gauges/mt returns cls:null for most MT gauges. Fetch
+// the USGS Stats API directly for today's p10/p25/p75/p90 per site.
 async function computePercentileClasses() {
-  const today  = new Date();
+  const today   = new Date();
   const monthNu = today.getMonth() + 1;
   const dayNu   = today.getDate();
 
@@ -1006,13 +1059,21 @@ async function computePercentileClasses() {
     .map(([id]) => id);
   if (!activeIds.length) return;
 
+  // Wait for map to be loaded so dotFeatures is populated before we setData()
+  if (overviewMap && !overviewMap.loaded()) {
+    await new Promise(resolve => overviewMap.once('load', resolve));
+  }
+
   const BATCH = 50;
   for (let i = 0; i < activeIds.length; i += BATCH) {
     const batch = activeIds.slice(i, i + BATCH);
-    const url   = `https://waterservices.usgs.gov/nwis/stat/?format=rdb` +
-                  `&sites=${batch.join(',')}` +
-                  `&parameterCd=00060&statReportType=daily` +
-                  `&statType=p10,p25,p50,p75,p90`;
+    // Filter to today's day-of-year only — 1 row per gauge instead of 366
+    const url = `https://waterservices.usgs.gov/nwis/stat/?format=rdb` +
+                `&sites=${batch.join(',')}` +
+                `&parameterCd=00060&statReportType=daily` +
+                `&statType=p10,p25,p50,p75,p90` +
+                `&beginMonth=${monthNu}&endMonth=${monthNu}` +
+                `&beginDay=${dayNu}&endDay=${dayNu}`;
     let text;
     try {
       const resp = await fetch(url);
@@ -1025,23 +1086,23 @@ async function computePercentileClasses() {
     let headers = null;
     for (const line of lines) {
       if (!line.trim() || line.startsWith('#')) continue;
-      if (!headers) { headers = line.split('\t'); continue; }
+      if (!headers) {
+        headers = line.split('\t').map(h => h.trim());
+        continue;
+      }
       // Skip the RDB type-definition row (entries like "5s", "15n", "10d")
       if (/^\d+[a-z]$/.test((line.split('\t')[0] || '').trim())) continue;
 
-      const cols = line.split('\t');
+      const cols   = line.split('\t').map(c => c.trim());
       if (cols.length < 8) continue;
 
-      const siteNo = cols[headers.indexOf('site_no')]?.trim();
-      const mo     = parseInt(cols[headers.indexOf('month_nu')]);
-      const dy     = parseInt(cols[headers.indexOf('day_nu')]);
-      if (mo !== monthNu || dy !== dayNu) continue;
+      const siteNo = cols[headers.indexOf('site_no')];
       if (!siteNo || !liveMap[siteNo]) continue;
 
-      const p10  = parseFloat(cols[headers.indexOf('p10_va')]);
-      const p25  = parseFloat(cols[headers.indexOf('p25_va')]);
-      const p75  = parseFloat(cols[headers.indexOf('p75_va')]);
-      const p90  = parseFloat(cols[headers.indexOf('p90_va')]);
+      const p10 = parseFloat(cols[headers.indexOf('p10_va')]);
+      const p25 = parseFloat(cols[headers.indexOf('p25_va')]);
+      const p75 = parseFloat(cols[headers.indexOf('p75_va')]);
+      const p90 = parseFloat(cols[headers.indexOf('p90_va')]);
       if (isNaN(p10) || isNaN(p90)) continue;
 
       const flow = Number(liveMap[siteNo].flow);
