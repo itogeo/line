@@ -18,6 +18,10 @@ on:
         required: false
         default: ""
 
+# Pushes processed output back to the repo; a read-only GITHUB_TOKEN 403s.
+permissions:
+  contents: write
+
 jobs:
   process:
     runs-on: ubuntu-latest

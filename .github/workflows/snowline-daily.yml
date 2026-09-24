@@ -15,6 +15,16 @@ on:
     - cron: '0 11 * * *'  # 11am UTC daily (5am MT)
   workflow_dispatch:
 
+# This job pushes results back AND triggers snowline-process-imagery with
+# `gh workflow run`. With no permissions block the default GITHUB_TOKEN is
+# read-only, so both 403'd on every scheduled run:
+#   fatal: unable to access 'https://github.com/itogeo/line/': 403
+#   HTTP 403: Resource not accessible by integration
+# Each failure emails, which was most of this repo's daily GitHub noise.
+permissions:
+  contents: write
+  actions: write
+
 jobs:
   daily:
     runs-on: ubuntu-latest
