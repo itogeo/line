@@ -51,13 +51,21 @@ python snowline/pipeline/sync_r2.py                   # uploads it (~400 files i
 unset CF_API_TOKEN
 ```
 
+Then upload the lidar terrain tiles (about 5,000 small files, once):
+
+```bash
+python snowline/pipeline/sync_r2.py --terrain --check
+python snowline/pipeline/sync_r2.py --terrain
+```
+
 ## 5. Check
 
 ```bash
 curl -sI https://line.itogeospatial.com/snow/api/tile/2026-05-06/snow_r0c0.webp | grep -iE "^HTTP|x-tile-source"
 ```
 
-Expect `HTTP/2 200` and `x-tile-source: r2`. If you see
+Expect `HTTP/2 200` and `x-tile-source: r2`. For the terrain:
+`curl -sI https://line.itogeospatial.com/snow/api/terrain/shade/13/1572/2920.webp`. If you see
 `x-tile-source: no-r2-binding`, step 2 hasn't taken effect yet (redeploy).
 `missing-in-r2` means step 4 didn't upload that file.
 

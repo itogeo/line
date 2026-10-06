@@ -75,7 +75,9 @@ jobs:
                   # cloud isn't worth several GB of downloads.
                   if r.get("s2clr", 0) >= 2:
                       out.append(r["dt"])
-              out.sort()
+              # Newest first: if the job runs out of time, today's map is
+              # the one that must exist.
+              out.sort(reverse=True)
               print(f"Found {len(out)} unprocessed dates in last 10 days: {out}")
 
           with open("/tmp/dates_to_process.txt", "w") as f:

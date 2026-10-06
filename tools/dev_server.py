@@ -29,6 +29,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 ROUTES = [
     ("/snow/api/tile/", ROOT / "snowline/site/data_10m"),
+    ("/snow/api/terrain/", ROOT / "snowline/site/terrain"),
     ("/snow/shared/", ROOT / "_shared"),
     ("/snow/", ROOT / "snowline/site"),
     ("/river/", ROOT / "riverline/site"),

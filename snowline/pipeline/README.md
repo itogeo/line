@@ -58,6 +58,7 @@ build_snotel_agreement.py   map class vs SNOTEL depth at each station
 | `build_snotel_normals.py` | yearly | 20-year SNOTEL medians → `snotel_normals.json`. |
 | `build_forest_mask.py` | yearly | ESA WorldCover tree cover → `forest_mask.webp`. Needs `requirements-assets.txt`. |
 | `build_historical.py` | yearly | 25-year MODIS snow frequency by day of year. Needs `requirements-assets.txt`. |
+| `build_lidar_terrain.py` | once / when USGS adds surveys | USGS 3DEP 1 m lidar → shaded terrain tiles (z8–13) in `site/terrain/shade/`. Steps: `list`, `fetch`, `shade`, `tiles`. Then `sync_r2.py --terrain`. |
 | `fetch_fs_roads.py` | rarely | USFS roads with seasonal restrictions. |
 
 ## Requirements

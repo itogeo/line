@@ -68,6 +68,7 @@
     <li><a href="#scenes">Finding the scenes</a></li>
     <li><a href="#snow">From pixels to snow</a></li>
     <li><a href="#check">Checking it against SNOTEL</a></li>
+    <li><a href="#terrain">Lidar terrain</a></li>
     <li><a href="#fails">Where it goes wrong</a></li>
     <li><a href="#cadence">How often it updates</a></li>
     <li><a href="#repro">Reproduce it</a></li>
@@ -118,6 +119,15 @@ snow  = (NDSI ≥ 0.4  or  SCL = 11)  and not masked</pre>
   <div id="agreement" class="muted">Loading the current numbers&hellip;</div>
   <p>A station is one point and a pixel is about 800&nbsp;m², so perfect agreement isn't expected. Many SNOTEL sites sit in small clearings inside forest, which is the hardest place for an optical satellite to see snow. Per-date results are in <a href="data/snotel_agreement.json"><code>snotel_agreement.json</code></a>.</p>
 
+  <h2 id="terrain">Lidar terrain</h2>
+  <p>The shading under the snow comes from airborne lidar: laser measurements of the ground surface flown for the <a href="https://www.usgs.gov/3d-elevation-program" target="_blank" rel="noopener">USGS 3D Elevation Program</a> (3DEP), published as 1&nbsp;m elevation models. About 660 lidar tiles cover more than 90% of the area. Most are from the Montana statewide collection, flown in phases from about 2021 to 2023. Yellowstone was flown in 2020.</p>
+  <ul>
+    <li>Snowline reads each tile at 4&nbsp;m, shades it with a low northwest sun and a softer western light, and only then reprojects it. Shading after reprojecting leaves stripes.</li>
+    <li>Where two surveys overlap, the <strong>most recently flown</strong> one wins.</li>
+    <li>The shading is transparent on flat and sunlit ground and only darkens shadowed slopes. Snow is always drawn above it, so the snow stays the brightest thing on the map.</li>
+  </ul>
+  <p>It's there to make the snow readable (which gully, which face, where the tree line is), not to rate slopes. The 3D view still uses Mapbox's terrain model.</p>
+
   <h2 id="fails">Where it goes wrong</h2>
   <h3>Forest canopy</h3>
   <p>Under dense conifers the satellite sees needles, not the snow below. Forested slopes can show as bare when the ground is white. Turn on the <em>Forest</em> layer (ESA WorldCover) to see where this applies. This is the most common cause of a miss.</p>
@@ -161,7 +171,7 @@ with rasterio.open(item.assets["class_r1c1"].href) as src:
   <ul>
     <li>Imagery: Contains modified Copernicus Sentinel data 2018–2026, processed by ESA.</li>
     <li>Scene index: <a href="https://research.taylorgeospatial.org/s2-stac-geoparquet/" target="_blank" rel="noopener">s2-stac-geoparquet</a>, Taylor Geospatial / TGE Labs, from <a href="https://element84.com/earth-search/" target="_blank" rel="noopener">Element&nbsp;84 Earth Search</a>.</li>
-    <li>Snow depth: USDA NRCS SNOTEL. Forest layer: ESA WorldCover 2021 (CC BY 4.0). Basemap: Mapbox.</li>
+    <li>Snow depth: USDA NRCS SNOTEL. Terrain shading: USGS 3DEP lidar (public domain). Forest layer: ESA WorldCover 2021 (CC BY 4.0). Basemap: Mapbox.</li>
     <li>Code: Apache-2.0. Data terms per source are in <code>DATA_LICENSE.md</code>.</li>
   </ul>
   <p class="muted" style="margin-top:24px">Snowline is built by <a href="https://itogeospatial.com">Ito Geospatial</a> in Bozeman. Found a problem? Use the Feedback button on the map or open an issue on GitHub.</p>

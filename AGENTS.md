@@ -107,6 +107,17 @@ COGs, EPSG:4326, `0 ground, 1 snow, 2 cloud, 3 nodata`, nodata value
 `/snow/api/tile/{date}/{file}` with HTTP Range support. Catalogued in the
 static STAC at `/snow/stac/catalog.json` (only dates in `dates.json`).
 
+`snowline/site/terrain/shade.json` and `/snow/api/terrain/shade/{z}/{x}/{y}.webp`
+(R2 key `terrain/shade/...`): lidar terrain shading, 512 px web-mercator
+tiles z8–13, black RGB with the shading in alpha (0 = flat or sunlit, up to
+160 in shadow). Made by `build_lidar_terrain.py` from the USGS 3DEP 1 m DEM
+(664 tiles over the AOI on 2026-10-06, read at the COGs' 4 m overview).
+Shaded per source tile in UTM, with neighbours as margin, then reprojected,
+because shading after reprojection showed aliasing stripes in testing. Where
+surveys overlap, the most recently flown wins (year from the 3DEP project
+name, e.g. `MT_Statewide_Phase5_D23` → 2023). Outside coverage the worker
+answers 204.
+
 `snowline/site/data/snow_timeline.json`: per tile, `[date, snow_pct,
 cloud_pct]` for scenes with cloud ≤20 and nodata <50, from 2015 on.
 Measured 2026-10-05: 3,139 scenes, of which 2015–2017 have 0 and 2022 has

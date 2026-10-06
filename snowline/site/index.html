@@ -625,6 +625,7 @@
     <div class="opacity-wrap" id="opacity-s2"><label>Opacity</label><input type="range" min="0" max="100" value="90" id="slider-s2"></div>
     <label class="layer-row"><input type="checkbox" id="tog-historical"><div class="sw"></div><span class="layer-label">Historical</span></label>
     <div class="opacity-wrap hidden" id="opacity-historical"><label>Opacity</label><input type="range" min="0" max="100" value="50" id="slider-historical"></div>
+    <label class="layer-row" title="Terrain shading from USGS 1 m lidar"><input type="checkbox" id="tog-lidar" checked><div class="sw"></div><span class="layer-label">Lidar terrain</span></label>
     <label class="layer-row"><input type="checkbox" id="tog-forest"><div class="sw"></div><span class="layer-label">Forest</span></label>
     <label class="layer-row"><input type="checkbox" id="tog-snotel" checked><div class="sw"></div><span class="layer-label">SNOTEL</span></label>
     <label class="layer-row"><input type="checkbox" id="tog-webcams" checked><div class="sw"></div><span class="layer-label">Webcams</span></label>
@@ -1036,7 +1037,11 @@ async function preloadRecentSnow(n = 3) {
 // ── Load a date ──
 async function loadDate(dateStr) {
   CURRENT_DATE = dateStr;
-  writeHash({ date: dateStr });
+  // The newest map never goes into the URL: a bookmarked or reloaded page
+  // must open on whatever is newest then, not on the day it was saved.
+  // Only an older date (a deliberate look back) is pinned in the link.
+  const newestMap = TODAY_VIRTUAL ? DATES[DATES.length - 2] : DATES[DATES.length - 1];
+  writeHash({ date: dateStr === newestMap || dateStr === TODAY_VIRTUAL ? null : dateStr });
 
   // Crossing into another season redraws the timeline and the SNOTEL charts
   // for that season.
@@ -1517,6 +1522,10 @@ function addOverlayLayers() {
       });
     }
   }
+
+  // Lidar terrain shading (USGS 3DEP 1 m lidar, shaded at 4 m). Added
+  // before the snow layers so snow always sits on top of it.
+  addLidarShade();
 
   // Snow overlay
   if (d.chunks || (d.tiles && d.tiles.length > 0)) {
@@ -2885,6 +2894,31 @@ function buildRangeSparkline(values, w, h, triplets) {
 }
 
 // ── Forest mask layer ──
+// ── Lidar terrain shading ──
+// Black-with-alpha tiles: they darken shadowed slopes of whatever is below
+// and leave flat or sunlit ground untouched, so the snow above stays bright.
+function addLidarShade() {
+  if (!map.getSource('lidar-shade')) {
+    map.addSource('lidar-shade', {
+      type: 'raster',
+      tiles: [location.origin + '/snow/api/terrain/shade/{z}/{x}/{y}.webp'],
+      tileSize: 512, minzoom: 8, maxzoom: 13,
+      bounds: [-112.2, 44.9, -109.0, 46.5],
+      attribution: 'Terrain: USGS 3DEP lidar',
+    });
+  }
+  if (!map.getLayer('lidar-shade')) {
+    map.addLayer({
+      id: 'lidar-shade', type: 'raster', source: 'lidar-shade',
+      paint: { 'raster-opacity': 0.9, 'raster-fade-duration': 150 },
+      layout: { visibility: document.getElementById('tog-lidar').checked ? 'visible' : 'none' },
+    }, currentTileLayerIds.find(id => map.getLayer(id)));
+  }
+}
+document.getElementById('tog-lidar').addEventListener('change', function () {
+  if (map.getLayer('lidar-shade')) map.setLayoutProperty('lidar-shade', 'visibility', this.checked ? 'visible' : 'none');
+});
+
 async function addForestLayer() {
   try {
     const r = await fetch('data/forest_mask.json');

@@ -110,6 +110,26 @@ export default {
         return new Response(fb.body, { status: fb.status, headers: h });
       }
 
+      // Lidar terrain tiles: R2 key terrain/{layer}/{z}/{x}/{y}.webp, with the
+      // static assets as a local-dev fallback. Outside the coverage a tile
+      // simply doesn't exist; answer 204 so the map shows nothing there.
+      if (effectivePath.startsWith('/api/terrain/')) {
+        const rel = effectivePath.slice('/api/'.length);           // terrain/shade/z/x/y.webp
+        if (!/^terrain\/[a-z]+\/\d+\/\d+\/\d+\.webp$/.test(rel)) return new Response('bad tile path', { status: 400 });
+        const headers = {
+          'Content-Type': 'image/webp',
+          'Cache-Control': 'public, max-age=2592000',
+          'Access-Control-Allow-Origin': '*',
+        };
+        if (env.SNOWLINE_BUCKET) {
+          const obj = await env.SNOWLINE_BUCKET.get(rel);
+          if (obj) return new Response(obj.body, { headers: { ...headers, 'X-Tile-Source': 'r2' } });
+        }
+        const fb = await env.ASSETS.fetch(new Request(new URL('/snowline/site/' + rel, url), request));
+        if (fb.ok) return new Response(fb.body, { headers: { ...headers, 'X-Tile-Source': 'assets' } });
+        return new Response(null, { status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'X-Tile-Source': 'none' } });
+      }
+
       // Image proxy (webcams blocked by CORS)
       if (effectivePath === '/api/camproxy' && url.searchParams.get('url')) {
         const imgUrl = url.searchParams.get('url');

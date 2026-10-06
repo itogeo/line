@@ -18,6 +18,7 @@ Usage:
     python snowline/pipeline/sync_r2.py --check            # what's missing? (lists only)
     python snowline/pipeline/sync_r2.py                    # upload every local date
     python snowline/pipeline/sync_r2.py --date=2026-10-03  # one date
+    python snowline/pipeline/sync_r2.py --terrain          # lidar terrain tiles (~once)
 """
 
 from __future__ import annotations
@@ -26,12 +27,15 @@ import argparse
 import json
 import os
 import sys
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 BUCKET = "snowline-tiles"
 DATA_10M = Path(__file__).resolve().parent.parent / "site" / "data_10m"
+TERRAIN = Path(__file__).resolve().parent.parent / "site" / "terrain"
 API = "https://api.cloudflare.com/client/v4/accounts/{acct}/r2/buckets/{bucket}/objects"
 
 
@@ -83,35 +87,59 @@ def put(acct, token, key, path):
 
 
 def main():
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--date", help="Only this date (YYYY-MM-DD)")
+    ap.add_argument("--terrain", action="store_true",
+                    help="Upload the lidar terrain tiles (site/terrain/shade) instead of snow maps")
+    ap.add_argument("--workers", type=int, default=8, help="Parallel uploads (default 8)")
     ap.add_argument("--check", action="store_true", help="Report missing objects, upload nothing")
     args = ap.parse_args()
     acct, token = creds()
 
-    dates = [args.date] if args.date else sorted(p.name for p in DATA_10M.iterdir() if p.is_dir())
-    have = list_keys(acct, token)
-    log(f"{len(have)} tile objects already in R2")
     missing = []
-    for d in dates:
-        for f in sorted([*(DATA_10M / d).glob("*.webp"), *(DATA_10M / d).glob("*.tif")]):
-            key = f"tiles/{d}/{f.name}"
+    if args.terrain:
+        have = list_keys(acct, token, prefix="terrain/")
+        log(f"{len(have)} terrain objects already in R2")
+        for f in sorted(TERRAIN.rglob("*.webp")):
+            key = "terrain/" + f.relative_to(TERRAIN).as_posix()
             if key not in have:
                 missing.append((key, f))
-    log(f"{len(missing)} local tiles missing from R2")
+    else:
+        dates = [args.date] if args.date else sorted(p.name for p in DATA_10M.iterdir() if p.is_dir())
+        have = list_keys(acct, token)
+        log(f"{len(have)} tile objects already in R2")
+        for d in dates:
+            for f in sorted([*(DATA_10M / d).glob("*.webp"), *(DATA_10M / d).glob("*.tif")]):
+                key = f"tiles/{d}/{f.name}"
+                if key not in have:
+                    missing.append((key, f))
+    log(f"{len(missing)} local files missing from R2")
     if args.check:
         for key, _ in missing[:50]:
             print("  " + key)
         return 0 if not missing else 1
-    failed = 0
-    for i, (key, f) in enumerate(missing, 1):
-        try:
-            put(acct, token, key, f)
-            log(f"[{i}/{len(missing)}] {key} ({f.stat().st_size // 1024} KB)")
-        except HTTPError as e:
-            failed += 1
-            log(f"[{i}/{len(missing)}] FAILED {key}: HTTP {e.code}")
-    log(f"Done. {len(missing) - failed} uploaded, {failed} failed.")
+
+    failed = []
+
+    def up(item):
+        key, f = item
+        for attempt in range(3):
+            try:
+                put(acct, token, key, f)
+                return None
+            except Exception as e:  # noqa: BLE001 - retry transient HTTP/network errors
+                err = e
+                time.sleep(2 * (attempt + 1))
+        return f"{key}: {err}"
+
+    with ThreadPoolExecutor(args.workers) as ex:
+        for i, res in enumerate(ex.map(up, missing), 1):
+            if res:
+                failed.append(res)
+                log(f"FAILED {res}")
+            if i % 100 == 0 or i == len(missing):
+                log(f"[{i}/{len(missing)}] uploaded")
+    log(f"Done. {len(missing) - len(failed)} uploaded, {len(failed)} failed (re-run to retry).")
     return 1 if failed else 0
 
 

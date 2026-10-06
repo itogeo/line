@@ -22,6 +22,10 @@ snowline/site/data_10m/**/*.webp
 # Snowline pipeline scratch space
 snowline/cache/
 
+# Lidar terrain tiles live in R2 (snowline/pipeline/build_lidar_terrain.py);
+# terrain/shade.json (the tile index) is kept in git.
+snowline/site/terrain/shade/
+
 # Node
 node_modules/
 
