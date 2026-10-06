@@ -167,7 +167,8 @@ function renderSceneTable() {
   if (mb) mb.onclick = () => { shown += PAGE; renderSceneTable(); };
 }
 
-const SQL_HEAD = "INSTALL httpfs; LOAD httpfs; SET s3_region='us-west-2'; SET TimeZone='UTC';";
+// The bucket name has dots, so DuckDB must use path-style S3 URLs or TLS fails.
+const SQL_HEAD = "INSTALL httpfs; LOAD httpfs; SET s3_region='us-west-2'; SET s3_url_style='path'; SET TimeZone='UTC';";
 
 function sceneSQL(s) {
   return `${SQL_HEAD}
@@ -201,7 +202,7 @@ SELECT CAST(datetime AS DATE) AS date, _tile, id,
 FROM read_parquet(${src}, union_by_name = true)
 WHERE _tile IN (${tiles.map(t => `'${t}'`).join(', ')})
   AND datetime >= '${start}' AND datetime < CAST('${end}' AS DATE) + 1${F.cloud < 100 ? `\n  AND "eo:cloud_cover" <= ${F.cloud}` : ''}
--- a scene reprocessed since the last fold appears twice; keep the newest
+-- a scene reprocessed since the last fold appears twice: keep the newest
 QUALIFY row_number() OVER (PARTITION BY id ORDER BY "s2:generation_time" DESC) = 1
 ORDER BY datetime DESC, _tile;
 -- Snowline then keeps one scene per tile per day (least nodata, then least cloud).`;

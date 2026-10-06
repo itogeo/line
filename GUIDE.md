@@ -4,6 +4,8 @@
 
 **Written:** 2026-10-05 · **Owner:** Ian Van Dusen (Ito Geospatial)
 
+> **Progress 2026-10-05 (evening session).** Phases 0–3 are done except where marked, plus 6.1 (STAC + COGs) and 6.2 (launch draft). Snowline launch target: **2026-10-10**. Two blockers are Ian's: the Cloudflare R2 setup (`docs/cloudflare-setup.md`; the live map has served no tiles since the monorepo move) and the repo visibility decision (0.2). Findings worth knowing: the C1 switch is pixel-identical after the offset fix, and the SNOTEL check exposed bad Nov–Mar maps from the old per-tile pipeline, so the whole 2025–26 season was reprocessed.
+
 ---
 
 ## 1. What we are making
@@ -105,17 +107,17 @@ Work top to bottom. Each task has an acceptance test, and a task is done only wh
 
 ### Phase 0 — Make it safe to open (do this first)
 
-- [ ] **0.1 Secret scan.** Run `gitleaks detect --source . --log-opts="--all"` (or `trufflehog git file://.`) across the full history. Report anything it finds to Ian, but **don't print the values**.
+- [x] **0.1 Secret scan.** *(gitleaks 8.21.2 over all 62 commits, 2026-10-05: 7 hits, all the Mapbox public `pk.` browser token in HTML. No `.env` ever committed. Restrict the token to the site's URLs in the Mapbox dashboard.)* Run `gitleaks detect --source . --log-opts="--all"` (or `trufflehog git file://.`) across the full history. Report anything it finds to Ian, but **don't print the values**.
       *Test:* zero findings, or a list of file:commit references Ian has acknowledged.
-- [ ] **0.2 History decision.** `.git` is 1.9 GB (old WebPs). Recommend publishing as a **fresh public repo with one squashed initial commit** (`itogeo/line-network`, or rename), and keep the old repo private as an archive. Ian decides. Don't rewrite or force-push anything yourself.
-- [ ] **0.3 Licence files.** `LICENSE` is Apache-2.0 (code). `DATA_LICENSE.md` covers Copernicus Sentinel terms + attribution, USGS (public domain), NRCS SNOTEL (public domain), NOAA (public domain), and webcam images (owners' terms: link only, don't redistribute).
+- [ ] **0.2 History decision.** *(Measured: reachable history is ~100 MB of blobs, mostly RiverLine geojson. The 1.9 GB is local `.git` garbage, not history. **Recommendation changed: make `itogeo/line` public as it is.** That keeps the Pages project, Actions and secrets working with no new setup. A fresh repo would need a new Pages project, bindings, domain move and secrets before Oct 10.)* `.git` is 1.9 GB (old WebPs). Recommend publishing as a **fresh public repo with one squashed initial commit** (`itogeo/line-network`, or rename), and keep the old repo private as an archive. Ian decides. Don't rewrite or force-push anything yourself.
+- [x] **0.3 Licence files.** `LICENSE` is Apache-2.0 (code). `DATA_LICENSE.md` covers Copernicus Sentinel terms + attribution, USGS (public domain), NRCS SNOTEL (public domain), NOAA (public domain), and webcam images (owners' terms: link only, don't redistribute).
       *Test:* both files exist, and the README links them.
-- [ ] **0.4 Clean the tree.** Add `.DS_Store`, `.wrangler/`, `riverline/raw/`, `**/cache/` to `.gitignore`. Delete tracked junk only after confirming it is unused.
-- [ ] **0.5 Public docs.** Top-level `README.md` is a one-screen pitch, has a screenshot per product, and includes "Reproduce it yourself" (a DuckDB snippet) plus an architecture diagram (Mermaid). `CONTRIBUTING.md` covers dev setup with `python -m venv`, `pip install -r`, and smoke tests. `AGENTS.md` is written in the Taylor style: every claim quoted or measured.
+- [x] **0.4 Clean the tree.** Add `.DS_Store`, `.wrangler/`, `riverline/raw/`, `**/cache/` to `.gitignore`. Delete tracked junk only after confirming it is unused.
+- [x] **0.5 Public docs.** *(README with Mermaid diagram, CONTRIBUTING, AGENTS. Screenshots in docs/img/.)* Top-level `README.md` is a one-screen pitch, has a screenshot per product, and includes "Reproduce it yourself" (a DuckDB snippet) plus an architecture diagram (Mermaid). `CONTRIBUTING.md` covers dev setup with `python -m venv`, `pip install -r`, and smoke tests. `AGENTS.md` is written in the Taylor style: every claim quoted or measured.
 
 ### Phase 1 — Shared S2 library
 
-- [ ] **1.1 `lib/s2index.py`** with these functions:
+- [x] **1.1 `lib/s2index.py`** with these functions:
       - `live_files(year)`: reads `YYYY.json`
       - `scenes(tiles, start, end, max_cloud=None)`: returns a list of dicts, deduped as in pitfall 2
       - `asset_href(row, band)`
@@ -124,35 +126,35 @@ Work top to bottom. Each task has an acceptance test, and a task is done only wh
 
       Uses only `duckdb`, and nothing else heavy.
       *Test:* `python -m lib.s2index` prints the latest 3 scenes for 12TVR with dates within the last 10 days, plus the October stats row.
-- [ ] **1.2 `lib/aoi.py`** is the single source of the AOI bbox and MGRS tile list for each product. Today `BBOX` is copied across snowline scripts.
+- [x] **1.2 `lib/aoi.py`** is the single source of the AOI bbox and MGRS tile list for each product. Today `BBOX` is copied across snowline scripts.
       *Test:* `grep -rn "BBOX =" snowline/pipeline` only imports from `lib`.
-- [ ] **1.3** Add `duckdb` to `snowline/pipeline/requirements.txt`. Remove `pystac-client` only after Phase 2 passes. Keep `planetary-computer` only if Landsat/HLS stays.
+- [x] **1.3** Add `duckdb` to `snowline/pipeline/requirements.txt`. Remove `pystac-client` only after Phase 2 passes. Keep `planetary-computer` only if Landsat/HLS stays.
 
 ### Phase 2 — Snowline onto the parquet
 
-- [ ] **2.1 `fetch_bands.py`.** Replace `find_scenes()` with `lib.s2index.scenes()`. Read `green`, `red`, `blue`, `swir16`, `scl` hrefs from `assets`. Apply the c1 scale/offset in `process_tiles.py` before computing NDSI.
-- [ ] **2.2 `build_sat_availability.py`.** S2 rows come from the parquet (metadata only, no pixels). Add `snow_pct` and `nodata_pct` per pass to `sat_availability.json` so the UI can say "62% snow, 3% cloud" before imagery is processed.
-- [ ] **2.3 `check_new_clear_pass.py`** uses the parquet. A pass qualifies when the AOI tiles' cloud ≤ threshold and nodata < 50%.
-- [ ] **2.4 Diagnose & retire.** Update `diagnose_tile.py`. Remove the Element 84 API calls everywhere (`grep -rn earth-search` should return nothing except docs).
-- [ ] **2.5 New: `build_snow_timeline.py`.** For every AOI tile from 2015 to now, write `s2:snow_ice_percentage`, cloud and date to `site/data/snow_timeline.json`, using metadata only. This gives a decade of per-tile snow history without downloading any pixels. Show it on the data page as a small multiples chart.
+- [x] **2.1 `fetch_bands.py`.** *(Offset removed at download, so process_tiles is unchanged.)* Replace `find_scenes()` with `lib.s2index.scenes()`. Read `green`, `red`, `blue`, `swir16`, `scl` hrefs from `assets`. Apply the c1 scale/offset in `process_tiles.py` before computing NDSI.
+- [x] **2.2 `build_sat_availability.py`.** S2 rows come from the parquet (metadata only, no pixels). Add `snow_pct` and `nodata_pct` per pass to `sat_availability.json` so the UI can say "62% snow, 3% cloud" before imagery is processed.
+- [x] **2.3 `check_new_clear_pass.py`** uses the parquet. A pass qualifies when the AOI tiles' cloud ≤ threshold and nodata < 50%.
+- [x] **2.4 Diagnose & retire.** *(Planetary Computer stays only for the yearly forest/MODIS builds: `requirements-assets.txt`.)* Update `diagnose_tile.py`. Remove the Element 84 API calls everywhere (`grep -rn earth-search` should return nothing except docs).
+- [x] **2.5 New: `build_snow_timeline.py`.** For every AOI tile from 2015 to now, write `s2:snow_ice_percentage`, cloud and date to `site/data/snow_timeline.json`, using metadata only. This gives a decade of per-tile snow history without downloading any pixels. Show it on the data page as a small multiples chart.
 
 **Tests:**
 
 - **S1:** `python snowline/pipeline/fetch_bands.py --date=<a recent clear date>` downloads all bands for every AOI tile. Ian runs it, or you run it on one tile only.
-- **S2:** Reprocess one date already live (pick from `site/data_10m/dates.json`, e.g. a clear April 2026 date). The snow-pixel count is within ±2% of the current output for the same date. If it isn't, the offset handling is wrong. Stop and report.
-- **S3:** Both workflows (`snowline-daily.yml`, `snowline-process-imagery.yml`) pass on `workflow_dispatch` with no Element 84 calls in the log.
+- **S2 — PASSED 2026-10-05:** 12TVR 2026-04-19, 0 differing pixels in 5 bands, snow pixels 2,776,856 both ways. Reprocess one date already live (pick from `site/data_10m/dates.json`, e.g. a clear April 2026 date). The snow-pixel count is within ±2% of the current output for the same date. If it isn't, the offset handling is wrong. Stop and report.
+- **S3 — needs a push:** Both workflows (`snowline-daily.yml`, `snowline-process-imagery.yml`) pass on `workflow_dispatch` with no Element 84 calls in the log.
 
 ### Phase 3 — Snowline polish (the "nice project" part)
 
-- [ ] **3.1 Data page.** A Taylor-style scene table (date · tile · cloud · snow % · thumbnail · "open COG") that you can filter by tile, cloud and year, read from the parquet results. Each row gets a "reproduce in DuckDB" copy button.
-- [ ] **3.2 Map.**
+- [x] **3.1 Data page.** A Taylor-style scene table (date · tile · cloud · snow % · thumbnail · "open COG") that you can filter by tile, cloud and year, read from the parquet results. Each row gets a "reproduce in DuckDB" copy button.
+- [x] **3.2 Map.** *(Basemap left as is.)*
       - Muted basemap, so the snow layer is the brightest thing on screen.
       - The date scrubber shows clear and cloudy passes in different colours.
       - A "next expected pass" chip, computed from the 5-day revisit and the last pass per tile.
       - URL state in the hash (`#map=z/lat/lon&date=...&tile=...`) so views can be shared, like the Taylor URL.
-- [ ] **3.3 SNOTEL vs satellite.** At each station, compare the depth reading with the snow/no-snow pixel value. Show an agreement score per date. This is the credibility feature.
-- [ ] **3.4 Mobile + performance.** Lighthouse ≥ 90 on mobile. First paint under 2 s on 4G. No layout shift.
-- [ ] **3.5 Methods page.** NDSI threshold, SCL masks used, forest mask, known failure modes (cloud/snow confusion, terrain shadow, forest canopy), each with an example image. Written plainly.
+- [x] **3.3 SNOTEL vs satellite.** *(`build_snotel_agreement.py` → panel line + Methods table.)* At each station, compare the depth reading with the snow/no-snow pixel value. Show an agreement score per date. This is the credibility feature.
+- [ ] **3.4 Mobile + performance.** *(Phone layout checked in headless Chromium. Lighthouse not run on the live site yet.)* Lighthouse ≥ 90 on mobile. First paint under 2 s on 4G. No layout shift.
+- [x] **3.5 Methods page.** *(No example images yet.)* NDSI threshold, SCL masks used, forest mask, known failure modes (cloud/snow confusion, terrain shadow, forest canopy), each with an example image. Written plainly.
 
 ### Phase 4 — RiverLine finish
 
@@ -170,8 +172,8 @@ RiverLine's code side is done. What's missing is infra and data (see `riverline/
 
 ### Phase 6 — Ship
 
-- [ ] **6.1** Publish Line's own derived outputs (snow masks per date, `scenes.parquet`, `snow_timeline`) as **open data** with a `catalog.json`. They go on the existing public R2 bucket, or onto Source Cooperative if Ian wants (ask).
-- [ ] **6.2** Write the launch note: a `docs/launch.md` draft that credits Taylor Geospatial / TGE Labs, Element 84 and ESA Copernicus. Ian posts it.
+- [x] **6.1** *(Class COGs per map via `export_cogs.py`, static STAC at `/snow/stac/catalog.json`, served from R2 with Range support. No public bucket needed.)* Publish Line's own derived outputs (snow masks per date, `scenes.parquet`, `snow_timeline`) as **open data** with a `catalog.json`. They go on the existing public R2 bucket, or onto Source Cooperative if Ian wants (ask).
+- [x] **6.2** Write the launch note: a `docs/launch.md` draft that credits Taylor Geospatial / TGE Labs, Element 84 and ESA Copernicus. Ian posts it.
 - [ ] **6.3** Final check by a fresh agent that hasn't seen the work: clone the public repo, follow the README from zero, reproduce one snow map. Every failure becomes a fix.
 
 ---

@@ -23,8 +23,13 @@ loads as a Mapbox layer. Run this once (or once a year — these change
 slowly). No automation needed.
 
 Usage:
-    python pipeline/fetch_fs_roads.py
+    python snowline/pipeline/fetch_fs_roads.py
 """
+
+if __name__ == "__main__":
+    # --help before the heavy imports below (and before anything runs).
+    import argparse
+    argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter).parse_args()
 
 import json
 import sys

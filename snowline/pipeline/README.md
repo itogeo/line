@@ -51,6 +51,8 @@ build_snotel_agreement.py   map class vs SNOTEL depth at each station
 | `build_snotel_season.py` | daily | Current-season SNOTEL depth and SWE → `snotel_season.json`. |
 | `build_snow_timeline.py` | weekly | `s2:snow_ice_percentage` per tile since 2015 → `snow_timeline.json`. Metadata only. |
 | `build_snotel_agreement.py` | after maps | Satellite vs SNOTEL → `snotel_agreement.json`. |
+| `export_cogs.py` | per map | Class COGs (0 ground, 1 snow, 2 cloud, 3 nodata) from the snow WebPs, for open data. |
+| `build_stac.py` | per run | Static STAC catalog of every map → `site/stac/`. |
 | `diagnose_tile.py` | debugging | Prints every bound and offset for one date and tile. |
 | `build_snotel_normals.py` | yearly | 20-year SNOTEL medians → `snotel_normals.json`. |
 | `build_forest_mask.py` | yearly | ESA WorldCover tree cover → `forest_mask.webp`. Needs `requirements-assets.txt`. |

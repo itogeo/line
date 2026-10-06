@@ -7,9 +7,9 @@ each pixel had snow cover. Outputs WebP overlays that the site can display
 as a "historical average" comparison layer.
 
 Usage:
-    python pipeline/build_historical.py
-    python pipeline/build_historical.py --start-doy=1 --end-doy=365
-    python pipeline/build_historical.py --doy=75  # single 5-day period
+    python snowline/pipeline/build_historical.py
+    python snowline/pipeline/build_historical.py --start-doy=1 --end-doy=365
+    python snowline/pipeline/build_historical.py --doy=75  # single 5-day period
 
 Output:
     site/data/historical/doy_001.webp  (Jan 1-5 average)
@@ -18,6 +18,11 @@ Output:
     site/data/historical/doy_361.webp  (Dec 27-31 average)
     site/data/historical/historical.json  (index + bounds)
 """
+
+if __name__ == "__main__":
+    # --help before the heavy imports below (and before anything runs).
+    import argparse
+    argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter).parse_args()
 
 import argparse
 import json

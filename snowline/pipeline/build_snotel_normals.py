@@ -4,11 +4,16 @@ Pre-compute SNOTEL 20-year median snow depth by day-of-year.
 Outputs a small JSON file that the site loads for "% of normal" display.
 
 Usage:
-    python pipeline/build_snotel_normals.py
+    python snowline/pipeline/build_snotel_normals.py
 
 Output:
     site/data/snotel_normals.json (~50KB)
 """
+
+if __name__ == "__main__":
+    # --help before the heavy imports below (and before anything runs).
+    import argparse
+    argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter).parse_args()
 
 import json
 import sys

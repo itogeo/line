@@ -9,11 +9,16 @@ day and the frontend looks up the right reading for whichever timeline
 date the user clicks.
 
 Usage:
-    python pipeline/build_snotel_season.py
+    python snowline/pipeline/build_snotel_season.py
 
 Output:
     site/data/snotel_season.json (~150KB for ~110 stations × ~200 days)
 """
+
+if __name__ == "__main__":
+    # --help before the heavy imports below (and before anything runs).
+    import argparse
+    argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter).parse_args()
 
 import json
 import time

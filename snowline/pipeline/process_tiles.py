@@ -7,8 +7,8 @@ Instead of per-MGRS-tile outputs with complex territory logic, this produces a
 is already in WGS84 — no UTM boundary staircases, no territory-overlap algorithm.
 
 Usage:
-    python pipeline/process_tiles.py --date=2026-04-19
-    python pipeline/process_tiles.py --date=2026-04-19 --quality=65
+    python snowline/pipeline/process_tiles.py --date=2026-04-19
+    python snowline/pipeline/process_tiles.py --date=2026-04-19 --quality=65
 """
 
 import argparse
@@ -23,7 +23,7 @@ import rasterio
 from rasterio.crs import CRS
 from rasterio.enums import Resampling
 from rasterio.transform import from_bounds
-from rasterio.warp import reproject
+from rasterio.warp import reproject, transform_bounds
 from PIL import Image
 
 REPO_ROOT = Path(__file__).parent.parent
@@ -36,6 +36,7 @@ BBOX = SNOWLINE.bbox_list   # west, south, east, north
 NDSI_THRESHOLD = 0.4
 PIXEL_SIZE = 0.0003   # degrees/pixel — ~24 m horizontal, ~33 m vertical at 45°N
 DST_CRS = CRS.from_epsg(4326)
+MIN_LIST_COVERAGE = 10.0  # % of the AOI a map must cover to appear on the timeline
 MAX_WEBP_BYTES = 24 * 1024 * 1024  # warn if over 24 MiB (Cloudflare Pages cap is 25 MiB)
 
 # Fixed 3-column × 2-row grid over the AOI. Pure lat/lon rectangles so
@@ -74,6 +75,11 @@ def merge_band(tile_dirs, band_name, bounds, resampling):
             continue
         try:
             with rasterio.open(p) as src:
+                # Skip tiles that don't reach this chunk: reprojecting a
+                # full band only to throw it away is most of the runtime.
+                tb = transform_bounds(src.crs, DST_CRS, *src.bounds)
+                if tb[0] >= e or tb[2] <= w or tb[1] >= n or tb[3] <= s:
+                    continue
                 tile_out = np.zeros((dst_h, dst_w), dtype=np.float32)
                 reproject(
                     src.read(1).astype(np.float32),
@@ -184,7 +190,7 @@ def main():
     date_cache = CACHE_ROOT / args.date
     if not date_cache.exists():
         log(f"FATAL: cache dir not found: {date_cache}")
-        log(f"Run: python pipeline/fetch_bands.py --date={args.date}")
+        log(f"Run: python snowline/pipeline/fetch_bands.py --date={args.date}")
         return 1
 
     output_dir = SITE_DIR / args.date
@@ -259,7 +265,12 @@ def main():
             existing_dates = json.load(open(dates_path)).get("dates", [])
         except Exception:
             pass
-    if args.date not in existing_dates:
+    # A map that covers almost none of the area (an orbit edge) clutters the
+    # timeline without telling anyone anything; keep the files, don't list it.
+    if coverage_pct < MIN_LIST_COVERAGE:
+        log(f"Only {coverage_pct}% of the area imaged (< {MIN_LIST_COVERAGE}%) — not listing {args.date} in dates.json")
+        existing_dates = [d for d in existing_dates if d != args.date]
+    elif args.date not in existing_dates:
         existing_dates.append(args.date)
     existing_dates = sorted(set(existing_dates))
     with open(dates_path, "w") as f:

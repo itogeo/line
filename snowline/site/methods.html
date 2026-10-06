@@ -140,7 +140,7 @@ snow  = NDSI ≥ 0.4  and not masked</pre>
 python -c "
 import duckdb
 print(duckdb.sql('''
-  INSTALL httpfs; LOAD httpfs; SET s3_region='us-west-2';
+  INSTALL httpfs; LOAD httpfs; SET s3_region='us-west-2'; SET s3_url_style='path'; SET TimeZone='UTC';
   SELECT id, \"eo:cloud_cover\", json_extract_string(assets, '\$.green.href') AS green
   FROM read_parquet('s3://us-west-2.opendata.source.coop/tge-labs/s2-stac-geoparquet/sentinel-2-c1-l2a/year=2026/*.parquet')
   WHERE _tile = '12TVR' AND datetime >= '2026-04-19' AND datetime < '2026-04-20'
@@ -150,6 +150,11 @@ print(duckdb.sql('''
 python snowline/pipeline/fetch_bands.py --date=2026-04-19
 python snowline/pipeline/process_tiles.py --date=2026-04-19</pre>
   <p>The code is at <a href="https://github.com/itogeo/line">github.com/itogeo/line</a>. The Data page has a <em>reproduce</em> button on every scene.</p>
+  <p>Snowline's own maps are open data too. Each date is published as single-band Cloud-Optimized GeoTIFFs (0 ground, 1 snow, 2 cloud, 3 no data; EPSG:4326) in a static <a href="/snow/stac/catalog.json">STAC catalog</a>. Open it in QGIS, or with any STAC client:</p>
+<pre>import pystac, rasterio
+item = pystac.read_file("https://line.itogeospatial.com/snow/stac/snowline-snow-cover/2026-10-03/2026-10-03.json")
+with rasterio.open(item.assets["class_r1c1"].href) as src:
+    snow = (src.read(1) == 1)</pre>
 
   <h2 id="credits">Credits and licence</h2>
   <ul>

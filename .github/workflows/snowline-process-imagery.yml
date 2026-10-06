@@ -71,7 +71,9 @@ jobs:
                       break
                   if r["dt"] in existing:
                       continue
-                  if r.get("s2n", 0) > 0:
+                  # Skip passes with fewer than 2 clear tiles: a map of
+                  # cloud isn't worth several GB of downloads.
+                  if r.get("s2clr", 0) >= 2:
                       out.append(r["dt"])
               out.sort()
               print(f"Found {len(out)} unprocessed dates in last 10 days: {out}")
@@ -92,8 +94,13 @@ jobs:
             echo "=========================================="
             echo "Processing $dt"
             echo "=========================================="
-            bash snowline/pipeline/update_date.sh "$dt" || echo "FAILED $dt — continuing"
+            if bash snowline/pipeline/update_date.sh "$dt"; then
+              python snowline/pipeline/build_snotel_agreement.py --date="$dt" || echo "agreement check failed for $dt"
+            else
+              echo "FAILED $dt — continuing"
+            fi
           done < /tmp/dates_to_process.txt
+          python snowline/pipeline/build_stac.py || echo "STAC build failed"
         env:
           CF_ACCOUNT_ID: 3b134bb7dc7ac46e5a2ffe71302f8d69
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
@@ -108,7 +115,7 @@ jobs:
         run: |
           git config user.name "snowline-bot"
           git config user.email "bot@snowline"
-          git add snowline/site/data/snowline.json snowline/site/data_10m/dates.json
+          git add snowline/site/data_10m/dates.json snowline/site/data/snotel_agreement.json snowline/site/stac
           git add 'snowline/site/data_10m/*/snowline.json' 2>/dev/null || true
           if git diff --staged --quiet; then
             echo "No changes to commit"

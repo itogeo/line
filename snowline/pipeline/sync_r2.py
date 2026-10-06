@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Upload processed Snowline tiles (WebP) to the Cloudflare R2 bucket the site
+Upload processed Snowline tiles (WebP map tiles and GeoTIFF class rasters)
+to the Cloudflare R2 bucket the site
 serves them from, skipping objects that are already there.
 
 The map asks the edge worker for /api/tile/{date}/{file}.webp, and the
@@ -14,9 +15,9 @@ Requires env vars (never commit them):
     CF_API_TOKEN    API token with "Workers R2 Storage: Edit" on the account
 
 Usage:
-    python pipeline/sync_r2.py --check            # what's missing? (lists only)
-    python pipeline/sync_r2.py                    # upload every local date
-    python pipeline/sync_r2.py --date=2026-10-03  # one date
+    python snowline/pipeline/sync_r2.py --check            # what's missing? (lists only)
+    python snowline/pipeline/sync_r2.py                    # upload every local date
+    python snowline/pipeline/sync_r2.py --date=2026-10-03  # one date
 """
 
 from __future__ import annotations
@@ -68,11 +69,14 @@ def list_keys(acct, token, prefix="tiles/"):
     return keys
 
 
+CONTENT_TYPES = {".webp": "image/webp", ".tif": "image/tiff; application=geotiff; profile=cloud-optimized"}
+
+
 def put(acct, token, key, path):
     url = API.format(acct=acct, bucket=BUCKET) + "/" + key
     req = Request(url, method="PUT", data=path.read_bytes(), headers={
         "Authorization": f"Bearer {token}",
-        "Content-Type": "image/webp",
+        "Content-Type": CONTENT_TYPES.get(path.suffix, "application/octet-stream"),
     })
     with urlopen(req, timeout=120) as r:
         return r.status
@@ -90,7 +94,7 @@ def main():
     log(f"{len(have)} tile objects already in R2")
     missing = []
     for d in dates:
-        for f in sorted((DATA_10M / d).glob("*.webp")):
+        for f in sorted([*(DATA_10M / d).glob("*.webp"), *(DATA_10M / d).glob("*.tif")]):
             key = f"tiles/{d}/{f.name}"
             if key not in have:
                 missing.append((key, f))

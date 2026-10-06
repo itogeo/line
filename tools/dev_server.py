@@ -38,10 +38,19 @@ mimetypes.add_type("application/javascript", ".js")
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
+    def do_GET(self):
+        # Same as the worker: /snow and /river need their trailing slash or
+        # the pages' relative links resolve against the site root.
+        p = urllib.parse.urlsplit(self.path)
+        if p.path in ("/", "/snow", "/river"):
+            self.send_response(301)
+            self.send_header("Location", ("/snow" if p.path == "/" else p.path) + "/" + (("?" + p.query) if p.query else ""))
+            self.end_headers()
+            return
+        super().do_GET()
+
     def translate_path(self, path):
         path = urllib.parse.unquote(urllib.parse.urlsplit(path).path)
-        if path in ("/", "/snow"):
-            path = "/snow/"
         for prefix, base in ROUTES:
             if path.startswith(prefix):
                 rel = posixpath.normpath(path[len(prefix):]).lstrip("/")

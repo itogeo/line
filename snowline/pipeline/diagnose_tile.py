@@ -2,7 +2,7 @@
 """Print every bounds value we read or derive for a single date+tile.
 Tells us exactly where a sliver is introduced — the index, the COG, or our code.
 
-Usage:  python pipeline/diagnose_tile.py 2026-04-19 T12TVR
+Usage:  python snowline/pipeline/diagnose_tile.py 2026-04-19 T12TVR
 """
 import os
 import sys
@@ -24,10 +24,13 @@ from lib.aoi import SNOWLINE  # noqa: E402
 BBOX = SNOWLINE.bbox_list
 
 def main():
-    if len(sys.argv) < 3:
-        print("usage: python pipeline/diagnose_tile.py YYYY-MM-DD TILE_ID")
-        sys.exit(1)
-    date_str, target_tile = sys.argv[1], sys.argv[2]
+    import argparse
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("date", help="YYYY-MM-DD")
+    ap.add_argument("tile", help="MGRS tile, e.g. T12TVR or 12TVR")
+    args = ap.parse_args()
+    date_str = args.date
+    target_tile = "T" + s2index.norm_tile(args.tile)
 
     print(f"\n=== DIAGNOSING {target_tile} on {date_str} ===\n")
 

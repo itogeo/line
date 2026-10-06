@@ -21,8 +21,8 @@ finished 2015–2017 and covers only a fraction of 2022, so those years are
 thin in the index, not in reality.
 
 Usage:
-    python pipeline/build_snow_timeline.py              # 2015 → today
-    python pipeline/build_snow_timeline.py --start=2024 # quick smoke test
+    python snowline/pipeline/build_snow_timeline.py              # 2015 → today
+    python snowline/pipeline/build_snow_timeline.py --start=2024 # quick smoke test
 """
 
 from __future__ import annotations

@@ -14,7 +14,7 @@ Requires env vars:
     CF_API_TOKEN    — Cloudflare API token with R2 object read + delete on snowline-tiles
 
 Usage (called by process_imagery.yml after each pipeline run):
-    python pipeline/prune_r2.py --keep-snow 30 --keep-truecolor 10
+    python snowline/pipeline/prune_r2.py --keep-snow 30 --keep-truecolor 10
 """
 import argparse
 import json

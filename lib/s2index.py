@@ -111,8 +111,9 @@ def year_files(year: int) -> tuple[str, ...]:
     """Every non-empty Parquet file that makes up one year, as https URLs.
 
     Read from ``year=YYYY/YYYY.json`` so new ``live-MM`` files are picked up
-    without a code change. Falls back to ``items.parquet`` alone if the JSON
-    can't be read (older years have no live files anyway).
+    without a code change. If the JSON can't be read, globs the year through
+    the anonymous S3 door instead. A year the index hasn't published yet
+    (e.g. early January) returns no files rather than failing the query.
     """
     url = f"{BASE}/year={year}/{year}.json"
     try:
@@ -121,6 +122,9 @@ def year_files(year: int) -> tuple[str, ...]:
         with urllib.request.urlopen(req, timeout=30) as r:
             item = json.load(r)
     except Exception as e:  # noqa: BLE001 - network, 404 for a future year
+        if getattr(e, "code", None) == 404 and year >= datetime.now(timezone.utc).year:
+            log(f"{year} is not in the index yet; skipping it")
+            return ()
         # Fall back to listing the year through the anonymous S3 door, which
         # DuckDB can glob. Slower, but still finds the live files.
         log(f"could not read {url} ({type(e).__name__}); globbing the year instead")
@@ -248,7 +252,7 @@ def reproduce_sql(tiles: Iterable[str], day: str) -> str:
     tiles = sorted({norm_tile(t) for t in tiles})
     y = int(day[:4])
     tile_list = ", ".join(f"'{t}'" for t in tiles)
-    return f"""INSTALL httpfs; LOAD httpfs; SET TimeZone='UTC';
+    return f"""INSTALL httpfs; LOAD httpfs; SET s3_region='us-west-2'; SET s3_url_style='path'; SET TimeZone='UTC';
 -- Sentinel-2 scenes Snowline used for {day}
 SELECT id, _tile, datetime, "eo:cloud_cover", "s2:snow_ice_percentage",
        json_extract_string(assets, '$.green.href')  AS green,

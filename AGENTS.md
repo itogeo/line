@@ -64,6 +64,11 @@ These are every tile whose footprint intersects the bbox in the index
   were already shifted. Don't apply an offset to `sentinel-2-l2a`.
 * Snow: `NDSI = (green − swir16)/(green + swir16) ≥ 0.4`, excluding SCL
   classes 0, 3, 8, 9, 10. The grid is 0.0003° (3×2 chunks, `snow_r{row}c{col}.webp`).
+* Until 2026-10-06 `fetch_bands.py` gave cached windows a transform that was
+  off by up to half a source pixel (it used the fractional window while
+  `read()` used the rounded one; found by an independent review). Maps
+  processed before the fix are shifted by at most ~10 m, well inside one
+  0.0003° output pixel.
 
 ## Published files
 
@@ -75,11 +80,12 @@ ESA's `s2:snow_ice_percentage`, **not** Snowline's NDSI map.
 
 `snowline/site/data/sat_availability.json`: one row per pass date. Fields:
 `dt, s2n` (tiles imaged, excluding slivers with ≥95% nodata), `s2clr`
-(tiles under 30% cloud), `s2cc` (mean cloud), `snow_pct`
-(nodata-weighted mean of `s2:snow_ice_percentage`), `q`
-(`excellent` ≥10 clear and mean cloud <20, `good` ≥5 clear, `partial` ≥2
+(tiles under 30% cloud **and** under 50% nodata), `s2cc` (mean cloud),
+`snow_pct` (nodata-weighted mean of `s2:snow_ice_percentage`), `q`
+(`excellent` ≥8 clear and mean cloud <20, `good` ≥4 clear, `partial` ≥2
 clear, otherwise `cloudy`), `why` (plain English), `tiles`,
-`clear_tiles`.
+`clear_tiles`. The thresholds are in the file under `thresholds` and in
+`classify()`.
 
 `snowline/site/data_10m/{date}/snowline.json`: one per map. `scene_date,
 snow_cover_pct` (of imaged pixels), `coverage_pct` (of the bbox),
@@ -90,7 +96,13 @@ the older pipeline have `tiles[]` instead of `chunks[]` and no `scenes`.
 
 `snowline/site/data_10m/dates.json`: `{"dates": [...], "latest": ...}`.
 A date is listed only after its tiles reached R2 (enforced in CI by
-`update_date.sh`).
+`update_date.sh`), and only if the map covers at least 10% of the area.
+
+`snowline/site/data_10m/{date}/snow_r{row}c{col}.tif`: single-band uint8
+COGs, EPSG:4326, `0 ground, 1 snow, 2 cloud, 3 nodata`, nodata value
+255. Written by `export_cogs.py` from the snow WebPs and served from R2 at
+`/snow/api/tile/{date}/{file}` with HTTP Range support. Catalogued in the
+static STAC at `/snow/stac/catalog.json` (only dates in `dates.json`).
 
 `snowline/site/data/snow_timeline.json`: per tile, `[date, snow_pct,
 cloud_pct]` for scenes with cloud ≤20 and nodata <50, from 2015 on.

@@ -1,3 +1,23 @@
+// Map a site path onto the static asset that Cloudflare Pages serves with a
+// 200. Pages uses "pretty" URLs: /x/index.html and /x/page.html answer with
+// a 308 to /x/ and /x/page, which would leak /snowline/site/... into the
+// address bar and break relative links. So ask for the pretty form directly.
+function prettyAsset(base, effectivePath) {
+  let p = effectivePath || '/';
+  if (p.endsWith('/index.html')) p = p.slice(0, -'index.html'.length);
+  else if (p.endsWith('.html')) p = p.slice(0, -'.html'.length);
+  return base + p;
+}
+
+// "bytes=a-b" | "bytes=a-" | "bytes=-n" → an R2 range option, or null.
+function parseRange(header) {
+  const m = /^bytes=(\d*)-(\d*)$/.exec((header || '').trim());
+  if (!m || (m[1] === '' && m[2] === '')) return null;
+  if (m[1] === '') return { suffix: Number(m[2]) };
+  const offset = Number(m[1]);
+  return m[2] === '' ? { offset } : { offset, length: Number(m[2]) - offset + 1 };
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -12,7 +32,7 @@ export default {
       if (host.includes('snow')) newBase = 'https://line.itogeospatial.com/snow';
       else if (host.includes('river')) newBase = 'https://line.itogeospatial.com/river';
       if (newBase) {
-        const suffix = path === '/' ? '' : path;
+        const suffix = path === '/' ? '/' : path;
         return Response.redirect(newBase + suffix + url.search, 301);
       }
     }
@@ -21,6 +41,12 @@ export default {
     // Path prefix wins; hostname fallback for .pages.dev testing
     let site = null;
     let effectivePath = path;
+
+    // /snow and /river need their trailing slash, or the pages' relative
+    // links (data/..., data_10m/...) resolve against the site root.
+    if (path === '/snow' || path === '/river') {
+      return Response.redirect(url.origin + path + '/' + url.search + url.hash, 301);
+    }
 
     if (path === '/snow' || path.startsWith('/snow/')) {
       site = 'snow';
@@ -48,16 +74,28 @@ export default {
         const tilePath = effectivePath.slice('/api/tile'.length);
         const key = 'tiles' + tilePath;
         if (env.SNOWLINE_BUCKET) {
-          const obj = await env.SNOWLINE_BUCKET.get(key);
+          // GeoTIFFs are Cloud-Optimized: honour Range so GDAL/QGIS/rasterio
+          // can read just the blocks they need straight from this URL.
+          const isTif = key.endsWith('.tif');
+          const range = isTif ? parseRange(request.headers.get('range')) : null;
+          const obj = await env.SNOWLINE_BUCKET.get(key, range ? { range } : undefined);
           if (obj) {
-            return new Response(obj.body, {
-              headers: {
-                'Content-Type': 'image/webp',
-                'Cache-Control': 'public, max-age=86400',
-                'Access-Control-Allow-Origin': '*',
-                'X-Tile-Source': 'r2',
-              },
-            });
+            const headers = {
+              'Content-Type': isTif ? 'image/tiff' : 'image/webp',
+              'Cache-Control': 'public, max-age=86400',
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Expose-Headers': 'Content-Range, Content-Length, Accept-Ranges',
+              'X-Tile-Source': 'r2',
+            };
+            if (isTif) headers['Accept-Ranges'] = 'bytes';
+            if (range && obj.size !== undefined) {
+              const r = range;
+              const start = 'suffix' in r ? obj.size - r.suffix : (r.offset || 0);
+              const len = Math.min('suffix' in r ? r.suffix : (r.length ?? obj.size - start), obj.size - start);
+              headers['Content-Range'] = `bytes ${start}-${start + len - 1}/${obj.size}`;
+              return new Response(obj.body, { status: 206, headers });
+            }
+            return new Response(obj.body, { headers });
           }
         }
         // Not in R2 (or no R2 binding): try the static assets (local dev).
@@ -197,14 +235,17 @@ export default {
       }
 
       // Static assets → rewrite to snowline/site/ prefix
-      // Explicitly add .html for extension-less paths to prevent ASSETS from 308-redirecting
-      // and leaking internal paths (e.g. /snowline/site/webcam) into the browser URL bar.
-      const snowPath = (effectivePath === '/' || effectivePath === '')
-        ? '/snowline/site/index.html'
-        : (effectivePath.includes('.') || effectivePath.endsWith('/'))
-          ? '/snowline/site' + effectivePath
-          : '/snowline/site' + effectivePath + '.html';
-      return env.ASSETS.fetch(new Request(new URL(snowPath, url), request));
+      // Ask for the pretty URL so Pages answers 200 instead of a 308 to /snowline/site/...
+      const snowPath = prettyAsset('/snowline/site', effectivePath);
+      const asset = await env.ASSETS.fetch(new Request(new URL(snowPath, url), request));
+      // Open data (scene tables, timelines, STAC catalog) is readable from
+      // any origin, so STAC browsers and notebooks can load it directly.
+      if (/^\/(data|data_10m|stac)\//.test(effectivePath)) {
+        const h = new Headers(asset.headers);
+        h.set('Access-Control-Allow-Origin', '*');
+        return new Response(asset.body, { status: asset.status, headers: h });
+      }
+      return asset;
     }
 
     // ── RIVER ──────────────────────────────────────────────────────────────────
@@ -527,11 +568,7 @@ export default {
       }
 
       // Static assets → rewrite to riverline/site/ prefix
-      const riverPath = (effectivePath === '/' || effectivePath === '')
-        ? '/riverline/site/index.html'
-        : (effectivePath.includes('.') || effectivePath.endsWith('/'))
-          ? '/riverline/site' + effectivePath
-          : '/riverline/site' + effectivePath + '.html';
+      const riverPath = prettyAsset('/riverline/site', effectivePath);
       return env.ASSETS.fetch(new Request(new URL(riverPath, url), request));
     }
 

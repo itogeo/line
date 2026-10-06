@@ -9,8 +9,9 @@ Open, reproducible outdoor-conditions maps for Montana, built from free public d
 | | |
 |---|---|
 | **Map** | [line.itogeospatial.com/snow](https://line.itogeospatial.com/snow): today's snow line, every clear day of the season on a timeline, shareable links (`#date=2026-02-10&map=10/45.5/-111.0`) |
-| **Data** | [/snow/metadata.html](https://line.itogeospatial.com/snow/metadata.html): every Sentinel-2 scene behind the map with links to the files, a *reproduce* button on each, and a decade of per-tile snow history |
+| **Data** | [/snow/metadata.html](https://line.itogeospatial.com/snow/metadata.html): every Sentinel-2 scene behind the map with links to the files, a *reproduce* button on each, and per-tile snow history since 2018 |
 | **Methods** | [/snow/methods.html](https://line.itogeospatial.com/snow/methods.html): the algorithm, the SNOTEL agreement score, and where it goes wrong |
+| **Open data** | [/snow/stac/catalog.json](https://line.itogeospatial.com/snow/stac/catalog.json): every map as Cloud-Optimized GeoTIFFs (0 ground, 1 snow, 2 cloud, 3 no data) in a static STAC catalog |
 
 ## How it works
 
@@ -39,7 +40,7 @@ Find the Sentinel-2 scenes behind any Snowline date:
 ```python
 import duckdb
 duckdb.sql("""
-  INSTALL httpfs; LOAD httpfs; SET s3_region='us-west-2'; SET TimeZone='UTC';
+  INSTALL httpfs; LOAD httpfs; SET s3_region='us-west-2'; SET s3_url_style='path'; SET TimeZone='UTC';
   SELECT id, _tile, "eo:cloud_cover", "s2:snow_ice_percentage",
          json_extract_string(assets, '$.green.href')  AS green,
          json_extract_string(assets, '$.swir16.href') AS swir16
@@ -48,7 +49,7 @@ duckdb.sql("""
 """).show()
 ```
 
-Rebuild a whole map from the raw imagery (about 2 GB of range reads and a few minutes):
+Rebuild a map from the raw imagery. One tile is about 0.5 GB of range reads; a full date is several GB and a few minutes:
 
 ```bash
 python -m venv .venv && source .venv/bin/activate

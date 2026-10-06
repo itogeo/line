@@ -26,10 +26,10 @@ script. Splitting it out gives us:
   - Cheap re-encoding: process_tiles.py runs from local cache, no S3.
 
 Usage:
-    python pipeline/fetch_bands.py --date=2026-04-04
-    python pipeline/fetch_bands.py --date=2026-04-04 --workers=8
-    python pipeline/fetch_bands.py --date=2026-04-04 --force  # ignore cache
-    python pipeline/fetch_bands.py --date=2026-04-04 --tiles=12TVR  # smoke test, one tile
+    python snowline/pipeline/fetch_bands.py --date=2026-04-04
+    python snowline/pipeline/fetch_bands.py --date=2026-04-04 --workers=8
+    python snowline/pipeline/fetch_bands.py --date=2026-04-04 --force  # ignore cache
+    python snowline/pipeline/fetch_bands.py --date=2026-04-04 --tiles=12TVR  # smoke test, one tile
 """
 
 import argparse
@@ -39,7 +39,6 @@ import time
 import traceback
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timedelta
 from pathlib import Path
 
 # GDAL HTTP tuning — minimal set, conservative.
@@ -131,6 +130,12 @@ def fetch_band(href, out_path, scale=1.0, offset=0.0):
                 win = win.intersection(rasterio.windows.Window(0, 0, src.width, src.height))
                 if win.width < 1 or win.height < 1:
                     return False  # window outside tile
+                # Snap to whole pixels. read() rounds a fractional window to
+                # the nearest pixel, so the transform must use the same
+                # rounded window or the output shifts by a fraction of a pixel.
+                win = rasterio.windows.Window(
+                    round(win.col_off), round(win.row_off), round(win.width), round(win.height),
+                ).intersection(rasterio.windows.Window(0, 0, src.width, src.height))
                 arr = harmonize(src.read(1, window=win), scale, offset)
                 win_tf = src.window_transform(win)
 
@@ -191,8 +196,21 @@ def fetch_tile(row, tile_dir, force, workers):
     success_count, error)."""
     tile_id = tile_label(row)
     tile_dir.mkdir(parents=True, exist_ok=True)
-    if force and (tile_dir / "meta.json").exists():
-        (tile_dir / "meta.json").unlink()
+    meta_p = tile_dir / "meta.json"
+    if meta_p.exists() and not force:
+        # The cache is keyed by tile and date, but the best scene for that
+        # tile-day can change (a reprocessed scene, a better datatake). Never
+        # mix bands from two scenes: start the tile over if the id changed.
+        try:
+            cached_id = json.loads(meta_p.read_text()).get("scene_id")
+        except Exception:
+            cached_id = None
+        if cached_id != row["id"]:
+            log(f"  {tile_id}: cached scene {cached_id} != {row['id']}; re-fetching")
+            force = True
+    if force:
+        for f in tile_dir.glob("*"):
+            f.unlink()
     write_tile_meta(row, tile_dir)
     todo = []
     skipped = 0

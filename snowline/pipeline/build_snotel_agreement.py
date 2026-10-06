@@ -19,8 +19,8 @@ when it covers the date, otherwise from the NRCS AWDB API.
 Writes site/data/snotel_agreement.json.
 
 Usage:
-    python pipeline/build_snotel_agreement.py              # every date with tiles on disk
-    python pipeline/build_snotel_agreement.py --date=2026-10-03
+    python snowline/pipeline/build_snotel_agreement.py              # every date with tiles on disk
+    python snowline/pipeline/build_snotel_agreement.py --date=2026-10-03
 """
 
 from __future__ import annotations

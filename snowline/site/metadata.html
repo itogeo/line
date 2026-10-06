@@ -143,7 +143,7 @@
 <div class="header">
   <h1>SNOWLINE DATA</h1>
   <div class="subtitle">Every satellite scene behind the map, a decade of snow history, and the ground stations that check it. All open, all reproducible.</div>
-  <div class="back"><a href="/snow/">&larr; Back to map</a> &middot; <a href="/snow/methods.html">How the map is made</a></div>
+  <div class="back"><a href="/snow/">&larr; Back to map</a> &middot; <a href="/snow/methods.html">How the map is made</a> &middot; <a href="/snow/stac/catalog.json" title="Every Snowline map as Cloud-Optimized GeoTIFFs, in a static STAC catalog">Download the maps (STAC + GeoTIFF)</a></div>
 </div>
 
 <div class="tabs" role="tablist">
@@ -179,7 +179,7 @@
     <div id="scene-more"></div>
     <details class="repro" open>
       <summary>Reproduce it yourself</summary>
-      <div class="desc" style="margin-top:8px">Install DuckDB (<code>pip install duckdb</code>, or the CLI) and run this. It follows the filters above. DuckDB fetches only the row groups for these tiles over HTTP, so it takes seconds and a few megabytes rather than the 4.8&nbsp;GB file.</div>
+      <div class="desc" style="margin-top:8px">Install DuckDB (<code>pip install duckdb</code>, or the CLI) and run this. It follows the filters above. DuckDB fetches only the row groups for these tiles over HTTP: a few seconds for one month, a minute or two for the whole year, and a few megabytes rather than the 4.8&nbsp;GB file.</div>
       <pre id="repro-sql"></pre>
       <div class="desc">More examples are in <a href="https://data.source.coop/tge-labs/s2-stac-geoparquet/sentinel-2-c1-l2a/AGENTS.md" target="_blank" rel="noopener">the index's AGENTS.md</a> and Snowline's <a href="https://github.com/itogeo/line/blob/main/lib/s2index.py" target="_blank" rel="noopener"><code>lib/s2index.py</code></a>.</div>
     </details>

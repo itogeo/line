@@ -11,6 +11,12 @@ Used by snowline-daily.yml to decide whether to dispatch snowline-process-imager
 
 from __future__ import annotations
 
+if __name__ == "__main__":
+    # --help before the heavy imports below (and before anything runs).
+    import argparse
+    argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter).parse_args()
+
+
 import json
 from pathlib import Path
 

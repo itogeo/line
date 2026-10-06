@@ -8,12 +8,17 @@ Reads ESA WorldCover from Microsoft Planetary Computer; class 10 = tree cover.
 Needs requirements-assets.txt (pystac-client, planetary-computer).
 
 Usage:
-    python pipeline/build_forest_mask.py
+    python snowline/pipeline/build_forest_mask.py
 
 Output:
     site/data/forest_mask.webp
     site/data/forest_mask.json  (bounds metadata)
 """
+
+if __name__ == "__main__":
+    # --help before the heavy imports below (and before anything runs).
+    import argparse
+    argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter).parse_args()
 
 import json
 import os

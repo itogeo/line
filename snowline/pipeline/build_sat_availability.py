@@ -17,8 +17,8 @@ those rows this writes:
                                     URLs straight from the index.
 
 Usage:
-    python pipeline/build_sat_availability.py               # last 400 days
-    python pipeline/build_sat_availability.py --days=30     # quick run
+    python snowline/pipeline/build_sat_availability.py               # last 400 days
+    python snowline/pipeline/build_sat_availability.py --days=30     # quick run
 """
 
 from __future__ import annotations
@@ -41,7 +41,8 @@ OUT_SCENES = DATA_DIR / "scenes.json"
 TOTAL_TILES = len(SNOWLINE.tiles)
 
 CLEAR_CLOUD = 30      # a tile is "clear" below this scene cloud %
-SLIVER_NODATA = 95    # a tile this empty is an orbit-edge sliver; not counted as coverage
+SLIVER_NODATA = 95    # a tile this empty is an orbit-edge sliver; not counted at all
+CLEAR_NODATA = 50     # a "clear" tile must also be at least half imaged
 
 
 def log(msg):
@@ -49,9 +50,11 @@ def log(msg):
 
 
 def classify(n_clear, mean_cloud):
-    if n_clear >= 10 and mean_cloud < 20:
+    # Counts are of tiles under CLEAR_CLOUD cloud and at least half imaged;
+    # one orbit fully images about 6-9 of the 12 tiles.
+    if n_clear >= 8 and mean_cloud < 20:
         return "excellent"
-    if n_clear >= 5:
+    if n_clear >= 4:
         return "good"
     if n_clear >= 2:
         return "partial"
@@ -68,6 +71,8 @@ def explain(q, n_tiles, n_clear, mean_cloud, snow):
         return f"Mostly clear — {n_clear} clear tiles, enough for a useful snow map.{snow_txt}"
     if q == "partial":
         return f"Partial — {n_clear} clear tiles; the rest of the area is cloudy or outside this orbit."
+    if mean_cloud < CLEAR_CLOUD:
+        return f"Edge of the swath — {n_tiles} tiles only partly imaged; too little of the area for a map."
     return f"Too cloudy — {n_tiles} tiles imaged, average {mean_cloud:.0f}% cloud. Snow hidden by clouds."
 
 
@@ -93,7 +98,9 @@ def main():
         if not tiles:
             continue
         n = len(tiles)
-        clear = [r for r in tiles if (r["cloud"] if r["cloud"] is not None else 100) < CLEAR_CLOUD]
+        clear = [r for r in tiles
+                 if (r["cloud"] if r["cloud"] is not None else 100) < CLEAR_CLOUD
+                 and (r["nodata"] or 0) < CLEAR_NODATA]
         mean_cloud = round(sum((r["cloud"] or 0) for r in tiles) / n, 1)
         # Area-weighted by valid (non-nodata) share of each tile.
         w = [(100 - (r["nodata"] or 0)) for r in tiles]
@@ -154,7 +161,7 @@ def main():
         "generated": generated,
         "source": source,
         "aoi": {"bbox": SNOWLINE.bbox_list, "tiles": list(SNOWLINE.tiles)},
-        "thresholds": {"clear_cloud_pct": CLEAR_CLOUD, "sliver_nodata_pct": SLIVER_NODATA},
+        "thresholds": {"clear_cloud_pct": CLEAR_CLOUD, "clear_nodata_pct": CLEAR_NODATA, "sliver_nodata_pct": SLIVER_NODATA},
         "stats": stats,
         "rows": avail_rows,
         "s2_table": s2_table,
