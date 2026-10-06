@@ -1644,7 +1644,9 @@ async function addHistoricalLayer() {
       id: 'hist-overlay', type: 'raster', source: 'hist-src',
       paint: { 'raster-opacity': 0.5 },
       layout: { visibility: vis },
-    }, 'snow-overlay'); // insert below snow overlay
+    }, // insert below the snow layers (chunk maps have no 'snow-overlay')
+    currentTileLayerIds.find(id => id.startsWith('layer-snow-') && map.getLayer(id))
+      || (map.getLayer('snow-overlay') ? 'snow-overlay' : undefined));
   }
 }
 

@@ -4,7 +4,7 @@
 
 **Written:** 2026-10-05 · **Owner:** Ian Van Dusen (Ito Geospatial)
 
-> **Progress 2026-10-05 (evening session).** Phases 0–3 are done except where marked, plus 6.1 (STAC + COGs) and 6.2 (launch draft). Snowline launch target: **2026-10-10**. Two blockers are Ian's: the Cloudflare R2 setup (`docs/cloudflare-setup.md`; the live map has served no tiles since the monorepo move) and the repo visibility decision (0.2). Findings worth knowing: the C1 switch is pixel-identical after the offset fix, and the SNOTEL check exposed bad Nov–Mar maps from the old per-tile pipeline, so the whole 2025–26 season was reprocessed.
+> **Progress 2026-10-05 (evening session).** Phases 0–3 are done except where marked, plus 6.1 (STAC + COGs) and 6.2 (launch draft). Snowline launch target: **2026-10-10**. Two blockers are Ian's: the Cloudflare R2 setup (`docs/cloudflare-setup.md`; the live map has served no tiles since the monorepo move) and the repo visibility decision (0.2). Findings worth knowing: the C1 switch is pixel-identical after the offset fix, and the SNOTEL check exposed bad Nov–Mar maps from the old per-tile pipeline. Snow is now `NDSI ≥ 0.4 or SCL = 11` (better in midwinter shadow, no new false snow), and the whole 2025–26 season was reprocessed: 39 listed maps, 82% station-day agreement with SNOTEL. An independent review agent followed the README from zero, and its 14 findings were fixed (see the commit "Fixes from an independent release review").
 
 ---
 

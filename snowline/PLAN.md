@@ -87,7 +87,9 @@ were never set up, so no snow layer has shown since the monorepo move.
   - New: `build_snow_timeline.py`, `build_snotel_agreement.py`, `sync_r2.py`, `tools/dev_server.py`, `season.js`, `data.js`, `methods.html`.
   - Map: seasons are dynamic (were hard-coded 2025-26), URL hash state, scene provenance + SNOTEL ground check in the panel, pass ticks (clear/partial/cloudy) on the timeline, next-pass chip, readable contrast.
   - Data page: Scenes table with COG links + DuckDB reproduce, Snow history charts, SNOTEL tab picks its season.
-  - SNOTEL check showed the old per-tile maps missed most snow Nov–Mar (2025-11-30: 4/23 → 20/23 after reprocessing). Whole 2025–26 season reprocessed with the current pipeline.
+  - SNOTEL check showed the old per-tile maps missed most snow Nov–Mar (2025-11-30: 4/23 → 22/23 now). Snow = NDSI ≥ 0.4 **or SCL 11** (2026-10-06). Whole 2025–26 season reprocessed: 39 listed maps, 530/643 station-days agree (82%).
+  - Open data: class COGs per map (`export_cogs.py`) + static STAC (`build_stac.py`), served from R2 with Range.
+  - Open question for Ian: on the Topo basemap the snow layer is desaturated to white at 45% opacity and sits under the S2 imagery, so the snow classification is hard to see by default. Consider a higher default opacity or snow above imagery.
 
 - **2026-06-17** — Imagery migrated from git to CF R2. Added `prune_r2.py`, updated `update_date.sh` with R2 upload loop, updated `_worker.js` with `/api/tile/` route + Pages fallback, updated `index.html` tile URLs. One-time CF setup (bucket + binding + secrets) still needed from user.
 - **2026-04-22** — Webcam page fully built. MDT posId bug fixed (10x off). Timestamps added. Mobile CSS. Golf cams (Cottonwood Hills, Valley View) removed — went offline. MDT GPS coords corrected to road-precise positions. All pushed and live.
