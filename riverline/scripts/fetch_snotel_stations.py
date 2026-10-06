@@ -3,7 +3,7 @@
 Run once to pre-bake the station list; re-run when new stations are added.
 
 Usage:
-  /Users/ianvandusen/anaconda3/envs/geodata/bin/python riverline/scripts/fetch_snotel_stations.py
+  python riverline/scripts/fetch_snotel_stations.py
 """
 import json
 from pathlib import Path

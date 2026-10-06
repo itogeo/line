@@ -6,8 +6,7 @@ upstream to collect all contributing basins, then find which SNOTEL
 stations sit in those basins.  Groups gauges by parsed river name.
 
 Usage (takes 2–5 min on the 160 MB shapefile):
-  /Users/ianvandusen/anaconda3/envs/geodata/bin/python \
-      /Users/ianvandusen/Desktop/Ito/itogeo/repos/line/riverline/scripts/build_hierarchy.py
+  python riverline/scripts/build_hierarchy.py
 
 Output:
   riverline/site/data/river_hierarchy.json
@@ -15,7 +14,7 @@ Output:
 import os
 # Must be set before geopandas/pyproj import — fixes PROJ db path conflict
 # between base conda PROJ and the geodata env's PROJ.
-_PROJ_DATA = '/Users/ianvandusen/anaconda3/envs/geodata/share/proj'
+_PROJ_DATA = os.environ.get('GEODATA_PROJ_DIR', '')  # optional: a conda env's share/proj
 if os.path.isdir(_PROJ_DATA):
     os.environ['PROJ_DATA'] = _PROJ_DATA
     os.environ['PROJ_LIB']  = _PROJ_DATA

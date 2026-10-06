@@ -2,7 +2,7 @@
 
 Usage (run once, from repo root):
   cd repos/line/riverline
-  /Users/ianvandusen/anaconda3/envs/geodata/bin/python scripts/migrate_to_d1.py
+  python scripts/migrate_to_d1.py
   wrangler d1 execute riverline-db --file=migration.sql --remote
 
 Schema: site_id + date composite PK supports multi-gauge.

@@ -55,14 +55,21 @@ export default {
                 'Content-Type': 'image/webp',
                 'Cache-Control': 'public, max-age=86400',
                 'Access-Control-Allow-Origin': '*',
+                'X-Tile-Source': 'r2',
               },
             });
           }
         }
-        return env.ASSETS.fetch(new Request(
+        // Not in R2 (or no R2 binding): try the static assets (local dev).
+        // X-Tile-Source says which, so a blank map is quick to diagnose:
+        //   curl -sI https://line.itogeospatial.com/snow/api/tile/<date>/snow_r0c0.webp
+        const fb = await env.ASSETS.fetch(new Request(
           new URL('/snowline/site/data_10m' + tilePath, url),
           request,
         ));
+        const h = new Headers(fb.headers);
+        h.set('X-Tile-Source', fb.ok ? 'assets' : (env.SNOWLINE_BUCKET ? 'missing-in-r2' : 'no-r2-binding'));
+        return new Response(fb.body, { status: fb.status, headers: h });
       }
 
       // Image proxy (webcams blocked by CORS)

@@ -7,8 +7,7 @@ The list endpoint (?limit=N) has been unstable; this script uses a two-phase app
   Phase 2: Fall back to querying NOAA API list with small pages + retries
 
 Usage:
-  /Users/ianvandusen/anaconda3/envs/geodata/bin/python \
-      /Users/ianvandusen/Desktop/Ito/itogeo/repos/line/riverline/scripts/build_noaa_gauges.py
+  python riverline/scripts/build_noaa_gauges.py
 
 Output:
   riverline/site/data/noaa_gauges.json

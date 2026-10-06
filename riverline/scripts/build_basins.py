@@ -13,8 +13,7 @@ the map's "highlight upstream basins" feature.
 Takes 5–15 minutes on the 160 MB shapefile.  Run once, commit outputs.
 
 Usage:
-  /Users/ianvandusen/anaconda3/envs/geodata/bin/python \
-      /Users/ianvandusen/Desktop/Ito/itogeo/repos/line/riverline/scripts/build_basins.py
+  python riverline/scripts/build_basins.py
 
 Input:
   riverline/raw/hybas_na_lev12_v1c.shp   (or .zip)
@@ -28,7 +27,7 @@ import os
 import zipfile
 
 # Must be set before geopandas/pyproj import — fixes PROJ db path conflict
-_PROJ_DATA = "/Users/ianvandusen/anaconda3/envs/geodata/share/proj"
+_PROJ_DATA = os.environ.get('GEODATA_PROJ_DIR', '')  # optional: a conda env's share/proj
 if os.path.isdir(_PROJ_DATA):
     os.environ["PROJ_DATA"] = _PROJ_DATA
     os.environ["PROJ_LIB"] = _PROJ_DATA

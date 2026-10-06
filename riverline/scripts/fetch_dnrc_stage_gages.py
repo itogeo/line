@@ -4,8 +4,7 @@ Fetch all active DNRC StAGE hydrology stations from Layer 0 (locations_spatial).
 Returns 316 active stations with LocationID, name, basin, county, coordinates.
 
 Usage:
-  /Users/ianvandusen/anaconda3/envs/geodata/bin/python \
-      /Users/ianvandusen/Desktop/Ito/itogeo/repos/line/riverline/scripts/fetch_dnrc_stage_gages.py
+  python riverline/scripts/fetch_dnrc_stage_gages.py
 
 Output:
   riverline/site/data/dnrc_gauges.json   (GeoJSON FeatureCollection, ~316 features)

@@ -2,7 +2,7 @@
 
 > **Workflow note.** This file is the **load-me-first** index for the entire Line Network. Read it at the start of any Claude session that touches `repos/line/`. It points to each project's own `PLAN.md` for detail. Update it when project status changes — keep it short, this is an index, not a plan in itself.
 
-**Last updated:** 2026-06-17
+**Last updated:** 2026-10-05. Snowline now finds scenes in the S2 STAC GeoParquet index; see `AGENTS.md` and `GUIDE.md`.
 
 ---
 
@@ -12,7 +12,7 @@ A family of four sibling websites under the ItoGeo umbrella, each focused on a d
 
 | Project | Domain | Status | Plan |
 |---------|--------|--------|------|
-| **Snowline** | Snow cover + depth (SW Montana) | **Live** at [snowline.itogeospatial.com](https://snowline.itogeospatial.com) | [snowline/](./snowline/) — see also [memory: HLS strategy](/Users/ianvandusen/.claude/projects/-Users-ianvandusen-Desktop-Ito-itogeo/memory/project_snowline_hls_strategy.md) |
+| **Snowline** | Snow cover + depth (SW Montana) | **Live** at [line.itogeospatial.com/snow](https://line.itogeospatial.com/snow). Open-source launch 2026-10-10 | [snowline/PLAN.md](./snowline/PLAN.md) |
 | **RiverLine** | River discharge + forecasts | **Active** — Phase 0 complete, Phase 1 next | [riverline/PLAN.md](./riverline/PLAN.md) |
 | **SkyLine** | Weather for the outdoor community | Future / scaffolded | [skyline/](./skyline/) — README only, no plan yet |
 | **DataLine** | (TBD — empty directory) | Future | [dataline/](./dataline/) — empty |

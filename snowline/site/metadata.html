@@ -3,10 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Snowline — Data Catalog</title>
+<title>Snowline Data</title>
+<meta name="description" content="Every Sentinel-2 scene behind the Snowline snow map, a decade of per-tile snow history, and SNOTEL ground truth for SW Montana. Open data, reproducible with DuckDB.">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700&display=swap" rel="stylesheet">
 <style>
-  :root { --bg:#0b0f1a; --panel:rgba(11,15,26,0.95); --border:rgba(79,195,247,0.12); --accent:#4FC3F7; --text:#e0e4ec; --text-muted:#6b7689; --text-dim:#4a5468; --mono:'JetBrains Mono',monospace; --sans:'DM Sans',-apple-system,sans-serif; }
+  :root { --bg:#0b0f1a; --panel:rgba(11,15,26,0.95); --border:rgba(79,195,247,0.12); --accent:#4FC3F7; --text:#e0e4ec; --text-muted:#9aa6b8; --text-dim:#6f7b8f; --mono:'JetBrains Mono',monospace; --sans:'DM Sans',-apple-system,sans-serif; }
   * { margin:0; padding:0; box-sizing:border-box; }
   body { font-family:var(--sans); background:var(--bg); color:var(--text); padding:24px; max-width:1200px; margin:0 auto; }
   a { color:var(--accent); text-decoration:none; }
@@ -62,6 +63,44 @@
   .snotel-chart-info { display:flex; gap:16px; font-size:10px; color:var(--text-muted); margin-top:4px; }
   .loading { font-family:var(--mono); font-size:12px; color:var(--text-dim); padding:20px; }
 
+  /* Scenes tab */
+  .filter-field { display:inline-flex; align-items:center; gap:6px; }
+  .filter-select { background:rgba(255,255,255,0.04); color:var(--text); border:1px solid rgba(255,255,255,0.1); border-radius:4px; font-family:var(--mono); font-size:11px; padding:4px 6px; }
+  .filter-check { font-family:var(--mono); font-size:10px; color:var(--text-muted); display:inline-flex; gap:5px; align-items:center; cursor:pointer; }
+  .filter-chip { font-family:var(--mono); font-size:10px; padding:3px 8px; border-radius:999px; background:rgba(79,195,247,0.12); color:var(--accent); cursor:pointer; }
+  #f-cloud { width:110px; accent-color:var(--accent); }
+  #copy-sql { margin-left:auto; }
+  .table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; border:1px solid var(--border); border-radius:8px; }
+  .table-wrap table { min-width:720px; }
+  td.num { text-align:right; font-variant-numeric:tabular-nums; }
+  th.num { text-align:right; }
+  .thumb { width:44px; height:44px; object-fit:cover; border-radius:3px; display:block; background:rgba(255,255,255,0.04); }
+  .row-links a { margin-right:8px; white-space:nowrap; }
+  .row-links button { background:none; border:1px solid rgba(255,255,255,0.12); color:var(--text-muted); border-radius:3px; font-family:var(--mono); font-size:9px; padding:2px 6px; cursor:pointer; }
+  .row-links button:hover { color:var(--accent); border-color:var(--accent); }
+  .mapped-dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--accent); margin-left:6px; vertical-align:middle; }
+  #scene-more { margin:10px 0; }
+  .repro { margin:18px 0 8px; }
+  .repro summary { font-family:var(--mono); font-size:12px; color:var(--accent); cursor:pointer; }
+  .repro pre, pre.sql { background:rgba(0,0,0,0.35); border:1px solid var(--border); border-radius:6px; padding:12px; overflow-x:auto; font-family:var(--mono); font-size:11px; line-height:1.55; color:#cfe6f5; white-space:pre; }
+  .source-line { font-size:11px; color:var(--text-muted); margin-top:14px; line-height:1.6; }
+  .chart-box { position:relative; background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:8px; padding:10px; min-height:120px; }
+  .chart-box svg { display:block; width:100%; height:auto; }
+  .caveat { margin-top:8px; font-size:11px; }
+  .multiples { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:10px; }
+  .multiples .chart-box { padding:8px; min-height:0; }
+  .mult-title { font-family:var(--mono); font-size:10px; color:var(--text-muted); margin-bottom:4px; display:flex; justify-content:space-between; }
+  .viz-tip { position:fixed; pointer-events:none; z-index:500; background:#111827; border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-family:var(--mono); font-size:10px; color:var(--text); box-shadow:0 4px 14px rgba(0,0,0,0.4); display:none; max-width:260px; }
+  .viz-tip b { color:var(--accent); font-weight:600; }
+  .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:#111827; border:1px solid var(--accent); color:var(--text); font-family:var(--mono); font-size:11px; padding:8px 14px; border-radius:6px; z-index:600; display:none; }
+  @media (max-width:640px) {
+    body { padding:16px; }
+    .top-nav { margin:-16px -16px 16px; padding:0 12px; overflow-x:auto; }
+    .header h1 { font-size:22px; }
+    #copy-sql { margin-left:0; }
+    .tabs { overflow-x:auto; }
+  }
+
   /* Top nav */
   .top-nav { height:44px; background:rgba(11,15,26,0.97); border-bottom:1px solid var(--border); display:flex; align-items:center; padding:0 20px; gap:10px; position:sticky; top:0; z-index:200; margin:-24px -24px 24px; }
   body { padding-top:0; }
@@ -97,69 +136,75 @@
     <a href="/snow/">Map</a>
     <a href="/snow/webcam.html">Webcams</a>
     <a href="/snow/metadata.html" class="active">Data</a>
+    <a href="/snow/methods.html">Methods</a>
   </div>
 </nav>
 
 <div class="header">
-  <h1>SNOWLINE DATA CATALOG</h1>
-  <div class="subtitle">Complete satellite imagery and SNOTEL station data for SW Montana</div>
-  <div class="back"><a href="/snow/">&larr; Back to Map</a></div>
+  <h1>SNOWLINE DATA</h1>
+  <div class="subtitle">Every satellite scene behind the map, a decade of snow history, and the ground stations that check it. All open, all reproducible.</div>
+  <div class="back"><a href="/snow/">&larr; Back to map</a> &middot; <a href="/snow/methods.html">How the map is made</a></div>
 </div>
 
-<div class="tabs">
-  <div class="tab active" onclick="showTab('snotel')">SNOTEL Stations</div>
-  <div class="tab" onclick="showTab('satellite')">Satellite Coverage</div>
+<div class="tabs" role="tablist">
+  <div class="tab active" data-tab="scenes" role="tab" tabindex="0">Scenes</div>
+  <div class="tab" data-tab="history" role="tab" tabindex="0">Snow history</div>
+  <div class="tab" data-tab="snotel" role="tab" tabindex="0">SNOTEL stations</div>
 </div>
 
-<div class="tab-content" id="tab-satellite">
+<div class="tab-content active" id="tab-scenes">
   <div class="section">
-    <h2>Satellite Imagery Availability</h2>
+    <h2>Sentinel-2 scenes</h2>
     <div class="desc">
-      <strong>Every satellite pass over SW Montana</strong> — clear days, cloudy days, and everything in between.
-      We query four collections on <a href="https://planetarycomputer.microsoft.com/" target="_blank">Microsoft's Planetary Computer</a>:
-      Sentinel-2 L2A (10m, native), Landsat 8/9 C2 (30m), and the harmonized HLS-S30 + HLS-L30 (30m).
-      HLS is often <em>fresher</em> than the native collections because Microsoft sometimes lags ingesting new scenes.
-      AOI: -112.2, 44.9 to -109.0, 46.5 — 12 Sentinel-2 tiles for full coverage.
-      The "Why" column explains what each pass means in plain English.
+      Every Sentinel-2 scene over the Snowline area in the last 13 months, one row per tile per day.
+      The list comes from one <a href="https://duckdb.org" target="_blank" rel="noopener">DuckDB</a> query against the
+      <a href="https://research.taylorgeospatial.org/s2-stac-geoparquet/" target="_blank" rel="noopener">S2 STAC GeoParquet index</a>
+      (Taylor Geospatial / TGE Labs, a mirror of Element&nbsp;84's Earth Search), with no API and no key.
+      The pixels are ESA's public Collection&nbsp;1 Cloud-Optimized GeoTIFFs on AWS, and every link below opens the actual file.
+      <strong>Snow %</strong> is ESA's own scene classifier (<code>s2:snow_ice_percentage</code>), not Snowline's map.
     </div>
-    <div class="stats-grid" id="sat-stats"></div>
-    <div class="filter-bar" id="sat-filters">
-      <span class="filter-label">Show:</span>
-      <div class="filter-btn active" data-filter="all">All Passes</div>
-      <div class="filter-btn" data-filter="excellent">Excellent</div>
-      <div class="filter-btn" data-filter="good">Good+</div>
-      <div class="filter-btn" data-filter="usable">Usable (any)</div>
-      <div class="filter-btn" data-filter="cloudy">Cloudy Only</div>
+    <div class="stats-grid" id="scene-stats"></div>
+    <div class="filter-bar" id="scene-filters">
+      <label class="filter-field"><span class="filter-label">Tile</span>
+        <select id="f-tile" class="filter-select"><option value="">All 12</option></select></label>
+      <label class="filter-field"><span class="filter-label">Month</span>
+        <select id="f-month" class="filter-select"><option value="">All</option></select></label>
+      <label class="filter-field"><span class="filter-label">Cloud &le; <span id="f-cloud-val">100%</span></span>
+        <input type="range" id="f-cloud" min="0" max="100" step="5" value="100"></label>
+      <label class="filter-check"><input type="checkbox" id="f-mapped"> Only days with a snow map</label>
+      <span id="f-date-chip" class="filter-chip" style="display:none"></span>
+      <button class="filter-btn" id="copy-sql" type="button" title="Copy a DuckDB query that returns these scenes">Copy DuckDB query</button>
     </div>
-    <div id="sat-table" class="loading">Loading satellite data...</div>
-  </div>
-
-  <div class="section">
-    <h2>Sentinel-2 Passes</h2>
-    <div class="desc">
-      Every Sentinel-2 pass over the AOI. One row per date.
-      The "Products Available" column shows which processed versions exist:
-      <strong>L2A</strong> = native Sentinel-2 L2A (10m, ESA's processor) or
-      <strong>HLS-S30</strong> = NASA's harmonized 30m product.
-      <em>These are not two separate passes</em> — they're the same observation processed
-      differently. We query both because Microsoft sometimes ingests HLS faster than native L2A.
-    </div>
-    <div id="s2-table" class="loading">Loading…</div>
-  </div>
-
-  <div class="section">
-    <h2>Landsat Passes</h2>
-    <div class="desc">
-      Every Landsat 8/9 pass over the AOI. One row per date.
-      <strong>L2-C2</strong> = native Landsat Collection 2 L2 (30m) and
-      <strong>HLS-L30</strong> = NASA's harmonized version of the same observation.
-      Landsat has a 16-day revisit per satellite, ~8 days combined for L8+L9.
-    </div>
-    <div id="ls-table" class="loading">Loading…</div>
+    <div class="table-wrap"><div id="scene-table" class="loading">Loading scenes&hellip;</div></div>
+    <div id="scene-more"></div>
+    <details class="repro" open>
+      <summary>Reproduce it yourself</summary>
+      <div class="desc" style="margin-top:8px">Install DuckDB (<code>pip install duckdb</code>, or the CLI) and run this. It follows the filters above. DuckDB fetches only the row groups for these tiles over HTTP, so it takes seconds and a few megabytes rather than the 4.8&nbsp;GB file.</div>
+      <pre id="repro-sql"></pre>
+      <div class="desc">More examples are in <a href="https://data.source.coop/tge-labs/s2-stac-geoparquet/sentinel-2-c1-l2a/AGENTS.md" target="_blank" rel="noopener">the index's AGENTS.md</a> and Snowline's <a href="https://github.com/itogeo/line/blob/main/lib/s2index.py" target="_blank" rel="noopener"><code>lib/s2index.py</code></a>.</div>
+    </details>
+    <div class="source-line" id="scenes-source"></div>
   </div>
 </div>
 
-<div class="tab-content active" id="tab-snotel">
+<div class="tab-content" id="tab-history">
+  <div class="section">
+    <h2>Snow cover, season by season</h2>
+    <div class="desc">
+      The share of the Snowline area that ESA's scene classifier labels snow or ice on each clear Sentinel-2 day
+      (scenes with &le;20% cloud and &lt;50% nodata), averaged over the tiles imaged and smoothed over three weeks.
+      This season is the bright line and earlier seasons are grey. It's drawn from metadata only, with no pixels downloaded.
+    </div>
+    <div id="history-chart" class="chart-box loading">Loading&hellip;</div>
+    <div class="desc caveat" id="history-caveat"></div>
+    <h2 style="margin-top:28px">By tile</h2>
+    <div class="desc">Each 110&nbsp;km Sentinel-2 tile on its own, with every clear scene since 2018. Hover a dot for its date.</div>
+    <div id="tile-multiples" class="multiples"></div>
+    <div class="source-line" id="history-source"></div>
+  </div>
+</div>
+
+<div class="tab-content" id="tab-snotel">
   <div class="section">
     <h2>SNOTEL Station Data</h2>
     <div class="desc">
@@ -202,258 +247,17 @@
   </div>
 </div>
 
+<script src="/snow/season.js"></script>
+<script src="/snow/data.js"></script>
 <script>
-const PC_API = 'https://planetarycomputer.microsoft.com/api/stac/v1';
-const BBOX = [-112.2, 44.9, -109.0, 46.5];
-const TOTAL_TILES = 12;
-
+// Tabs (also reachable as #tab=scenes|history|snotel)
 function showTab(name) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-  document.getElementById('tab-' + name).classList.add('active');
-  event.target.classList.add('active');
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.toggle('active', t.id === 'tab-' + name));
+  writeHash({ tab: name });
+  if (name === 'history') loadHistory();
 }
-
-// ═══════════════════════════════════════════════════
-// SATELLITE TABLE — sortable, filterable, newest first
-// ═══════════════════════════════════════════════════
-
-let SAT_ROWS = [];
-let satSort = { col: 'dt', dir: -1 }; // newest first
-let satFilter = 'all';
-
-async function loadSatelliteData() {
-  const el = document.getElementById('sat-table');
-  const statsEl = document.getElementById('sat-stats');
-
-  // Load from pre-computed static JSON (instant) — fall back to live API
-  let satData;
-  try {
-    const r = await fetch('data/sat_availability.json');
-    if (r.ok) satData = await r.json();
-  } catch(e) {}
-
-  if (satData) {
-    SAT_ROWS = satData.rows;
-    // Per-satellite tables: one row per date, products column shows
-    // which versions exist (native L2A, HLS, or both)
-    renderPerSatTable(satData.s2_table || [], 's2-table', 's2');
-    renderPerSatTable(satData.ls_table || [], 'ls-table', 'ls');
-    const s = satData.stats;
-    const usable = s.excellent + s.good;
-    const totalScenes = (s.s2_scenes||0) + (s.ls_scenes||0) + (s.hls_s_scenes||0) + (s.hls_l_scenes||0);
-    statsEl.innerHTML = `
-      <div class="stat-card"><div class="sv">${s.total}</div><div class="sl">Total Passes</div></div>
-      <div class="stat-card"><div class="sv">${totalScenes}</div><div class="sl">All Scenes</div></div>
-      <div class="stat-card"><div class="sv">${s.s2_scenes||0}</div><div class="sl">S2 Native</div></div>
-      <div class="stat-card"><div class="sv">${s.hls_s_scenes||0}</div><div class="sl">HLS-S30</div></div>
-      <div class="stat-card"><div class="sv">${(s.ls_scenes||0)+(s.hls_l_scenes||0)}</div><div class="sl">Landsat (all)</div></div>
-      <div class="stat-card"><div class="sv">${usable}</div><div class="sl">Usable Days</div></div>`;
-  } else {
-    // Fallback: query Planetary Computer live (HLS preferred — fresher than native S2)
-    try {
-      const [s2Resp, lsResp, hlsSResp, hlsLResp] = await Promise.all([
-        fetch(PC_API + '/search', { method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({collections:['sentinel-2-l2a'], bbox:BBOX, datetime:'2025-10-01/2026-06-01', limit:1000}) }),
-        fetch(PC_API + '/search', { method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({collections:['landsat-c2-l2'], bbox:BBOX, datetime:'2025-10-01/2026-06-01', limit:500}) }),
-        fetch(PC_API + '/search', { method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({collections:['hls2-s30'], bbox:BBOX, datetime:'2025-10-01/2026-06-01', limit:1000}) }),
-        fetch(PC_API + '/search', { method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({collections:['hls2-l30'], bbox:BBOX, datetime:'2025-10-01/2026-06-01', limit:1000}) }),
-      ]);
-      const s2Data = await s2Resp.json(), lsData = await lsResp.json();
-      const hlsSData = await hlsSResp.json(), hlsLData = await hlsLResp.json();
-      const groupBy = (data, parser) => {
-        const out = {};
-        for (const f of data.features) {
-          const dt = f.properties.datetime.slice(0,10);
-          if(!out[dt]) out[dt] = [];
-          out[dt].push({tile:parser(f.id), cloud:f.properties['eo:cloud_cover']||999});
-        }
-        return out;
-      };
-      const s2By = groupBy(s2Data, id => id.split('_').slice(-2,-1)[0]||'');
-      const lsBy = groupBy(lsData, id => '');
-      const hlsSBy = groupBy(hlsSData, id => id.split('.')[2]||'');
-      const hlsLBy = groupBy(hlsLData, id => id.split('.')[2]||'');
-      const allDates = [...new Set([
-        ...Object.keys(s2By), ...Object.keys(lsBy),
-        ...Object.keys(hlsSBy), ...Object.keys(hlsLBy)
-      ])].sort().reverse();
-      const sumStats = items => {
-        const n = items.length;
-        const clr = items.filter(t=>t.cloud<30).length;
-        const cc = n ? items.reduce((a,b)=>a+b.cloud,0)/n : 0;
-        const aoi = n ? Math.round(new Set(items.map(t=>t.tile).filter(Boolean)).size/TOTAL_TILES*100) : 0;
-        return {n, clr, cc:Math.round(cc*10)/10, aoi};
-      };
-      let exc=0, good=0;
-      SAT_ROWS = allDates.map(dt => {
-        const s2 = sumStats(s2By[dt]||[]);
-        const ls = sumStats(lsBy[dt]||[]);
-        const hs = sumStats(hlsSBy[dt]||[]);
-        const hl = sumStats(hlsLBy[dt]||[]);
-        // Pick the best Sentinel-2 source (native vs HLS) by clear count
-        const bestS2 = s2.clr >= hs.clr ? s2 : hs;
-        const bestLs = ls.clr >= hl.clr ? ls : hl;
-        const s2_source = (s2.clr >= hs.clr && s2.n > 0) ? 'native' : 'hls';
-        let q;
-        if (bestS2.clr >= 10 && bestS2.cc < 20) { q = 'excellent'; exc++; }
-        else if (bestS2.clr >= 5) { q = 'good'; good++; }
-        else if (bestS2.clr >= 2 || (bestLs.n && bestLs.cc < 30)) { q = 'partial'; }
-        else { q = 'cloudy'; }
-        const why = q === 'excellent' ? `Clear day! ${bestS2.clr} clear Sentinel-2 tiles cover most of the area.`
-                  : q === 'good' ? `Mostly clear — ${bestS2.clr} clear Sentinel-2 tiles processable for snow.`
-                  : q === 'partial' ? `Some imagery available — ${bestS2.clr || bestLs.n} partial tiles, not enough for a full map.`
-                  : (bestS2.n + bestLs.n === 0 ? 'No satellite passed over today.'
-                     : `Too cloudy — ${bestS2.cc || bestLs.cc}% cloud cover. Snow obscured.`);
-        return {
-          dt, s2n:bestS2.n, s2clr:bestS2.clr, s2cc:bestS2.cc, s2aoi:bestS2.aoi,
-          lsn:bestLs.n, lscc:bestLs.cc, lsaoi:bestLs.aoi, comb:Math.max(bestS2.aoi,bestLs.aoi),
-          hls_s_n:hs.n, hls_s_clr:hs.clr, hls_s_cc:hs.cc,
-          hls_l_n:hl.n, hls_l_clr:hl.clr, hls_l_cc:hl.cc,
-          q, why, s2_source,
-        };
-      });
-      statsEl.innerHTML = `<div class="stat-card"><div class="sv">${allDates.length}</div><div class="sl">Total</div></div>
-        <div class="stat-card"><div class="sv">${exc}</div><div class="sl">Excellent</div></div>
-        <div class="stat-card"><div class="sv">${exc+good}</div><div class="sl">Usable</div></div>`;
-    } catch(e) { el.textContent = 'Error loading satellite data'; return; }
-  }
-
-  renderSatTable();
-
-  // Filter buttons
-  document.querySelectorAll('#sat-filters .filter-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('#sat-filters .filter-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      satFilter = btn.dataset.filter;
-      renderSatTable();
-    });
-  });
-}
-
-function renderSatTable() {
-  let rows = [...SAT_ROWS];
-
-  // Filter
-  if (satFilter === 'excellent') rows = rows.filter(r => r.q === 'excellent');
-  else if (satFilter === 'good') rows = rows.filter(r => r.q === 'excellent' || r.q === 'good');
-  else if (satFilter === 'usable') rows = rows.filter(r => r.q !== 'cloudy');
-  else if (satFilter === 'cloudy') rows = rows.filter(r => r.q === 'cloudy');
-
-  // Sort
-  const c = satSort.col, d = satSort.dir;
-  rows.sort((a,b) => {
-    const av = a[c], bv = b[c];
-    if (typeof av === 'string') return d * av.localeCompare(bv);
-    return d * (av - bv);
-  });
-
-  const cols = [
-    { key:'dt', label:'Date' },
-    { key:'s2n', label:'S2 Tiles' },
-    { key:'s2clr', label:'Clear' },
-    { key:'s2cc', label:'Cloud %' },
-    { key:'s2aoi', label:'AOI %' },
-    { key:'lsn', label:'Landsat' },
-    { key:'lscc', label:'LS Cloud' },
-    { key:'comb', label:'Combined' },
-    { key:'q', label:'Quality' },
-  ];
-
-  let html = '<table><thead><tr>';
-  for (const col of cols) {
-    const sorted = satSort.col === col.key;
-    const arrow = sorted ? (satSort.dir > 0 ? '&#9650;' : '&#9660;') : '&#9650;';
-    html += `<th class="${sorted?'sorted':''}" onclick="sortSat('${col.key}')">${col.label} <span class="sort-arrow">${arrow}</span></th>`;
-  }
-  html += '<th>Why</th><th>Data</th></tr></thead><tbody>';
-
-  for (const r of rows) {
-    const badge = `<span class="badge badge-${r.q}">${r.q.toUpperCase()}</span>`;
-    const pcLink = `https://planetarycomputer.microsoft.com/explore?c=${(BBOX[0]+BBOX[2])/2}%2C${(BBOX[1]+BBOX[3])/2}&z=8&d=${r.dt}`;
-    // Source pill — shows where the S2 numbers came from (HLS lets us stay
-    // fresh when Microsoft hasn't yet ingested the native L2A scene)
-    const srcPill = r.s2n > 0
-      ? `<span title="Data source: ${r.s2_source === 'hls' ? 'HLS-S30 (harmonized — fresher than native)' : 'Sentinel-2 L2A native (10m)'}" style="font-size:8px;color:var(--text-dim);margin-left:4px">${r.s2_source === 'hls' ? 'HLS' : 'NAT'}</span>`
-      : '';
-    const comb = (typeof r.comb === 'number') ? r.comb + '%' : '-';
-    const why = r.why || '—';
-    html += `<tr>
-      <td><strong>${r.dt}</strong></td>
-      <td>${r.s2n || '-'}${srcPill}</td>
-      <td>${r.s2clr || '-'}</td>
-      <td>${r.s2n ? r.s2cc.toFixed(0)+'%' : '-'}</td>
-      <td>${r.s2aoi || 0}%</td>
-      <td>${r.lsn || '-'}</td>
-      <td>${r.lsn ? r.lscc.toFixed(0)+'%' : '-'}</td>
-      <td>${comb}</td>
-      <td>${badge}</td>
-      <td style="font-size:10px;color:var(--text-muted);max-width:280px">${why}</td>
-      <td><a class="dl-link" href="${pcLink}" target="_blank">Browse</a></td>
-    </tr>`;
-  }
-  html += `</tbody></table><div style="font-size:10px;color:var(--text-dim);margin-top:8px">${rows.length} of ${SAT_ROWS.length} passes shown</div>`;
-  document.getElementById('sat-table').innerHTML = html;
-}
-
-// Render a per-date table for one satellite family. ONE row per date.
-// `rows` shape: {dt, src, products[], n, clr, cc, aoi}
-// `products` records which processed versions exist (Native L2A, HLS) —
-// remember they're the same physical observation, just different products.
-function renderPerSatTable(rows, tableId, satFamily) {
-  if (!rows || !rows.length) {
-    document.getElementById(tableId).innerHTML = '<div class="loading">No data</div>';
-    return;
-  }
-  // Tooltip text for the product badges
-  const productTitle = (p) => {
-    if (satFamily === 's2') {
-      return p === 'native'
-        ? 'Sentinel-2 L2A (native, 10m). Microsoft Planetary Computer.'
-        : 'HLS-S30 (NASA harmonized, 30m). Same Sentinel-2 pass, different processor.';
-    }
-    return p === 'native'
-      ? 'Landsat 8/9 Collection 2 L2 (native, 30m). Microsoft Planetary Computer.'
-      : 'HLS-L30 (NASA harmonized, 30m). Same Landsat pass, different processor.';
-  };
-  const productLabel = (p) => satFamily === 's2'
-    ? (p === 'native' ? 'L2A' : 'HLS-S30')
-    : (p === 'native' ? 'L2-C2' : 'HLS-L30');
-
-  let html = '<table><thead><tr>'
-    + '<th>Date</th><th>Products Available</th><th>Scenes</th><th>Clear</th>'
-    + '<th>Avg Cloud %</th><th>AOI %</th>'
-    + '</tr></thead><tbody>';
-  for (const r of rows) {
-    // Highlight clear-tile counts so analysts can scan for usable days
-    const clearStyle = r.clr >= 5 ? 'color:#26c6da;font-weight:600' : (r.clr >= 1 ? '' : 'color:var(--text-dim)');
-    const products = (r.products || [r.src]).map(p => {
-      const isNative = p === 'native';
-      const color = isNative ? '#4FC3F7' : '#FFB74D';
-      return `<span title="${productTitle(p)}" style="display:inline-block;font-size:8px;padding:1px 5px;border-radius:2px;border:1px solid ${color};color:${color};margin-right:3px">${productLabel(p)}</span>`;
-    }).join('');
-    html += `<tr>
-      <td><strong>${r.dt}</strong></td>
-      <td>${products}</td>
-      <td>${r.n}</td>
-      <td style="${clearStyle}">${r.clr}</td>
-      <td>${r.cc.toFixed(0)}%</td>
-      <td>${r.aoi}%</td>
-    </tr>`;
-  }
-  html += `</tbody></table><div style="font-size:10px;color:var(--text-dim);margin-top:8px">${rows.length} unique dates · numbers shown from ${satFamily === 's2' ? 'native L2A' : 'native L2-C2'} when available, HLS otherwise</div>`;
-  document.getElementById(tableId).innerHTML = html;
-}
-
-function sortSat(col) {
-  if (satSort.col === col) satSort.dir *= -1;
-  else { satSort.col = col; satSort.dir = col === 'dt' ? -1 : -1; }
-  renderSatTable();
-}
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => showTab(t.dataset.tab)));
 
 // ═══════════════════════════════════════════════════
 // SNOTEL — basin chart, range charts, individual expandable
@@ -577,9 +381,19 @@ async function loadSnotelData() {
 
 // ── Shared chart builder with scales, dates, and historical ──
 // Full season: Oct 1 to May 31
-const SEASON_START = '2025-10-01';
-const SEASON_END = '2026-05-31';
-const SEASON_DAYS = Math.round((new Date(SEASON_END) - new Date(SEASON_START)) / 86400000);
+// SNOTEL season shown: ?season=2025 picks one; otherwise the current season,
+// or the previous one during its first three weeks (too little data yet).
+const SNOTEL_SEASON = (() => {
+  const q = new URLSearchParams(location.search).get('season');
+  if (/^\d{4}$/.test(q || '')) return seasonOf(`${q}-12-01`);
+  const cur = seasonOf(todayStr());
+  const daysIn = (Date.parse(todayStr()) - Date.parse(cur.start)) / 86400000;
+  return daysIn < 21 ? seasonOf(`${cur.year - 1}-12-01`) : cur;
+})();
+const SEASON_START = SNOTEL_SEASON.start;
+const SEASON_END = SNOTEL_SEASON.end;
+const SEASON_DAYS = seasonDays(SNOTEL_SEASON);
+const SNOTEL_END = seasonFetchEnd(SNOTEL_SEASON);
 
 function dateToSeasonX(dateStr, cw, padLeft) {
   const d = (new Date(dateStr) - new Date(SEASON_START)) / 86400000;
@@ -617,7 +431,7 @@ function buildChart(values, triplets, w, h, opts = {}) {
 
   // X axis — fixed Oct-May season timeline
   let xTicks = '';
-  const months = ['2025-10','2025-11','2025-12','2026-01','2026-02','2026-03','2026-04','2026-05'];
+  const months = seasonMonthKeys(SNOTEL_SEASON);
   const monthLabels = ['Oct','Nov','Dec','Jan','Feb','Mar','Apr','May'];
   months.forEach((m, i) => {
     const x = dateToSeasonX(m + '-01', cw, pad.left);
@@ -684,7 +498,7 @@ async function loadBasinChart(triplets) {
   const el = document.getElementById('basin-chart');
   const batch = triplets.slice(0, 30).join(',');
   try {
-    const r = await fetch(`https://wcc.sc.egov.usda.gov/awdbRestApi/services/v1/data?stationTriplets=${encodeURIComponent(batch)}&elements=SNWD&duration=DAILY&beginDate=2025-10-01&endDate=${new Date().toISOString().slice(0,10)}`);
+    const r = await fetch(`https://wcc.sc.egov.usda.gov/awdbRestApi/services/v1/data?stationTriplets=${encodeURIComponent(batch)}&elements=SNWD&duration=DAILY&beginDate=${SEASON_START}&endDate=${SNOTEL_END}`);
     const data = await r.json();
 
     // Per-station values + average
@@ -955,7 +769,7 @@ async function toggleRangeChart(rowId, tripletsStr) {
 
   const triplets = tripletsStr.split(',');
   try {
-    const r = await fetch(`https://wcc.sc.egov.usda.gov/awdbRestApi/services/v1/data?stationTriplets=${encodeURIComponent(tripletsStr)}&elements=SNWD&duration=DAILY&beginDate=2025-10-01&endDate=${new Date().toISOString().slice(0,10)}`);
+    const r = await fetch(`https://wcc.sc.egov.usda.gov/awdbRestApi/services/v1/data?stationTriplets=${encodeURIComponent(tripletsStr)}&elements=SNWD&duration=DAILY&beginDate=${SEASON_START}&endDate=${SNOTEL_END}`);
     const data = await r.json();
 
     const byDate = {};
@@ -1141,7 +955,7 @@ async function toggleSnotelChart(rowId, triplet) {
   chartEl.innerHTML = '<span style="color:var(--text-dim)">Loading...</span>';
 
   try {
-    const r = await fetch(`https://wcc.sc.egov.usda.gov/awdbRestApi/services/v1/data?stationTriplets=${encodeURIComponent(triplet)}&elements=SNWD&duration=DAILY&beginDate=2025-10-01&endDate=${new Date().toISOString().slice(0,10)}`);
+    const r = await fetch(`https://wcc.sc.egov.usda.gov/awdbRestApi/services/v1/data?stationTriplets=${encodeURIComponent(triplet)}&elements=SNWD&duration=DAILY&beginDate=${SEASON_START}&endDate=${SNOTEL_END}`);
     const data = await r.json();
     if (!data[0]?.data?.[0]?.values) { chartEl.textContent = 'No data'; return; }
 
@@ -1359,8 +1173,10 @@ if (EMBED_MODE === 'basin') {
   document.body.classList.add('embed-basin');
   loadSnotelData();
 } else {
-  loadSatelliteData();
   loadSnotelData();
+  const tab = new URLSearchParams(location.hash.replace(/^#/, '')).get('tab');
+  initScenes(readHash());
+  showTab(['scenes', 'history', 'snotel'].includes(tab) ? tab : 'scenes');
 }
 </script>
 </body>

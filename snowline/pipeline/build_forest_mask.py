@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Build a forest canopy mask from NLCD land cover data.
+Build a forest canopy mask from ESA WorldCover 2021 (10 m) land cover.
 Outputs a WebP overlay showing forested areas where NDSI snow detection
 is unreliable due to canopy cover.
 
-Uses NLCD 2021 from Microsoft Planetary Computer.
-NLCD forest classes: 41=Deciduous, 42=Evergreen, 43=Mixed Forest
+Reads ESA WorldCover from Microsoft Planetary Computer; class 10 = tree cover.
+Needs requirements-assets.txt (pystac-client, planetary-computer).
 
 Usage:
     python pipeline/build_forest_mask.py
@@ -40,7 +40,7 @@ def log(msg):
 
 
 def main():
-    log("Searching for NLCD data on Planetary Computer...")
+    log("Searching for ESA WorldCover on Planetary Computer...")
 
     catalog = pystac_client.Client.open(
         "https://planetarycomputer.microsoft.com/api/stac/v1",

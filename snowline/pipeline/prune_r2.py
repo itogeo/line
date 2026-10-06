@@ -92,7 +92,7 @@ def strip_truecolor_from_json(date_str):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--keep-snow", type=int, default=30,
-                        help="Number of most-recent dates to keep snow tiles for")
+                        help="Most-recent dates to keep snow tiles for (0 = keep all)")
     parser.add_argument("--keep-truecolor", type=int, default=10,
                         help="Number of most-recent dates to keep truecolor tiles for")
     args = parser.parse_args()
@@ -127,7 +127,8 @@ def main():
     log(f"Dates in R2: {len(sorted_dates)}")
 
     # Prune snow tiles beyond keep window
-    snow_prune_dates = sorted_dates[args.keep_snow:]
+    # 0 = keep every snow tile (they are the open-data archive; ~5 MB/date)
+    snow_prune_dates = sorted_dates[args.keep_snow:] if args.keep_snow > 0 else []
     deleted = 0
     for date in snow_prune_dates:
         keys = by_date[date]["snow"]

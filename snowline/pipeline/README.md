@@ -1,145 +1,74 @@
-# Snowline Pipeline
+# Snowline pipeline
 
-Everything that fetches, computes, or builds data for the snowline website
-lives in this directory. The pipeline has two cadences:
+Everything that fetches, computes or builds data for the Snowline site.
+Run commands from the repository root. Every script has `--help` and runs
+on its own.
 
-- **Daily cron** — fast metadata refresh, runs in CI every morning at 11 UTC
-- **Manual / on-demand** — slow imagery processing + one-shot static asset
-  builds. Run locally or via manual GitHub Actions dispatch.
-
-## TL;DR — most common commands
+## The common commands
 
 ```bash
-# Process Sentinel-2 imagery for one date (the everyday command)
-bash pipeline/update_date.sh 2026-04-06
+# Make the snow map for one date: find scenes, fetch bands, NDSI, WebPs, upload to R2
+bash snowline/pipeline/update_date.sh 2026-10-03
 
-# Refresh the satellite availability table + SNOTEL season history
-# (this is what daily.yml does in CI; only run locally if CI is broken)
-python pipeline/build_sat_availability.py
-python pipeline/build_snotel_season.py
+# What CI does every morning (metadata only; no pixels)
+python snowline/pipeline/build_sat_availability.py
+python snowline/pipeline/build_snotel_season.py
+python snowline/pipeline/build_snow_timeline.py       # Mondays in CI
 
-# Refresh Forest Service roads (rare — they barely change)
-python pipeline/fetch_fs_roads.py
+# After new maps: compare them with SNOTEL
+python snowline/pipeline/build_snotel_agreement.py --date=2026-10-03
 ```
 
-After running anything locally, commit + push the resulting files in `site/`.
+## Data flow
 
----
+```
+S2 STAC GeoParquet index (Source Cooperative)   ← lib/s2index.py, one DuckDB query
+        │  scene ids + COG hrefs, one scene per tile per day
+        ▼
+fetch_bands.py      range-reads green/red/blue/swir16/SCL windows from the
+        │           public Sentinel-2 C1 COGs on AWS, removes the C1 +1000 DN
+        ▼           offset → cache/{date}/T{tile}/{band}.tif + meta.json
+process_tiles.py    reprojects to a 0.0003° grid, NDSI ≥ 0.4, SCL cloud mask
+        │           → site/data_10m/{date}/snow_r*c*.webp, truecolor_r*c*.webp,
+        ▼             snowline.json (with the scene list), dates.json
+sync_r2.py          uploads the WebPs to R2 bucket snowline-tiles
+        │           (in CI the date is unlisted again if this fails)
+        ▼
+build_snotel_agreement.py   map class vs SNOTEL depth at each station
+```
 
-## Imagery pipeline (the slow, two-phase one)
+## Scripts
 
-Sentinel-2 imagery processing is split into two phases so it's resumable
-when network drops mid-fetch and so re-encoding doesn't require re-downloading.
-
-| File | Phase | What it does |
+| Script | Cadence | What it does |
 |---|---|---|
-| `fetch_bands.py` | 1 | Downloads Sentinel-2 band windows from Element84 (us-west-2 S3) into `cache/{date}/{tile_id}/{band}.tif`. Resumable: re-running skips bands already on disk. Sequential by default — parallelism over residential connections caused TLS handshake failures. |
-| `process_tiles.py` | 2 | Reads cached bands, computes NDSI, encodes per-tile snow + truecolor WebPs to `site/data_10m/{date}/`. Pure CPU, no network. Re-runnable for free. |
-| `update_date.sh` | wrapper | `bash pipeline/update_date.sh YYYY-MM-DD` runs both phases + cleans up the cache on success. Pass `--keep-cache` to keep the band files. |
-| `prune_truecolor.py` | maintenance | Keeps only the most recent 10 dates of truecolor RGB imagery; deletes older ones to keep the repo small. Snow tiles stay forever (they're tiny). Called by `process_imagery.yml` after each new date. |
+| `fetch_bands.py` | per map | Phase 1. Resumable: cached bands are skipped. `--tiles=12TVR` for a quick test. |
+| `process_tiles.py` | per map | Phase 2. CPU only, re-runnable. |
+| `update_date.sh` | per map | Runs both phases and the R2 upload, then deletes the cache (`--keep-cache` to keep it). |
+| `sync_r2.py` | per map / backfill | Uploads any local tiles missing from R2. `--check` only lists them. Needs `CF_ACCOUNT_ID` and `CF_API_TOKEN`. |
+| `prune_r2.py` | per run | Deletes old true-colour tiles from R2 (keeps 10 dates). Snow tiles are kept forever (`--keep-snow 0`). |
+| `build_sat_availability.py` | daily | Every S2 pass over the AOI from the index → `sat_availability.json` + `scenes.json`. |
+| `check_new_clear_pass.py` | daily | Prints the newest good/excellent pass without a map, so CI can trigger processing. |
+| `build_snotel_season.py` | daily | Current-season SNOTEL depth and SWE → `snotel_season.json`. |
+| `build_snow_timeline.py` | weekly | `s2:snow_ice_percentage` per tile since 2015 → `snow_timeline.json`. Metadata only. |
+| `build_snotel_agreement.py` | after maps | Satellite vs SNOTEL → `snotel_agreement.json`. |
+| `diagnose_tile.py` | debugging | Prints every bound and offset for one date and tile. |
+| `build_snotel_normals.py` | yearly | 20-year SNOTEL medians → `snotel_normals.json`. |
+| `build_forest_mask.py` | yearly | ESA WorldCover tree cover → `forest_mask.webp`. Needs `requirements-assets.txt`. |
+| `build_historical.py` | yearly | 25-year MODIS snow frequency by day of year. Needs `requirements-assets.txt`. |
+| `fetch_fs_roads.py` | rarely | USFS roads with seasonal restrictions. |
 
-The big center tiles (T12TVR, T12TWR) sometimes overshoot Cloudflare's 25 MiB
-file size cap at quality=92 — `process_tiles.py` recursively splits them
-into 2x2 sub-tiles (`truecolor_T12TVR_NW.webp`, `_NE`, `_SW`, `_SE`).
-Frontend handles both single-tile and split-tile cases via the
-`truecolor_files` list in `snowline.json`.
+## Requirements
 
-### Data flow
+`requirements.txt` is what CI installs: duckdb, numpy, rasterio, Pillow,
+requests, pytz. `requirements-assets.txt` adds pystac-client and
+planetary-computer for the two yearly asset builds that read from Microsoft
+Planetary Computer.
 
-```
-Element84 S3 (sentinel-cogs.s3.us-west-2)
-        │
-        │  fetch_bands.py
-        ▼
-cache/{date}/{tile_id}/{green,red,blue,swir16,scl}.tif    (gitignored)
-        │
-        │  process_tiles.py
-        ▼
-site/data_10m/{date}/snow_T*.webp + truecolor_T*.webp + snowline.json
-        │
-        │  git push → Cloudflare Pages
-        ▼
-snowline.itogeospatial.com
-```
+## History
 
----
-
-## Daily metadata refresh (the fast cron)
-
-Runs every morning via `.github/workflows/daily.yml`. Two scripts, both ~1 min:
-
-| File | What it does |
-|---|---|
-| `build_sat_availability.py` | Queries Element84 (native S2 + Landsat) and Microsoft Planetary Computer (HLS-S30 + HLS-L30). Writes `site/data/sat_availability.json` — the source of truth for "what passes exist". The metadata page reads it. |
-| `build_snotel_season.py` | Pulls the full current-season SWE + snow depth history for every NRCS SNOTEL station in the AOI from the AWDB API. Writes `site/data/snotel_season.json`. The frontend's per-date SNOTEL display reads it. Has retry logic for the flaky NRCS endpoint. |
-
-These never need imagery — pure metadata fetches. Daily.yml is fast and
-reliable specifically because we removed imagery processing from it.
-
----
-
-## One-shot static assets (run rarely)
-
-These build pre-baked files that change rarely. Run manually via
-`workflow_dispatch` in GitHub Actions or locally.
-
-| File | What it produces | Cadence |
-|---|---|---|
-| `build_forest_mask.py` | `site/data/forest_mask.webp` — ESA WorldCover forest canopy. Used to dim snow detections in heavy forest. | Once per year (or when AOI changes) |
-| `build_historical.py` | `site/data/historical/doy_*.webp` — 25-year MODIS snow frequency by day-of-year. | Once per year |
-| `build_snotel_normals.py` | `site/data/snotel_normals.json` — 20-year median SWE per station per day-of-year. Used for "% of normal" comparisons. | Once per year |
-| `fetch_fs_roads.py` | `site/data/fs_roads.geojson` — All USFS roads in the AOI with seasonal use restrictions, merged from EDW_RoadBasic + EDW_MVUM. | Whenever you want fresh road data (rare) |
-
-Corresponding CI workflows: `build-assets.yml` and `historical.yml`.
-
----
-
-## File reference
-
-**Active pipelines:**
-- `fetch_bands.py` — phase 1 of imagery
-- `process_tiles.py` — phase 2 of imagery
-- `update_date.sh` — runs both phases + cleanup
-- `prune_truecolor.py` — keeps only last 10 dates of RGB
-
-**Daily metadata:**
-- `build_sat_availability.py`
-- `build_snotel_season.py`
-
-**One-shot static assets:**
-- `build_forest_mask.py`
-- `build_historical.py`
-- `build_snotel_normals.py`
-- `fetch_fs_roads.py`
-
-**Other:**
-- `requirements.txt` — Python dependencies (rasterio, pystac-client, planetary-computer, requests, Pillow, numpy)
-- `README.md` — this file
-
----
-
-## What used to be here (and why it's gone)
-
-The previous architecture had a single `run_pertile.py` that did download +
-NDSI + encode in one pass. It worked but:
-
-- Network errors during a 15-minute run lost all the work
-- Re-encoding to test a quality setting required re-downloading bands
-- Resuming was impossible without keeping all the temporary state
-
-Splitting into `fetch_bands.py` + `process_tiles.py` solved all three.
-
-Also gone:
-
-- `run.py`, `run_hls.py`, `run_tile.py` — old mosaic-style processors that
-  produced one big WebP per date. Replaced by the per-tile output.
-- `backfill.sh`, `backfill_10m.sh`, `backfill_16k.sh`, `backfill_local.sh`,
-  `backfill_tiled.sh`, `fill_missing_tiles.sh`, `reprocess_gaps.sh` — all
-  called the deleted run scripts. Per-tile pipeline doesn't need backfill
-  loops since each date is processed independently and resumably.
-- `fix_metadata.py` — utility used by the dead backfill scripts
-- `build_index.sh` — `process_tiles.py` updates `data_10m/dates.json` directly now
-- `backfill_snotel_history.py` — one-shot that already ran successfully
-- `.github/workflows/update.yml` — old separate cron, merged into daily.yml
-- `.github/workflows/backfill.yml`, `backfill-good.yml`, `update-hls.yml` —
-  CI versions of the deleted shell/python scripts
+Until October 2026 scenes were found through the Element 84 Earth Search
+STAC API (`sentinel-2-l2a`), with HLS and Landsat from Planetary Computer
+for the pass table. The switch to the GeoParquet index and Collection 1
+was checked pixel for pixel. See `AGENTS.md` at the repository root. Maps
+made before 2026-10-05 by an older per-tile pipeline were reprocessed after
+the SNOTEL check showed they missed most snow in Nov–Mar.

@@ -2,11 +2,11 @@
 
 > Read this at the start of any Snowline session. Update end-of-session.
 
-**Last updated:** 2026-06-17
+**Last updated:** 2026-10-05
 
 ---
 
-## Status: Live at [snowline.itogeospatial.com](https://snowline.itogeospatial.com)
+## Status: Live at [line.itogeospatial.com/snow](https://line.itogeospatial.com/snow). Open-source launch target 2026-10-10.
 
 Automated daily pipeline: Sentinel-2 NDSI → snow cover map → SNOTEL comparison. Deployed on Cloudflare Pages with GitHub Actions.
 
@@ -62,16 +62,17 @@ JSON metadata (`dates.json`, per-date `snowline.json`) still fetched from `/data
 - Deletes snow tiles beyond 30 dates, truecolor beyond 10 dates
 - Strips `truecolor_file`/`truecolor_files` from local `site/data_10m/{date}/snowline.json` for pruned dates
 
-### One-time CF setup required (not yet done by user as of 2026-06-17)
-1. CF dashboard → R2 → Create bucket `snowline-tiles`
-2. CF Pages → snowline project → Settings → Bindings → add R2 binding `SNOWLINE_BUCKET`
-3. GitHub repo → Settings → Secrets → add `CF_ACCOUNT_ID`, `CF_R2_TOKEN`
+### One-time CF setup: see docs/cloudflare-setup.md
+As of 2026-10-05 the live site returned 404 for every tile: R2 bucket/binding
+were never set up, so no snow layer has shown since the monorepo move.
 
 ---
 
 ## Open / deferred
 
-- **R2 one-time setup**: Bucket + binding + secrets above still needed before first R2 upload.
+- **R2 one-time setup**: docs/cloudflare-setup.md (Ian). Blocks the launch.
+- **Failure-mode example images** for methods.html (GUIDE 3.5) — not done.
+- **Lighthouse ≥ 90 mobile** (GUIDE 3.4) — not measured in a real browser yet.
 - **Livingston city cams**: No embeddable URLs found. American Bank cam page is JS-rendered. No KBZK feed for Livingston. May need ipcamlive search or another source.
 - **HLS coverage upgrade**: Replace S2 with NASA HLS for 90%+ daily coverage — DEFERRED, not urgent. See memory.
 - **Iteris CDN**: `mt.cdn.iteris-atis.com/rwis_images/{posId}-00-01.jpg` serves MDT cam images directly (no CORS needed for `<img>`). Could switch `mdt` type to direct `img` to reduce worker hops — not implemented.
@@ -79,6 +80,14 @@ JSON metadata (`dates.json`, per-date `snowline.json`) still fetched from `/data
 ---
 
 ## Session log
+
+- **2026-10-05** — Open-source prep (GUIDE.md phases 0–3).
+  - Scene search moved to the S2 STAC GeoParquet index (`lib/s2index.py`, DuckDB). Collection 1 offset removed at download; pixel-identical to the old source on 12TVR 2026-04-19.
+  - `build_sat_availability.py`: S2 only, rolling 400 days (the old fixed range ended 2026-06-01, which is why no new pass was ever processed). Writes `scenes.json`.
+  - New: `build_snow_timeline.py`, `build_snotel_agreement.py`, `sync_r2.py`, `tools/dev_server.py`, `season.js`, `data.js`, `methods.html`.
+  - Map: seasons are dynamic (were hard-coded 2025-26), URL hash state, scene provenance + SNOTEL ground check in the panel, pass ticks (clear/partial/cloudy) on the timeline, next-pass chip, readable contrast.
+  - Data page: Scenes table with COG links + DuckDB reproduce, Snow history charts, SNOTEL tab picks its season.
+  - SNOTEL check showed the old per-tile maps missed most snow Nov–Mar (2025-11-30: 4/23 → 20/23 after reprocessing). Whole 2025–26 season reprocessed with the current pipeline.
 
 - **2026-06-17** — Imagery migrated from git to CF R2. Added `prune_r2.py`, updated `update_date.sh` with R2 upload loop, updated `_worker.js` with `/api/tile/` route + Pages fallback, updated `index.html` tile URLs. One-time CF setup (bucket + binding + secrets) still needed from user.
 - **2026-04-22** — Webcam page fully built. MDT posId bug fixed (10x off). Timestamps added. Mobile CSS. Golf cams (Cottonwood Hills, Valley View) removed — went offline. MDT GPS coords corrected to road-precise positions. All pushed and live.

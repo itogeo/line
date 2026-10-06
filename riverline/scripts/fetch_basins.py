@@ -5,8 +5,7 @@ No large downloads — queries the USGS REST API directly and paginates.
 Returns ~60 HUC8 polygons covering Montana and its immediate neighbors.
 
 Usage:
-  /Users/ianvandusen/anaconda3/envs/geodata/bin/python \
-      /Users/ianvandusen/Desktop/Ito/itogeo/repos/line/riverline/scripts/fetch_basins.py
+  python riverline/scripts/fetch_basins.py
 
 Output:
   riverline/site/data/mt_basins.geojson

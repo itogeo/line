@@ -10,8 +10,7 @@ Tier thresholds (segment count = proxy for river size / drainage area):
   1 = 1–7    (small named rivers)
 
 Usage:
-  /Users/ianvandusen/anaconda3/envs/geodata/bin/python \
-      /Users/ianvandusen/Desktop/Ito/itogeo/repos/line/riverline/scripts/fetch_rivers.py
+  python riverline/scripts/fetch_rivers.py
 
 Output:
   riverline/site/data/mt_rivers.geojson

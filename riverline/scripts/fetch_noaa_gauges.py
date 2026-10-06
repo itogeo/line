@@ -7,8 +7,7 @@ Strategy:
   3. Write USGS-ID → LID mapping
 
 Usage:
-  /Users/ianvandusen/anaconda3/envs/geodata/bin/python \
-      /Users/ianvandusen/Desktop/Ito/itogeo/repos/line/riverline/scripts/fetch_noaa_gauges.py
+  python riverline/scripts/fetch_noaa_gauges.py
 
 Output:
   riverline/site/data/noaa_gauges.json

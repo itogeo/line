@@ -9,8 +9,7 @@ Strategy:
   5. Compute distance, sort, emit top MAX_SNOTEL per gauge
 
 Usage:
-  /Users/ianvandusen/anaconda3/envs/geodata/bin/python \
-      /Users/ianvandusen/Desktop/Ito/itogeo/repos/line/riverline/scripts/build_dnrc_snotel_links.py
+  python riverline/scripts/build_dnrc_snotel_links.py
 
 Requires mt_basins.geojson to be rebuilt first (build_basins.py).
 
@@ -24,7 +23,7 @@ import math
 from collections import defaultdict
 from pathlib import Path
 
-_PROJ_DATA = "/Users/ianvandusen/anaconda3/envs/geodata/share/proj"
+_PROJ_DATA = os.environ.get('GEODATA_PROJ_DIR', '')  # optional: a conda env's share/proj
 if os.path.isdir(_PROJ_DATA):
     os.environ["PROJ_DATA"] = _PROJ_DATA
     os.environ["PROJ_LIB"] = _PROJ_DATA

@@ -7,8 +7,7 @@ forecast point to the nearest USGS gauge in usgs_gauges.json so the frontend can
 SRVO forecasts to gauges the user clicks on.
 
 Usage:
-  /Users/ianvandusen/anaconda3/envs/geodata/bin/python \
-      /Users/ianvandusen/Desktop/Ito/itogeo/repos/line/riverline/scripts/build_nrcs_forecast_points.py
+  python riverline/scripts/build_nrcs_forecast_points.py
 
 Output:
   riverline/site/data/nrcs_forecast_points.json

@@ -15,7 +15,7 @@
 #   bash pipeline/update_date.sh 2026-04-04 --quality=88  # lower quality
 #
 # Recommended: run from a fresh shell so PROJ_LIB / venv are clean.
-#   cd /Users/ianvandusen/Desktop/Ito/itogeo/repos/line/snowline
+#   cd snowline   # from the repository root
 #   source .venv/bin/activate
 #   export PROJ_LIB="$(pwd)/.venv/lib/python3.9/site-packages/rasterio/proj_data"
 #   bash pipeline/update_date.sh 2026-04-04
@@ -61,32 +61,35 @@ echo ""
 echo "── Phase 2: process tiles ──"
 $PYTHON pipeline/process_tiles.py --date="$DATE" --quality="$QUALITY"
 
-# Upload WebPs to Cloudflare R2 (if credentials are set).
-# Tiles are served via the CF Worker at /api/tile/{date}/{file}.
-# Falls back to Pages static assets for dates not yet in R2.
+# Upload WebPs to Cloudflare R2. Tiles are not in git: the map reads them
+# through the edge worker at /api/tile/{date}/{file} → R2 tiles/{date}/{file}.
+# In CI a date whose tiles didn't reach R2 is taken back out of dates.json,
+# so the site never lists a date it can't draw.
+UPLOADED=0
 if [[ -n "${CF_ACCOUNT_ID:-}" && -n "${CF_API_TOKEN:-}" ]]; then
     echo ""
     echo "── Upload tiles to R2 ──"
-    UPLOAD_OK=1
-    for f in site/data_10m/"$DATE"/*.webp; do
-        [[ -f "$f" ]] || continue
-        fname=$(basename "$f")
-        http_code=$(curl -s -o /dev/null -w "%{http_code}" -X PUT \
-            "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/r2/buckets/snowline-tiles/objects/tiles/${DATE}/${fname}" \
-            -H "Authorization: Bearer ${CF_API_TOKEN}" \
-            -H "Content-Type: image/webp" \
-            --data-binary @"$f")
-        if [[ "$http_code" != "200" ]]; then
-            echo "  WARN: upload failed for $fname (HTTP $http_code)"
-            UPLOAD_OK=0
-        fi
-    done
-    if [[ $UPLOAD_OK -eq 1 ]]; then
-        echo "    tiles/$DATE/* uploaded to R2"
+    if $PYTHON pipeline/sync_r2.py --date="$DATE"; then
+        UPLOADED=1
     fi
 else
     echo ""
     echo "── Skipping R2 upload (CF_ACCOUNT_ID / CF_API_TOKEN not set) ──"
+fi
+if [[ $UPLOADED -eq 0 ]]; then
+    if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+        echo "  Tiles not in R2 — removing $DATE from dates.json so the site doesn't list an empty map."
+        $PYTHON - "$DATE" <<'PYEOF'
+import json, sys
+p = "site/data_10m/dates.json"
+d = json.load(open(p)); dates = [x for x in d.get("dates", []) if x != sys.argv[1]]
+json.dump({"dates": dates, "latest": dates[-1] if dates else None}, open(p, "w"))
+PYEOF
+        exit 1
+    else
+        echo "  WARNING: $DATE is in dates.json but its tiles are only on this machine."
+        echo "  Run: python pipeline/sync_r2.py --date=$DATE   (with CF_ACCOUNT_ID + CF_API_TOKEN set)"
+    fi
 fi
 
 if [[ $KEEP_CACHE -eq 0 ]]; then

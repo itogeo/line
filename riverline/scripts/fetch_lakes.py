@@ -4,8 +4,7 @@ Fetch named lakes and reservoirs in Montana from OpenStreetMap via Overpass API.
 Filters to named water bodies that are large enough to be visible at state level.
 
 Usage:
-  /Users/ianvandusen/anaconda3/envs/geodata/bin/python \
-      /Users/ianvandusen/Desktop/Ito/itogeo/repos/line/riverline/scripts/fetch_lakes.py
+  python riverline/scripts/fetch_lakes.py
 
 Output:
   riverline/site/data/mt_lakes.geojson

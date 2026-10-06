@@ -103,6 +103,15 @@ def harmonize(arr, scale, offset):
     to 1 so they aren't mistaken for nodata."""
     if scale == 1.0 and offset == 0.0:
         return arr
+    if abs(scale * 10000.0 - 1.0) < 1e-9 and float(offset * 10000.0).is_integer():
+        # The usual case (scale 0.0001, offset -0.1): an integer shift.
+        # Done in uint16 to keep memory flat on 10980x10980 bands.
+        k = int(round(-offset * 10000.0))  # e.g. 1000
+        out = np.zeros_like(arr)
+        above = arr > k
+        out[above] = arr[above] - k
+        out[(arr != 0) & ~above] = 1
+        return out
     nodata = arr == 0
     refl = arr.astype(np.float32) * (scale * 10000.0) + offset * 10000.0
     out = np.clip(np.rint(refl), 1, 65535).astype(np.uint16)

@@ -17,8 +17,8 @@
     --accent: #8bbdd9;
     --accent-dim: rgba(139, 189, 217, 0.08);
     --text: #c8d8e8;
-    --text-muted: #4a6070;
-    --text-dim: #2e3f52;
+    --text-muted: #8aa0b4;
+    --text-dim: #627a8f;
     --mono: 'JetBrains Mono', monospace;
     --sans: 'Inter', -apple-system, sans-serif;
     --radius: 10px;
@@ -122,6 +122,14 @@
   .timeline.archive-mode { border-top-color: rgba(255,152,0,0.15); }
   .timeline.archive-mode .tl-date { color: #FFB74D; }
   .scene-meta { font-family: var(--mono); font-size: 9px; color: var(--text-dim); margin: 3px 0 10px; line-height: 1.5; }
+  .scene-source { font-family: var(--mono); font-size: 9px; color: var(--text-muted); margin: -4px 0 10px; line-height: 1.6; }
+  .scene-source a { color: var(--accent); text-decoration: none; border-bottom: 1px dotted rgba(139,189,217,0.4); }
+  .scene-source a:hover { color: #fff; }
+  .next-pass { display: block; margin: 0 0 10px; padding: 5px 9px; border-radius: 6px; line-height: 1.5;
+    background: rgba(139,189,217,0.08); border: 1px solid rgba(139,189,217,0.18); font-family: var(--mono); font-size: 9px; color: var(--text-muted); }
+  .next-pass b { color: var(--accent); font-weight: 600; }
+  .tl-season { font-family: var(--mono); font-size: 10px; min-width: 64px; }
+  .tl-pass { position: absolute; top: 1px; width: 2px; height: 8px; border-radius: 1px; transform: translateX(-1px); pointer-events: auto; }
 
   .card { background: var(--accent-dim); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 8px; }
   .card h3 { font-family: var(--mono); font-size: 9px; color: var(--accent); text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 5px; opacity: 0.8; }
@@ -480,8 +488,9 @@
     /* When the panel expands, push the basemap picker up with it */
     .panel.expanded ~ .basemap-picker { bottom: calc(80vh + 70px); }
 
-    .legend { flex-wrap: wrap; gap: 6px; right: 12px; bottom: calc(32vh + 12px); }
-    .panel.expanded ~ .legend { bottom: calc(80vh + 12px); }
+    /* Top-left on phones: the bottom sheet's height varies, so a legend
+       pinned above it ends up over the panel title. */
+    .legend { flex-wrap: wrap; gap: 6px; top: calc(var(--nav-h) + 8px); left: 8px; right: auto; bottom: auto; }
 
     /* The layers panel (top-right of map) needs to dodge the basemap picker */
     .layers-wrap {
@@ -506,6 +515,7 @@
   .mapboxgl-ctrl-attrib { display: none !important; }
 </style>
 <script src="/snow/shared/freshness.js"></script>
+<script src="/snow/season.js"></script>
 </head>
 <body>
 
@@ -520,6 +530,7 @@
     <a href="/snow/" class="active">Map</a>
     <a href="/snow/webcam.html">Webcams</a>
     <a href="/snow/metadata.html">Data</a>
+    <a href="/snow/methods.html">Methods</a>
   </div>
 </nav>
 
@@ -537,6 +548,8 @@
   <div class="brand"><span class="wordmark">itogeospatial</span><h1>Snow Cover</h1><span class="region">SW Montana</span><span class="data-freshness" id="data-freshness"></span></div>
   <div class="scene-date-badge" id="date-badge"></div>
   <div class="scene-meta" id="meta"></div>
+  <div class="scene-source" id="scene-source"></div>
+  <div class="next-pass" id="next-pass" style="display:none"></div>
 
   <!-- Surface coverage section -->
   <div class="section-label">Satellite Surface Coverage</div>
@@ -642,6 +655,7 @@
 
 <!-- Timeline -->
 <div class="timeline hidden" id="timeline">
+  <button class="tl-btn tl-season" id="tl-season" title="Switch season"></button>
   <button class="tl-btn" id="tl-prev" title="Previous date">&#9664;</button>
   <span class="tl-date" id="tl-date"></span>
   <div class="tl-slider-wrap" style="position:relative">
@@ -675,7 +689,7 @@
 <div class="below-bar">
   <div class="credit">
     <a href="https://itogeospatial.com" target="_blank" style="color:var(--text-dim)">Ito Geospatial</a> &middot;
-    <a href="https://github.com/itogeo/snowline" target="_blank" style="color:var(--text-dim)">Open Source</a>
+    <a href="https://github.com/itogeo/line" target="_blank" style="color:var(--text-dim)">Open Source</a>
   </div>
 </div>
 
@@ -712,6 +726,8 @@ async function tcUrl(dateStr) {
   return `data/${dateStr}/truecolor.webp`;
 }
 
+const HASH0 = readHash();   // #date=…&map=z/lat/lon from a shared link
+
 const map = new mapboxgl.Map({
   container: 'map',
   style: currentStyle,
@@ -723,6 +739,12 @@ const map = new mapboxgl.Map({
   maxPitch: 85,
   dragRotate: true,
   touchPitch: true,
+});
+
+if (HASH0.map) map.jumpTo({ center: [HASH0.map.lon, HASH0.map.lat], zoom: HASH0.map.zoom });
+map.on('moveend', () => {
+  const c = map.getCenter();
+  writeHash({ map: `${map.getZoom().toFixed(2)}/${c.lat.toFixed(4)}/${c.lng.toFixed(4)}` });
 });
 
 map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), 'top-right');
@@ -771,6 +793,8 @@ function snotelForDate(dateStr) {
 }
 let CURRENT_DATE = null;
 let CURRENT_DATA = null;
+let SAT_ROWS = [];          // every Sentinel-2 pass (data/sat_availability.json)
+let AGREEMENT = null;       // satellite vs SNOTEL per date (data/snotel_agreement.json)
 let layersAdded = false;
 let playInterval = null;
 
@@ -802,7 +826,10 @@ function findComparisonDate(fromDate, minDaysAgo) {
     const d = DATES[i];
     if (d === TODAY_VIRTUAL) continue;
     const ageDays = (fromMs - Date.parse(d)) / 86400000;
-    if (ageDays >= minDaysAgo) return d;
+    // Only compare within a season and within ~6 weeks; "vs May 6, 150
+    // days ago" says nothing useful about this week's snow.
+    if (ageDays > 45) return null;
+    if (ageDays >= minDaysAgo) return seasonOf(d).label === seasonOf(fromDate).label ? d : null;
   }
   return null;
 }
@@ -917,9 +944,8 @@ async function init() {
   // can spot it. We only add it if today falls past the latest
   // available date AND inside the season window.
   const todayStr = new Date().toISOString().slice(0, 10);
-  const seasonEndMs = Date.parse('2026-04-30');
-  const todayMs = Date.parse(todayStr);
-  if (todayMs <= seasonEndMs && todayStr > DATES[DATES.length - 1]) {
+  const todaySeason = seasonOf(todayStr);
+  if (todayStr <= todaySeason.end && todayStr > DATES[DATES.length - 1]) {
     DATES.push(todayStr);
     TODAY_VIRTUAL = todayStr;
   }
@@ -933,6 +959,20 @@ async function init() {
     if (el && d?.generated_at) el.textContent = 'Updated ' + formatAge(d.generated_at);
   }).catch(() => {});
   loadSnotelNormals(); // fire and forget — don't await
+
+  // Every satellite pass (clear or cloudy) for the timeline ticks and the
+  // "next pass" chip. Not needed to draw the map, so it loads alongside.
+  fetch('data/sat_availability.json').then(r => r.ok ? r.json() : null).then(d => {
+    SAT_ROWS = (d && d.rows) || [];
+    buildTimeline();
+    updateTimelineUI();
+    renderNextPass();
+  }).catch(() => {});
+
+  fetch('data/snotel_agreement.json').then(r => r.ok ? r.json() : null).then(d => {
+    AGREEMENT = d && d.dates;
+    renderSource();
+  }).catch(() => {});
 
   buildTimeline();
 
@@ -948,7 +988,9 @@ async function init() {
   // timeline for when they want live conditions without imagery.
   // "Latest processed" is at length-2 if TODAY_VIRTUAL occupies the last slot.
   const latestProcessed = TODAY_VIRTUAL ? DATES[DATES.length - 2] : DATES[DATES.length - 1];
-  const initialDate = latestProcessed;
+  // A shared link (#date=YYYY-MM-DD) wins if that date has a map.
+  const initialDate = (HASH0.date && DATES.includes(HASH0.date)) ? HASH0.date : latestProcessed;
+  setSeason(seasonOf(initialDate));
 
   if (map.loaded()) { await loadDate(initialDate); onMapReady(); }
   else map.on('load', async () => { await loadDate(initialDate); onMapReady(); });
@@ -975,7 +1017,7 @@ async function preloadRecentSnow(n = 3) {
   if (!DATES || DATES.length === 0) return;
   const recent = DATES.slice(-n);
   for (const dateStr of recent) {
-    if (dateStr === CURRENT_DATE) continue;  // already loaded
+    if (dateStr === CURRENT_DATE || dateStr === TODAY_VIRTUAL) continue;  // loaded / no imagery
     try {
       const r = await fetch(`data_10m/${dateStr}/snowline.json`);
       if (!r.ok) continue;
@@ -993,6 +1035,15 @@ async function preloadRecentSnow(n = 3) {
 // ── Load a date ──
 async function loadDate(dateStr) {
   CURRENT_DATE = dateStr;
+  writeHash({ date: dateStr });
+
+  // Crossing into another season redraws the timeline and the SNOTEL charts
+  // for that season.
+  if (seasonOf(dateStr).label !== SEASON.label) {
+    setSeason(seasonOf(dateStr));
+    buildTimeline();
+    if (SNOTEL_NORMALS) loadRangeDepths();
+  }
 
   // If this date isn't in the available dates list, we're in "today / no
   // imagery" mode — synthesize a stub CURRENT_DATA so the panel can render
@@ -1026,6 +1077,7 @@ async function loadDate(dateStr) {
   CURRENT_DATA = data;
 
   renderPanel();
+  renderSource();
   renderSeasonTrend();
   updateTimelineUI();
   updateWebcamVisibility();
@@ -1158,9 +1210,15 @@ function renderPanel() {
     document.getElementById('meta').innerHTML =
       `Imagery: ${ageText}${coverageNote}<br><span style="color:#69f0ae;font-size:9px">SNOTEL readings: live</span>`;
   } else {
-    document.getElementById('meta').innerHTML = isLive
-      ? `Sentinel-2 L2A &middot; ${d.cloud_cover_pct}% cloud &middot; ${(d.scene_ids || []).length} tiles${coverageNote}`
-      : `Sentinel-2 L2A &middot; ${d.cloud_cover_pct}% cloud &middot; Archived ${ageText}${coverageNote}`;
+    // Scene cloud averaged over the tiles used (newer maps list their scenes).
+    const sc = d.scenes || [];
+    const cloud = sc.length ? Math.round(sc.reduce((a, x) => a + (x.cloud || 0), 0) / sc.length)
+      : (d.cloud_cover_pct != null ? Math.round(d.cloud_cover_pct) : null);
+    const bits = ['Sentinel-2 L2A'];
+    if (cloud != null) bits.push(`${cloud}% cloud`);
+    if (sc.length) bits.push(`${sc.length} tiles`);
+    if (!isLive) bits.push(`Archived ${ageText}`);
+    document.getElementById('meta').innerHTML = bits.join(' &middot; ') + coverageNote;
   }
 
   // Toggle archive mode styling
@@ -1230,9 +1288,18 @@ async function loadSeasonTrend() {
 }
 
 // Fixed season timeline helpers (same as metadata page)
-const MAP_SEASON_START = '2025-10-01';
-const MAP_SEASON_END = '2026-05-31';
-const MAP_SEASON_DAYS = Math.round((new Date(MAP_SEASON_END) - new Date(MAP_SEASON_START)) / 86400000);
+// The season being viewed. Set from the first date shown and updated by
+// setSeason() when the user moves into another season (season.js).
+let SEASON = seasonOf(todayStr());
+let MAP_SEASON_START = SEASON.start;
+let MAP_SEASON_END = SEASON.end;
+let MAP_SEASON_DAYS = seasonDays(SEASON);
+function setSeason(s) {
+  SEASON = s;
+  MAP_SEASON_START = s.start;
+  MAP_SEASON_END = s.end;
+  MAP_SEASON_DAYS = seasonDays(s);
+}
 
 function mapDateToX(dateStr, w, padL) {
   const d = (new Date(dateStr) - new Date(MAP_SEASON_START)) / 86400000;
@@ -1258,7 +1325,9 @@ function renderSeasonTrend() {
 
   if (avgValues.length < 5) {
     svg.innerHTML = '';
-    labels.innerHTML = '<span style="font-size:9px;color:var(--text-dim)">Loading SNOTEL data...</span>';
+    const early = (Date.parse(todayStr()) - Date.parse(SEASON.start)) / 86400000 < 21 && SEASON.label === seasonOf(todayStr()).label;
+    labels.innerHTML = `<span style="font-size:9px;color:var(--text-dim)">${
+      Object.keys(RANGE_SEASON_DATA).length ? (early ? `The ${SEASON.label} season has just started; this fills in as snow arrives.` : 'Not enough SNOTEL data for this season.') : 'Loading SNOTEL data…'}</span>`;
     return;
   }
 
@@ -1277,7 +1346,7 @@ function renderSeasonTrend() {
   // X axis month labels
   let xTicks = '';
   ['Oct','Nov','Dec','Jan','Feb','Mar','Apr','May'].forEach((m, i) => {
-    const months = ['2025-10','2025-11','2025-12','2026-01','2026-02','2026-03','2026-04','2026-05'];
+    const months = seasonMonthKeys(SEASON);
     const x = mapDateToX(months[i] + '-01', w, padL);
     xTicks += `<text x="${x}" y="${h-1}" fill="var(--text-dim)" font-size="6" font-family="var(--mono)">${m}</text>`;
   });
@@ -1813,8 +1882,8 @@ function buildTimeline() {
   slider.value = DATES.length - 1;
 
   const tickEl = document.getElementById('tl-ticks');
-  const seasonStart = new Date('2025-10-01').getTime();
-  const seasonEnd = new Date('2026-04-30').getTime();
+  const seasonStart = new Date(SEASON.start).getTime();
+  const seasonEnd = new Date(SEASON.end).getTime();
   const seasonSpan = seasonEnd - seasonStart;
 
   function dateToPct(dateStr) {
@@ -1824,20 +1893,30 @@ function buildTimeline() {
   let html = '';
 
   // Month labels at correct positions
-  const months = [
-    ['Oct','2025-10-01'],['Nov','2025-11-01'],['Dec','2025-12-01'],
-    ['Jan','2026-01-01'],['Feb','2026-02-01'],['Mar','2026-03-01'],['Apr','2026-04-01'],
-  ];
+  const months = seasonMonthKeys(SEASON).map(k =>
+    [new Date(k + '-01T00:00:00').toLocaleDateString('en-US', { month: 'short' }), k + '-01']);
   months.forEach(([label, d]) => {
     html += `<span style="position:absolute;left:${dateToPct(d)}%;top:12px;font-size:7px;color:var(--text-dim);transform:translateX(-50%)">${label}</span>`;
     html += `<div style="position:absolute;left:${dateToPct(d)}%;top:0;width:1px;height:10px;background:rgba(255,255,255,0.08)"></div>`;
   });
 
+  // Every Sentinel-2 pass this season as a thin tick behind the dots:
+  // light = clear or mostly clear, amber = partial, grey = cloudy. Dots are
+  // the passes that have a snow map.
+  const PASS_COLOR = { excellent: 'rgba(224,242,255,0.75)', good: 'rgba(224,242,255,0.5)', partial: 'rgba(255,183,77,0.45)', cloudy: 'rgba(120,135,150,0.35)' };
+  for (const r of SAT_ROWS) {
+    if (r.dt < SEASON.start || r.dt > SEASON.end) continue;
+    const tip = `${r.dt} · ${r.q} · ${r.why || ''}`.replace(/"/g, '&quot;');
+    html += `<div class="tl-pass" title="${tip}" style="left:${dateToPct(r.dt)}%;background:${PASS_COLOR[r.q] || PASS_COLOR.cloudy}"></div>`;
+  }
+
   // Date dots at correct positions. The TODAY_VIRTUAL entry (if present)
   // is just another date in DATES — it gets the same dot but green-colored
   // so the user can spot the "live now" position. Same size, same vertical
   // alignment as every other dot, so it visually fits with the rest.
+  // Only this season's dates are drawn; the season button switches.
   DATES.forEach((dateStr, idx) => {
+    if (dateStr < SEASON.start || dateStr > SEASON.end) return;
     const pct = dateToPct(dateStr);
     const isToday = dateStr === TODAY_VIRTUAL;
     const label = isToday
@@ -1851,10 +1930,75 @@ function buildTimeline() {
 
   tickEl.innerHTML = html;
 
-  slider.addEventListener('input', () => {
-    const idx = parseInt(slider.value);
-    loadDate(DATES[idx]);
-  });
+  const seasonBtn = document.getElementById('tl-season');
+  if (seasonBtn) {
+    const seasons = [...new Set(DATES.map(d => seasonOf(d).label))];
+    seasonBtn.textContent = SEASON.label;
+    seasonBtn.style.display = seasons.length > 1 ? '' : 'none';
+    seasonBtn.title = seasons.length > 1 ? `Season ${SEASON.label} — click for another season` : '';
+  }
+
+  if (!slider.dataset.bound) {
+    slider.dataset.bound = '1';
+    slider.addEventListener('input', () => {
+      const idx = parseInt(slider.value);
+      loadDate(DATES[idx]);
+    });
+  }
+}
+
+// Season button: jump to the newest map of the next-older season (wrapping
+// back to the newest season).
+document.getElementById('tl-season').addEventListener('click', () => {
+  const seasons = [...new Set(DATES.map(d => seasonOf(d).label))].sort().reverse();
+  if (seasons.length < 2) return;
+  const i = seasons.indexOf(SEASON.label);
+  const target = seasons[(i + 1) % seasons.length];
+  const inTarget = DATES.filter(d => seasonOf(d).label === target && d !== TODAY_VIRTUAL);
+  if (inTarget.length) loadDate(inTarget[inTarget.length - 1]);
+});
+
+// ── Provenance: where this map came from ──
+function renderSource() {
+  const el = document.getElementById('scene-source');
+  if (!el) return;
+  const d = CURRENT_DATA;
+  if (!d || d.no_imagery) { el.innerHTML = ''; return; }
+  const n = (d.scenes || []).length;
+  const what = n ? `${n} Sentinel-2 scene${n === 1 ? '' : 's'}` : 'Sentinel-2 L2A';
+  const ag = AGREEMENT && AGREEMENT[d.scene_date];
+  const check = ag && ag.evaluated
+    ? `<br>Ground check: <a href="/snow/methods.html#check" title="Map vs. SNOTEL snow depth at each station (cloudy stations not counted)">${ag.agree} of ${ag.evaluated} SNOTEL stations agree</a>`
+    : '';
+  el.innerHTML =
+    `Source: ${what} &middot; <a href="/snow/metadata.html#tab=scenes&date=${d.scene_date}">see scenes &amp; reproduce</a>` +
+    ` &middot; <a href="/snow/methods.html">how it's made</a>` + check;
+}
+
+// ── Next expected pass ──
+// Each Sentinel-2 satellite repeats its ground track every 10 days, so a
+// pass seen on day d recurs on d+10. From the last 10 days of passes over
+// the AOI we can say when the next ones are due. Whether it's clear is up
+// to the weather.
+function renderNextPass() {
+  const el = document.getElementById('next-pass');
+  if (!el || !SAT_ROWS.length) return;
+  const today = todayStr();
+  const recent = SAT_ROWS.map(r => r.dt).filter(dt => dt <= today && (Date.parse(today) - Date.parse(dt)) / 86400000 < 10);
+  const due = new Set();
+  for (const dt of recent) {
+    for (let k = 1; k <= 2; k++) {
+      const next = new Date(Date.parse(dt) + k * 10 * 86400000).toISOString().slice(0, 10);
+      if (next > today) due.add(next);
+    }
+  }
+  const upcoming = [...due].sort().slice(0, 3);
+  if (!upcoming.length) { el.style.display = 'none'; return; }
+  const fmt = dt => new Date(dt + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+  el.innerHTML = `Next satellite pass <b>${fmt(upcoming[0])}</b>` +
+    (upcoming.length > 1 ? ` &middot; then ${upcoming.slice(1).map(fmt).join(', ')}` : '');
+  el.title = 'Predicted from the 10-day Sentinel-2 orbit repeat. A clear map also needs a clear sky.';
+  el.style.display = '';
 }
 
 function updateTimelineUI() {
@@ -2411,7 +2555,7 @@ async function loadRangeDepths() {
     if (triplets.length === 0) return;
     try {
       const batch = triplets.slice(0, 8).join(',');
-      const r = await fetch(`https://wcc.sc.egov.usda.gov/awdbRestApi/services/v1/data?stationTriplets=${encodeURIComponent(batch)}&elements=SNWD&duration=DAILY&beginDate=2025-10-01&endDate=${today}`);
+      const r = await fetch(`https://wcc.sc.egov.usda.gov/awdbRestApi/services/v1/data?stationTriplets=${encodeURIComponent(batch)}&elements=SNWD&duration=DAILY&beginDate=${SEASON.start}&endDate=${seasonFetchEnd(SEASON)}`);
       if (!r.ok) return;
       const data = await r.json();
 
@@ -2555,7 +2699,7 @@ function renderRangeDepths() {
       // Month labels + date marker
       let monthTicks = '';
       ['O','N','D','J','F','M','A','M'].forEach((m,i) => {
-        const ms = ['2025-10','2025-11','2025-12','2026-01','2026-02','2026-03','2026-04','2026-05'];
+        const ms = seasonMonthKeys(SEASON);
         monthTicks += `<text x="${mapDateToX(ms[i]+'-01',dw,dPadL)}" y="${dh-1}" fill="var(--text-dim)" font-size="5" font-family="var(--mono)">${m}</text>`;
       });
       let dateMarker = '';
@@ -2723,7 +2867,7 @@ function buildRangeSparkline(values, w, h, triplets) {
   // Month ticks
   let months = '';
   ['O','N','D','J','F','M','A','M'].forEach((m, i) => {
-    const ms = ['2025-10','2025-11','2025-12','2026-01','2026-02','2026-03','2026-04','2026-05'];
+    const ms = seasonMonthKeys(SEASON);
     months += `<text x="${mapDateToX(ms[i]+'-01',w,padL)}" y="${h-1}" fill="var(--text-dim)" font-size="5" font-family="var(--mono)">${m}</text>`;
   });
 
@@ -2787,8 +2931,8 @@ async function loadSnotelNormals() {
 }
 
 async function fetchSeasonDepth(triplet) {
-  const begin = '2025-10-01';
-  const end = new Date().toISOString().slice(0, 10);
+  const begin = SEASON.start;
+  const end = seasonFetchEnd(SEASON);
   try {
     // NRCS API has CORS headers — fetch directly
     const r = await fetch(`https://wcc.sc.egov.usda.gov/awdbRestApi/services/v1/data?stationTriplets=${encodeURIComponent(triplet)}&elements=SNWD&duration=DAILY&beginDate=${begin}&endDate=${end}`);
@@ -2813,7 +2957,7 @@ function renderDepthSVG(values, currentDate, triplet) {
   // Month labels
   let months = '';
   ['O','N','D','J','F','M','A','M'].forEach((m, i) => {
-    const ms = ['2025-10','2025-11','2025-12','2026-01','2026-02','2026-03','2026-04','2026-05'];
+    const ms = seasonMonthKeys(SEASON);
     months += `<text x="${mapDateToX(ms[i]+'-01',w,padL)}" y="${h-1}" fill="var(--text-dim)" font-size="5" font-family="var(--mono)">${m}</text>`;
   });
 

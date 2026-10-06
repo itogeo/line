@@ -99,7 +99,7 @@ jobs:
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
 
       - name: Prune old R2 tiles
-        run: python snowline/pipeline/prune_r2.py --keep-snow 30 --keep-truecolor 10
+        run: python snowline/pipeline/prune_r2.py --keep-snow 0 --keep-truecolor 10
         env:
           CF_ACCOUNT_ID: 3b134bb7dc7ac46e5a2ffe71302f8d69
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
