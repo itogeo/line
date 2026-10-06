@@ -101,6 +101,14 @@ the older pipeline have `tiles[]` instead of `chunks[]` and no `scenes`.
 A date is listed only after its tiles reached R2 (enforced in CI by
 `update_date.sh`), and only if the map covers at least 10% of the area.
 
+`snowline/site/data_10m/{date}/latest_r{row}c{col}.webp|.tif` (written by
+`build_composite.py`): the latest view. Every pixel is the newest clear
+(snow or ground) look from any processed pass in the 10 days up to `date`.
+The .tif has band 1 = class and band 2 = age in days (255 = no clear look).
+`snowline.json` → `latest` holds `chunks`, `sources` (dates and their
+share), `coverage_pct` and `snow_cover_pct`. In CI the block is written
+only after its files reach R2 (`--upload`).
+
 `snowline/site/data_10m/{date}/snow_r{row}c{col}.tif`: single-band uint8
 COGs, EPSG:4326, `0 ground, 1 snow, 2 cloud, 3 nodata`, nodata value
 255. Written by `export_cogs.py` from the snow WebPs and served from R2 at
@@ -109,7 +117,7 @@ static STAC at `/snow/stac/catalog.json` (only dates in `dates.json`).
 
 `snowline/site/terrain/shade.json` and `/snow/api/terrain/shade/{z}/{x}/{y}.webp`
 (R2 key `terrain/shade/...`): lidar terrain shading, 512 px web-mercator
-tiles z8–13, black RGB with the shading in alpha (0 = flat or sunlit, up to
+tiles z8–13, slate-blue RGB (28,46,78) with the shading in alpha (0 = flat or sunlit, up to
 160 in shadow). Made by `build_lidar_terrain.py` from the USGS 3DEP 1 m DEM
 (664 tiles over the AOI on 2026-10-06, read at the COGs' 4 m overview).
 Shaded per source tile in UTM, with neighbours as margin, then reprojected,
@@ -136,12 +144,14 @@ On 2025-11-30, the older per-tile pipeline's map agreed with 4 of 23
 SNOTEL stations. The same date reprocessed with the current pipeline
 agreed with 20 of 23 (87%), and snow cover went from 58.2% to 85.5% of
 imaged pixels (2026-10-05). The 2025–26 season was reprocessed for that
-reason, with the SCL snow term, on 2026-10-06. After that, 39 listed
-maps (2025-10-06 to 2026-10-03) agree with SNOTEL on 530 of 643
-station-days (82%). There are 87 misses and 26 false snow, and spring
-maps do best. Most remaining misses are stations under forest canopy or in
-midwinter shadow (see `snowline/site/methods.html`). Twelve passes that
-imaged under 10% of the area were processed but aren't listed.
+reason, with the SCL snow term, on 2026-10-06, together with every other
+pass that had at least one clear tile (so the latest view has sources). As of
+2026-10-06: 64 listed maps (2025-10-03 to 2026-10-03). Each pass on its own
+agrees with SNOTEL on 720 of 848 station-days (85%). The latest view, the
+map's default, agrees on 1,160 of 1,379 (84%): about the same rate, but it
+checks 60% more station-days because it covers more of the area. Passes
+that imaged under 10% of the area are processed and feed the latest view,
+but aren't listed on the timeline.
 
 ## Working in this repository
 

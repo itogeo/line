@@ -254,6 +254,8 @@ def main():
                         help=f"Parallel tiles in flight (default {TILE_PARALLELISM})")
     parser.add_argument("--force", action="store_true",
                         help="Re-download bands even if cached on disk")
+    parser.add_argument("--max-cloud", type=float, default=90,
+                        help="Skip tiles with more scene cloud than this (default 90: they add only cloud)")
     parser.add_argument("--tiles", default="",
                         help="Comma-separated subset of tiles, e.g. 12TVR,12TWR (default: all AOI tiles)")
     args = parser.parse_args()
@@ -265,10 +267,16 @@ def main():
     if args.tiles:
         keep = {s2index.norm_tile(t) for t in args.tiles.split(",")}
         items = [r for r in items if r["tile"] in keep]
+    n_all = len(items)
+    # Skip orbit-edge slivers and tiles that are (almost) all cloud: they add
+    # nothing to the map or to the latest view but take the same download.
+    items = [r for r in items
+             if (r["cloud"] if r["cloud"] is not None else 100) <= args.max_cloud
+             and (r["nodata"] or 0) < 95]
     if not items:
-        log(f"No Sentinel-2 scenes for {args.date}")
+        log(f"No usable Sentinel-2 scenes for {args.date} ({n_all} all cloud or slivers)")
         return 1
-    log(f"Found {len(items)} S2 scenes for {args.date}")
+    log(f"Found {len(items)} usable S2 scenes for {args.date} (skipped {n_all - len(items)} cloudy/sliver)")
     items_sorted = sorted(items, key=lambda r: r["tile"])
 
     started = time.time()

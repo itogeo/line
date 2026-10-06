@@ -8,7 +8,7 @@ Open, reproducible outdoor-conditions maps for Montana, built from free public d
 
 | | |
 |---|---|
-| **Map** | [line.itogeospatial.com/snow](https://line.itogeospatial.com/snow): today's snow line, every clear day of the season on a timeline, shareable links (`#date=2026-02-10&map=10/45.5/-111.0`) |
+| **Map** | [line.itogeospatial.com/snow](https://line.itogeospatial.com/snow): the **latest view** (every pixel's most recent clear look from the last 10 days of passes, so no half-covered days), every pass of the season on a timeline, and shareable links (`#date=2026-02-10&map=10/45.5/-111.0`) |
 | **Data** | [/snow/metadata.html](https://line.itogeospatial.com/snow/metadata.html): every Sentinel-2 scene behind the map with links to the files, a *reproduce* button on each, and per-tile snow history since 2018 |
 | **Methods** | [/snow/methods.html](https://line.itogeospatial.com/snow/methods.html): the algorithm, the SNOTEL agreement score, and where it goes wrong |
 | **Terrain** | Shading from USGS 3DEP 1 m lidar under every snow map (newest survey wins) |

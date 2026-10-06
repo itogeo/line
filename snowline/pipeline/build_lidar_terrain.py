@@ -9,7 +9,7 @@ the public 3DEP 1 m DEM tiles into web-map tiles:
 
   site/terrain/shade/{z}/{x}/{y}.webp   512 px tiles, z8–z13 (~6.7 m/px at z13)
 
-Each tile is black with an alpha channel: transparent on flat or sunlit
+Each tile is slate blue with an alpha channel: transparent on flat or sunlit
 ground, darker in shadow. It darkens whatever is below it and keeps the
 snow layer above it bright.
 
@@ -67,7 +67,10 @@ SUN = [(315, 45, 0.7), (255, 50, 0.3)]
 FLAT = 255 * math.sin(math.radians(45))
 EXAGGERATION = 1.3      # visual z-factor
 CONTRAST = 1.2          # alpha per shade level below flat
-MAX_ALPHA = 160         # never fully black: it's context under the snow
+MAX_ALPHA = 160         # never opaque: it's context under the snow
+# Shadows are a cool slate blue rather than black: it reads as winter light
+# and keeps snow-covered slopes looking clean instead of muddy.
+SHADOW_RGB = (28, 46, 78)
 
 
 def log(msg):
@@ -292,6 +295,7 @@ def save(alpha, path, np):
     from PIL import Image
     path.parent.mkdir(parents=True, exist_ok=True)
     rgba = np.zeros(alpha.shape + (4,), np.uint8)
+    rgba[..., :3] = SHADOW_RGB
     rgba[..., 3] = alpha
     Image.fromarray(rgba, "RGBA").save(path, "WEBP", quality=72, method=4)
 

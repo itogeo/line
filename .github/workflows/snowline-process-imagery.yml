@@ -102,6 +102,9 @@ jobs:
               echo "FAILED $dt — continuing"
             fi
           done < /tmp/dates_to_process.txt
+          # Latest view: newest clear look per pixel over the last 10 days,
+          # for every recent date (a new pass also improves the days after it).
+          python snowline/pipeline/build_composite.py --recent 12 --upload || echo "latest view: some dates not uploaded"
           python snowline/pipeline/build_stac.py || echo "STAC build failed"
         env:
           CF_ACCOUNT_ID: 3b134bb7dc7ac46e5a2ffe71302f8d69

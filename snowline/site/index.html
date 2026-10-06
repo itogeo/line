@@ -122,6 +122,11 @@
   .timeline.archive-mode { border-top-color: rgba(255,152,0,0.15); }
   .timeline.archive-mode .tl-date { color: #FFB74D; }
   .scene-meta { font-family: var(--mono); font-size: 9px; color: var(--text-dim); margin: 3px 0 10px; line-height: 1.5; }
+  .view-toggle { display: inline-flex; margin: 2px 0 8px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .view-toggle button { font-family: var(--mono); font-size: 9px; letter-spacing: 0.5px; text-transform: uppercase; padding: 4px 9px;
+    background: transparent; color: var(--text-muted); border: 0; cursor: pointer; }
+  .view-toggle button.active { background: rgba(139,189,217,0.18); color: var(--accent); }
+  .view-toggle button:disabled { opacity: 0.35; cursor: not-allowed; }
   .scene-source { font-family: var(--mono); font-size: 9px; color: var(--text-muted); margin: -4px 0 10px; line-height: 1.6; }
   .scene-source a { color: var(--accent); text-decoration: none; border-bottom: 1px dotted rgba(139,189,217,0.4); }
   .scene-source a:hover { color: #fff; }
@@ -547,6 +552,10 @@
 <div class="panel collapsed" id="panel">
   <div class="brand"><span class="wordmark">itogeospatial</span><h1>Snow Cover</h1><span class="region">SW Montana</span><span class="data-freshness" id="data-freshness"></span></div>
   <div class="scene-date-badge" id="date-badge"></div>
+  <div class="view-toggle" id="view-toggle" role="group" aria-label="What the snow layer shows">
+    <button type="button" data-view="latest" title="Every pixel shows its most recent clear look from the last 10 days of passes">Latest view</button>
+    <button type="button" data-view="pass" title="Only what this one satellite pass saw">This pass only</button>
+  </div>
   <div class="scene-meta" id="meta"></div>
   <div class="scene-source" id="scene-source"></div>
   <div class="next-pass" id="next-pass" style="display:none"></div>
@@ -620,7 +629,7 @@
   <div style="font-family:var(--mono);font-size:8px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Layers</div>
   <div class="layers">
     <label class="layer-row"><input type="checkbox" id="tog-snow" checked><div class="sw"></div><span class="layer-label">Snow</span></label>
-    <div class="opacity-wrap" id="opacity-snow"><label>Opacity</label><input type="range" min="0" max="100" value="45" id="slider-snow"></div>
+    <div class="opacity-wrap" id="opacity-snow"><label>Opacity</label><input type="range" min="0" max="100" value="60" id="slider-snow"></div>
     <label class="layer-row"><input type="checkbox" id="tog-s2" checked><div class="sw"></div><span class="layer-label">S2 Imagery</span></label>
     <div class="opacity-wrap" id="opacity-s2"><label>Opacity</label><input type="range" min="0" max="100" value="90" id="slider-s2"></div>
     <label class="layer-row"><input type="checkbox" id="tog-historical"><div class="sw"></div><span class="layer-label">Historical</span></label>
@@ -796,6 +805,29 @@ function snotelForDate(dateStr) {
 let CURRENT_DATE = null;
 let CURRENT_DATA = null;
 let SAT_ROWS = [];          // every Sentinel-2 pass (data/sat_availability.json)
+// 'latest': every pixel shows its newest clear look from the last ~10 days
+// of passes (build_composite.py), so the map isn't half-hatched by one
+// orbit's swath. 'pass': just this one satellite pass.
+let VIEW_MODE = new URLSearchParams(location.hash.replace(/^#/, '')).get('view') === 'pass' ? 'pass' : 'latest';
+function applyView(raw) {
+  if (!raw || raw.no_imagery || !raw.latest || VIEW_MODE !== 'latest') return raw ? { ...raw, view: 'pass' } : raw;
+  const tc = Object.fromEntries((raw.chunks || []).map(c => [c.chunk_id, c.truecolor_file]));
+  return {
+    ...raw,
+    view: 'latest',
+    pass_coverage_pct: raw.coverage_pct,
+    coverage_pct: raw.latest.coverage_pct,
+    snow_cover_pct: raw.latest.snow_cover_pct,
+    chunks: raw.latest.chunks.map(c => ({ ...c, truecolor_file: tc[c.chunk_id] })),
+  };
+}
+function setViewMode(mode) {
+  if (mode === VIEW_MODE) return;
+  VIEW_MODE = mode;
+  for (const k of Object.keys(SNOWLINE_CACHE)) delete SNOWLINE_CACHE[k];
+  writeHash({ view: mode === 'pass' ? 'pass' : null });
+  loadDate(CURRENT_DATE);
+}
 let AGREEMENT = null;       // satellite vs SNOTEL per date (data/snotel_agreement.json)
 let layersAdded = false;
 let playInterval = null;
@@ -810,7 +842,7 @@ async function fetchSnowlineMeta(dateStr) {
   try {
     const r = await fetch(`data_10m/${dateStr}/snowline.json`);
     if (!r.ok) throw new Error('not ok');
-    SNOWLINE_CACHE[dateStr] = await r.json();
+    SNOWLINE_CACHE[dateStr] = applyView(await r.json());
   } catch (e) {
     SNOWLINE_CACHE[dateStr] = null;
   }
@@ -1076,7 +1108,7 @@ async function loadDate(dateStr) {
     // Per-tile is the only pipeline now — fetch directly from data_10m/.
     try {
       const resp = await fetch(`data_10m/${dateStr}/snowline.json`);
-      if (resp.ok) data = await resp.json();
+      if (resp.ok) data = applyView(await resp.json());
     } catch (e) { /* ignore */ }
     if (!data) return;
   }
@@ -1208,7 +1240,9 @@ function renderPanel() {
   }
 
   const coverage = d.coverage_pct != null ? d.coverage_pct : 100;
-  const coverageNote = coverage < 80 ? ` &middot; <span style="color:#FFB74D">${coverage}% AOI covered</span>` : '';
+  const coverageNote = d.view === 'latest' && d.pass_coverage_pct != null && d.pass_coverage_pct < coverage
+    ? ` &middot; this pass saw ${d.pass_coverage_pct}%, latest view ${coverage}%`
+    : (coverage < 80 ? ` &middot; <span style="color:#FFB74D">${coverage}% AOI covered</span>` : '');
   // When viewing the latest processed date: show "imagery from X · SNOTEL live"
   // so the user knows the snow image is historical but the ground-truth numbers
   // are current. For other dates: just show the archive info.
@@ -1976,9 +2010,24 @@ function renderSource() {
   if (!el) return;
   const d = CURRENT_DATA;
   if (!d || d.no_imagery) { el.innerHTML = ''; return; }
+  // View toggle state (latest view needs a composite for this date).
+  document.querySelectorAll('#view-toggle button').forEach(b => {
+    b.classList.toggle('active', b.dataset.view === d.view);
+    b.disabled = b.dataset.view === 'latest' && !d.latest;
+    b.onclick = () => setViewMode(b.dataset.view);
+  });
   const n = (d.scenes || []).length;
-  const what = n ? `${n} Sentinel-2 scene${n === 1 ? '' : 's'}` : 'Sentinel-2 L2A';
-  const ag = AGREEMENT && AGREEMENT[d.scene_date];
+  let what = n ? `${n} Sentinel-2 scene${n === 1 ? '' : 's'}` : 'Sentinel-2 L2A';
+  if (d.view === 'latest' && d.latest) {
+    const src = d.latest.sources || [];
+    const fmt = s => new Date(s + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+    const own = src.find(x => x.date === d.scene_date);
+    what = src.length > 1
+      ? `newest clear look per pixel from ${src.length} passes, ${fmt(src[src.length - 1].date)}–${fmt(src[0].date)} (${own ? Math.round(own.pct_of_seen) : 0}% from this day)`
+      : `this pass (${n} scene${n === 1 ? '' : 's'})`;
+  }
+  const agAll = AGREEMENT && AGREEMENT[d.scene_date];
+  const ag = agAll && (d.view === 'latest' && agAll.latest ? agAll.latest : agAll);
   const check = ag && ag.evaluated
     ? `<br>Ground check: <a href="/snow/methods.html#check" title="Map vs. SNOTEL snow depth at each station (cloudy stations not counted)">${ag.agree} of ${ag.evaluated} SNOTEL stations agree</a>`
     : '';
@@ -2340,8 +2389,10 @@ function applyBasemapStyling() {
   // Snow tile recolor: on topo, desaturate the cyan snow toward white-gray
   // so it visually matches the topo map's snowy-mountain palette. On dark
   // basemaps, leave the cyan as-is.
-  const snowSat = isTopo ? -0.9 : 0;       // -1=grayscale, 0=untouched
-  const snowBrightnessMin = isTopo ? 0.5 : 0;  // floor brightness so gray → near-white
+  // Topo: soften the cyan to an icy blue (it used to go fully white, which
+  // made snow nearly invisible on the light basemap).
+  const snowSat = isTopo ? -0.35 : 0;      // -1=grayscale, 0=untouched
+  const snowBrightnessMin = isTopo ? 0.25 : 0;
   for (const id of currentTileLayerIds) {
     if (id.startsWith('layer-snow-') && map.getLayer(id)) {
       map.setPaintProperty(id, 'raster-saturation', snowSat);
@@ -2895,7 +2946,7 @@ function buildRangeSparkline(values, w, h, triplets) {
 
 // ── Forest mask layer ──
 // ── Lidar terrain shading ──
-// Black-with-alpha tiles: they darken shadowed slopes of whatever is below
+// Slate-blue tiles with alpha: they shade the shadowed slopes of whatever is below
 // and leave flat or sunlit ground untouched, so the snow above stays bright.
 function addLidarShade() {
   if (!map.getSource('lidar-shade')) {
@@ -2910,7 +2961,7 @@ function addLidarShade() {
   if (!map.getLayer('lidar-shade')) {
     map.addLayer({
       id: 'lidar-shade', type: 'raster', source: 'lidar-shade',
-      paint: { 'raster-opacity': 0.9, 'raster-fade-duration': 150 },
+      paint: { 'raster-opacity': 0.8, 'raster-fade-duration': 150 },
       layout: { visibility: document.getElementById('tog-lidar').checked ? 'visible' : 'none' },
     }, currentTileLayerIds.find(id => map.getLayer(id)));
   }

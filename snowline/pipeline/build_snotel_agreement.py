@@ -133,6 +133,33 @@ def load_depths(stations, dates):
     return depths
 
 
+def score(d, images, stations, depths):
+    cache = {}
+    counts = {"snow_agree": 0, "bare_agree": 0, "miss": 0, "false_snow": 0, "cloud": 0, "skipped": 0}
+    rows = []
+    for s in stations:
+        depth = depths.get(d, {}).get(s["id"])
+        cls = classify_at(DATA_10M / d, images, s["lat"], s["lon"], cache)
+        if cls is None or depth is None:
+            continue
+        if cls in ("cloud", "nodata"):
+            counts["cloud"] += 1
+            verdict = "cloud"
+        elif depth >= SNOW_IN:
+            verdict = "snow_agree" if cls == "snow" else "miss"
+        elif depth == 0:
+            verdict = "bare_agree" if cls == "ground" else "false_snow"
+        else:
+            verdict = "skipped"
+        if verdict != "cloud":
+            counts[verdict] += 1
+        rows.append([s["id"], s["name"], depth, cls, verdict])
+    evaluated = counts["snow_agree"] + counts["bare_agree"] + counts["miss"] + counts["false_snow"]
+    agree = counts["snow_agree"] + counts["bare_agree"]
+    return {"evaluated": evaluated, "agree": agree,
+            "pct": round(agree / evaluated * 100) if evaluated else None, **counts, "stations": rows}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--date", help="Only this date (merged into the existing file)")
@@ -155,39 +182,19 @@ def main():
     result = json.loads(OUT.read_text()).get("dates", {}) if (args.date and OUT.exists()) else {}
     for d in dates:
         meta = json.loads((DATA_10M / d / "snowline.json").read_text())
-        images = images_for(meta)
-        cache = {}
-        counts = {"snow_agree": 0, "bare_agree": 0, "miss": 0, "false_snow": 0, "cloud": 0, "skipped": 0}
-        rows = []
-        for s in stations:
-            depth = depths.get(d, {}).get(s["id"])
-            cls = classify_at(DATA_10M / d, images, s["lat"], s["lon"], cache)
-            if cls is None or depth is None:
-                continue
-            if cls in ("cloud", "nodata"):
-                counts["cloud"] += 1
-                verdict = "cloud"
-            elif depth >= SNOW_IN:
-                verdict = "snow_agree" if cls == "snow" else "miss"
-            elif depth == 0:
-                verdict = "bare_agree" if cls == "ground" else "false_snow"
-            else:
-                verdict = "skipped"
-            if verdict not in ("cloud",):
-                counts[verdict] += 1
-            rows.append([s["id"], s["name"], depth, cls, verdict])
-        evaluated = counts["snow_agree"] + counts["bare_agree"] + counts["miss"] + counts["false_snow"]
-        agree = counts["snow_agree"] + counts["bare_agree"]
-        result[d] = {
-            "evaluated": evaluated,
-            "agree": agree,
-            "pct": round(agree / evaluated * 100) if evaluated else None,
-            **counts,
-            "stations": rows,
-        }
+        result[d] = score(d, images_for(meta), stations, depths)
+        if meta.get("latest"):
+            # The latest view (default on the map): same check against what
+            # a visitor sees, where a pixel may be up to window_days old.
+            lat_imgs = [(c["snow_file"], c["bounds"]) for c in meta["latest"]["chunks"]]
+            lv = score(d, lat_imgs, stations, depths)
+            result[d]["latest"] = {k: lv[k] for k in ("evaluated", "agree", "pct", "miss", "false_snow", "cloud")}
+        agree, evaluated = result[d]["agree"], result[d]["evaluated"]
+        counts = result[d]
         log(f"{d}: {agree}/{evaluated} agree"
             + (f" ({result[d]['pct']}%)" if evaluated else "")
-            + f" · miss {counts['miss']} · false snow {counts['false_snow']} · cloud {counts['cloud']}")
+            + f" · miss {counts['miss']} · false snow {counts['false_snow']} · cloud {counts['cloud']}"
+            + (f" | latest view {result[d]['latest']['agree']}/{result[d]['latest']['evaluated']}" if "latest" in result[d] else ""))
 
     OUT.write_text(json.dumps({
         "generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),

@@ -67,6 +67,7 @@
     <li><a href="#area">Area and imagery</a></li>
     <li><a href="#scenes">Finding the scenes</a></li>
     <li><a href="#snow">From pixels to snow</a></li>
+    <li><a href="#latest">The latest view</a></li>
     <li><a href="#check">Checking it against SNOTEL</a></li>
     <li><a href="#terrain">Lidar terrain</a></li>
     <li><a href="#fails">Where it goes wrong</a></li>
@@ -108,6 +109,11 @@ snow  = (NDSI ≥ 0.4  or  SCL = 11)  and not masked</pre>
     <tr><td><span class="sw" style="border:1px solid var(--text-dim)"></span>Clear</td><td>Imaged and not snow</td></tr>
   </table>
 
+  <h2 id="latest">The latest view</h2>
+  <p>One satellite pass rarely sees the whole area. Each orbit images a strip about 290&nbsp;km wide that cuts across the map at an angle, and clouds take bites out of it. A one-day map is often half hatched.</p>
+  <p>So by default the map shows the <strong>latest view</strong>. Every pixel shows its most recent clear look (snow or bare ground) from any pass in the 10 days up to the selected date. A pixel that no pass has seen clearly in those 10 days stays grey (cloud) or hatched (no imagery). The panel says which passes went into the view and how much of it comes from the selected day. <em>This pass only</em> switches back to a single day's pass.</p>
+  <p>The trade-off is honest age: in the latest view, some pixels can be up to 10 days old. Each published GeoTIFF of the latest view carries a second band with the age of every pixel in days.</p>
+
   <h2 id="check">Checking it against SNOTEL</h2>
   <p>The NRCS <a href="https://www.nrcs.usda.gov/wps/portal/wcc/home/aboutUs/monitoringPrograms/automatedSnowMonitoring/" target="_blank" rel="noopener">SNOTEL</a> network measures snow depth daily at 46 stations in and around the area. For each date with a map, Snowline reads the map at every station (a 3×3 pixel window, about 70&nbsp;m) and compares it with that day's depth:</p>
   <ul>
@@ -124,7 +130,7 @@ snow  = (NDSI ≥ 0.4  or  SCL = 11)  and not masked</pre>
   <ul>
     <li>Snowline reads each tile at 4&nbsp;m, shades it with a low northwest sun and a softer western light, and only then reprojects it. Shading after reprojecting leaves stripes.</li>
     <li>Where two surveys overlap, the <strong>most recently flown</strong> one wins.</li>
-    <li>The shading is transparent on flat and sunlit ground and only darkens shadowed slopes. Snow is always drawn above it, so the snow stays the brightest thing on the map.</li>
+    <li>The shading is transparent on flat and sunlit ground and tints shadowed slopes a cool slate blue. Snow is always drawn above it, so the snow stays the brightest thing on the map.</li>
   </ul>
   <p>It's there to make the snow readable (which gully, which face, where the tree line is), not to rate slopes. The 3D view still uses Mapbox's terrain model.</p>
 
@@ -181,11 +187,15 @@ fetch('data/snotel_agreement.json').then(r => r.ok ? r.json() : null).then(d => 
   const el = document.getElementById('agreement');
   if (!d || !d.dates) { el.textContent = 'Agreement numbers will appear once the first maps are checked.'; return; }
   const rows = Object.entries(d.dates).filter(([, v]) => v.evaluated > 0).sort();
-  let e = 0, a = 0, miss = 0, fs = 0;
-  for (const [, v] of rows) { e += v.evaluated; a += v.agree; miss += v.miss; fs += v.false_snow; }
+  let e = 0, a = 0, miss = 0, fs = 0, le = 0, la = 0;
+  for (const [, v] of rows) {
+    e += v.evaluated; a += v.agree; miss += v.miss; fs += v.false_snow;
+    if (v.latest) { le += v.latest.evaluated; la += v.latest.agree; }
+  }
   const recent = rows.slice(-8).reverse();
   el.innerHTML = `<p><span class="stat">${e ? Math.round(a / e * 100) : '—'}%</span> agreement across ${e} station-days on ${rows.length} dates
-    (${miss} misses, ${fs} false snow).</p>
+    (${miss} misses, ${fs} false snow), counting each pass on its own.
+    ${le ? `The latest view, which fills cloud and swath gaps with older looks, agrees on ${Math.round(la / le * 100)}% of ${le} station-days. It can check more stations because it sees more of the area.` : ''}</p>
     <table><tr><th>Date</th><th class="num">Stations</th><th class="num">Agree</th><th class="num">Miss</th><th class="num">False snow</th></tr>
     ${recent.map(([dt, v]) => `<tr><td><a href="/snow/#date=${dt}">${dt}</a></td><td class="num">${v.evaluated}</td><td class="num">${v.pct}%</td><td class="num">${v.miss}</td><td class="num">${v.false_snow}</td></tr>`).join('')}
     </table>`;
