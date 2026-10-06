@@ -1,0 +1,21 @@
+{
+ "type": "Catalog",
+ "stac_version": "1.1.0",
+ "id": "line-network",
+ "title": "Line Network open data",
+ "description": "Open data published by the Line Network (Ito Geospatial). Code and method: https://github.com/itogeo/line",
+ "links": [
+  {
+   "rel": "root",
+   "href": "./catalog.json",
+   "type": "application/json"
+  },
+  {
+   "rel": "child",
+   "href": "./snowline-snow-cover/collection.json",
+   "type": "application/json",
+   "title": "Snowline snow cover, SW Montana"
+  }
+ ],
+ "updated": "2026-10-06T07:29:19+00:00"
+}

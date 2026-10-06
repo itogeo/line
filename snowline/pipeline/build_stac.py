@@ -44,7 +44,7 @@ EXT = [
 ]
 CLASSES = [
     {"value": 0, "name": "ground", "description": "Imaged, not snow"},
-    {"value": 1, "name": "snow", "description": "NDSI >= 0.4 and not masked"},
+    {"value": 1, "name": "snow", "description": "NDSI >= 0.4 or SCL snow (11), and not masked"},
     {"value": 2, "name": "cloud", "description": "SCL cloud, cloud shadow or cirrus"},
     {"value": 3, "name": "nodata", "description": "Not imaged that day"},
 ]
@@ -132,7 +132,7 @@ def main():
         "type": "Collection", "stac_version": STAC, "stac_extensions": [EXT[0]],
         "id": COLL, "title": "Snowline snow cover, SW Montana",
         "description": "Daily snow / ground / cloud / no-data classification of SW Montana from Sentinel-2 "
-                       "Collection 1 L2A (NDSI >= 0.4 with the SCL cloud mask), on a 0.0003 degree grid. "
+                       "Collection 1 L2A (NDSI >= 0.4 or SCL snow, with the SCL cloud mask), on a 0.0003 degree grid. "
                        "Method: https://line.itogeospatial.com/snow/methods.html",
         "license": "other",
         "keywords": ["snow", "Sentinel-2", "Montana", "NDSI"],

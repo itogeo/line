@@ -1,0 +1,427 @@
+{
+ "type": "Feature",
+ "stac_version": "1.1.0",
+ "stac_extensions": [
+  "https://stac-extensions.github.io/classification/v2.0.0/schema.json",
+  "https://stac-extensions.github.io/projection/v2.0.0/schema.json"
+ ],
+ "id": "snowline-2025-11-30",
+ "collection": "snowline-snow-cover",
+ "geometry": {
+  "type": "Polygon",
+  "coordinates": [
+   [
+    [
+     -112.2,
+     44.9
+    ],
+    [
+     -109.0,
+     44.9
+    ],
+    [
+     -109.0,
+     46.5
+    ],
+    [
+     -112.2,
+     46.5
+    ],
+    [
+     -112.2,
+     44.9
+    ]
+   ]
+  ]
+ },
+ "bbox": [
+  -112.2,
+  44.9,
+  -109.0,
+  46.5
+ ],
+ "properties": {
+  "datetime": null,
+  "start_datetime": "2025-11-30T18:31:08.090000+00:00",
+  "end_datetime": "2025-11-30T18:41:54.092000+00:00",
+  "title": "Snowline snow cover 2025-11-30",
+  "snowline:snow_cover_pct": 90.6,
+  "snowline:coverage_pct": 79.5,
+  "snowline:ndsi_threshold": 0.4
+ },
+ "links": [
+  {
+   "rel": "collection",
+   "href": "../collection.json",
+   "type": "application/json"
+  },
+  {
+   "rel": "parent",
+   "href": "../collection.json",
+   "type": "application/json"
+  },
+  {
+   "rel": "root",
+   "href": "../../catalog.json",
+   "type": "application/json"
+  },
+  {
+   "rel": "alternate",
+   "href": "https://line.itogeospatial.com/snow/#date=2025-11-30",
+   "type": "text/html",
+   "title": "Open on the map"
+  },
+  {
+   "rel": "derived_from",
+   "type": "application/json",
+   "title": "S2B_T12TUQ_20251130T182625_L2A",
+   "href": "https://earth-search.aws.element84.com/v1/collections/sentinel-2-c1-l2a/items/S2B_T12TUQ_20251130T182625_L2A"
+  },
+  {
+   "rel": "derived_from",
+   "type": "application/json",
+   "title": "S2A_T12TUR_20251130T183827_L2A",
+   "href": "https://earth-search.aws.element84.com/v1/collections/sentinel-2-c1-l2a/items/S2A_T12TUR_20251130T183827_L2A"
+  },
+  {
+   "rel": "derived_from",
+   "type": "application/json",
+   "title": "S2A_T12TUS_20251130T183827_L2A",
+   "href": "https://earth-search.aws.element84.com/v1/collections/sentinel-2-c1-l2a/items/S2A_T12TUS_20251130T183827_L2A"
+  },
+  {
+   "rel": "derived_from",
+   "type": "application/json",
+   "title": "S2B_T12TVQ_20251130T182625_L2A",
+   "href": "https://earth-search.aws.element84.com/v1/collections/sentinel-2-c1-l2a/items/S2B_T12TVQ_20251130T182625_L2A"
+  },
+  {
+   "rel": "derived_from",
+   "type": "application/json",
+   "title": "S2B_T12TVR_20251130T182625_L2A",
+   "href": "https://earth-search.aws.element84.com/v1/collections/sentinel-2-c1-l2a/items/S2B_T12TVR_20251130T182625_L2A"
+  },
+  {
+   "rel": "derived_from",
+   "type": "application/json",
+   "title": "S2B_T12TVS_20251130T182625_L2A",
+   "href": "https://earth-search.aws.element84.com/v1/collections/sentinel-2-c1-l2a/items/S2B_T12TVS_20251130T182625_L2A"
+  },
+  {
+   "rel": "derived_from",
+   "type": "application/json",
+   "title": "S2B_T12TWQ_20251130T182625_L2A",
+   "href": "https://earth-search.aws.element84.com/v1/collections/sentinel-2-c1-l2a/items/S2B_T12TWQ_20251130T182625_L2A"
+  },
+  {
+   "rel": "derived_from",
+   "type": "application/json",
+   "title": "S2B_T12TWR_20251130T182625_L2A",
+   "href": "https://earth-search.aws.element84.com/v1/collections/sentinel-2-c1-l2a/items/S2B_T12TWR_20251130T182625_L2A"
+  },
+  {
+   "rel": "derived_from",
+   "type": "application/json",
+   "title": "S2B_T12TWS_20251130T182625_L2A",
+   "href": "https://earth-search.aws.element84.com/v1/collections/sentinel-2-c1-l2a/items/S2B_T12TWS_20251130T182625_L2A"
+  },
+  {
+   "rel": "derived_from",
+   "type": "application/json",
+   "title": "S2B_T12TXR_20251130T182625_L2A",
+   "href": "https://earth-search.aws.element84.com/v1/collections/sentinel-2-c1-l2a/items/S2B_T12TXR_20251130T182625_L2A"
+  },
+  {
+   "rel": "derived_from",
+   "type": "application/json",
+   "title": "S2B_T12TXS_20251130T182625_L2A",
+   "href": "https://earth-search.aws.element84.com/v1/collections/sentinel-2-c1-l2a/items/S2B_T12TXS_20251130T182625_L2A"
+  }
+ ],
+ "assets": {
+  "metadata": {
+   "href": "https://line.itogeospatial.com/snow/data_10m/2025-11-30/snowline.json",
+   "type": "application/json",
+   "title": "Snowline map metadata (scenes, coverage)",
+   "roles": [
+    "metadata"
+   ]
+  },
+  "class_r0c0": {
+   "href": "https://line.itogeospatial.com/snow/api/tile/2025-11-30/snow_r0c0.tif",
+   "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+   "title": "Snow class raster, chunk r0c0",
+   "roles": [
+    "data"
+   ],
+   "proj:code": "EPSG:4326",
+   "proj:bbox": [
+    -112.2,
+    44.9,
+    -111.13333333333334,
+    45.7
+   ],
+   "classification:classes": [
+    {
+     "value": 0,
+     "name": "ground",
+     "description": "Imaged, not snow"
+    },
+    {
+     "value": 1,
+     "name": "snow",
+     "description": "NDSI >= 0.4 or SCL snow (11), and not masked"
+    },
+    {
+     "value": 2,
+     "name": "cloud",
+     "description": "SCL cloud, cloud shadow or cirrus"
+    },
+    {
+     "value": 3,
+     "name": "nodata",
+     "description": "Not imaged that day"
+    }
+   ],
+   "nodata": 255
+  },
+  "preview_r0c0": {
+   "href": "https://line.itogeospatial.com/snow/api/tile/2025-11-30/snow_r0c0.webp",
+   "type": "image/webp",
+   "title": "Map tile (RGBA), chunk r0c0",
+   "roles": [
+    "overview"
+   ]
+  },
+  "class_r0c1": {
+   "href": "https://line.itogeospatial.com/snow/api/tile/2025-11-30/snow_r0c1.tif",
+   "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+   "title": "Snow class raster, chunk r0c1",
+   "roles": [
+    "data"
+   ],
+   "proj:code": "EPSG:4326",
+   "proj:bbox": [
+    -111.13333333333334,
+    44.9,
+    -110.06666666666666,
+    45.7
+   ],
+   "classification:classes": [
+    {
+     "value": 0,
+     "name": "ground",
+     "description": "Imaged, not snow"
+    },
+    {
+     "value": 1,
+     "name": "snow",
+     "description": "NDSI >= 0.4 or SCL snow (11), and not masked"
+    },
+    {
+     "value": 2,
+     "name": "cloud",
+     "description": "SCL cloud, cloud shadow or cirrus"
+    },
+    {
+     "value": 3,
+     "name": "nodata",
+     "description": "Not imaged that day"
+    }
+   ],
+   "nodata": 255
+  },
+  "preview_r0c1": {
+   "href": "https://line.itogeospatial.com/snow/api/tile/2025-11-30/snow_r0c1.webp",
+   "type": "image/webp",
+   "title": "Map tile (RGBA), chunk r0c1",
+   "roles": [
+    "overview"
+   ]
+  },
+  "class_r0c2": {
+   "href": "https://line.itogeospatial.com/snow/api/tile/2025-11-30/snow_r0c2.tif",
+   "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+   "title": "Snow class raster, chunk r0c2",
+   "roles": [
+    "data"
+   ],
+   "proj:code": "EPSG:4326",
+   "proj:bbox": [
+    -110.06666666666666,
+    44.9,
+    -109.0,
+    45.7
+   ],
+   "classification:classes": [
+    {
+     "value": 0,
+     "name": "ground",
+     "description": "Imaged, not snow"
+    },
+    {
+     "value": 1,
+     "name": "snow",
+     "description": "NDSI >= 0.4 or SCL snow (11), and not masked"
+    },
+    {
+     "value": 2,
+     "name": "cloud",
+     "description": "SCL cloud, cloud shadow or cirrus"
+    },
+    {
+     "value": 3,
+     "name": "nodata",
+     "description": "Not imaged that day"
+    }
+   ],
+   "nodata": 255
+  },
+  "preview_r0c2": {
+   "href": "https://line.itogeospatial.com/snow/api/tile/2025-11-30/snow_r0c2.webp",
+   "type": "image/webp",
+   "title": "Map tile (RGBA), chunk r0c2",
+   "roles": [
+    "overview"
+   ]
+  },
+  "class_r1c0": {
+   "href": "https://line.itogeospatial.com/snow/api/tile/2025-11-30/snow_r1c0.tif",
+   "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+   "title": "Snow class raster, chunk r1c0",
+   "roles": [
+    "data"
+   ],
+   "proj:code": "EPSG:4326",
+   "proj:bbox": [
+    -112.2,
+    45.7,
+    -111.13333333333334,
+    46.5
+   ],
+   "classification:classes": [
+    {
+     "value": 0,
+     "name": "ground",
+     "description": "Imaged, not snow"
+    },
+    {
+     "value": 1,
+     "name": "snow",
+     "description": "NDSI >= 0.4 or SCL snow (11), and not masked"
+    },
+    {
+     "value": 2,
+     "name": "cloud",
+     "description": "SCL cloud, cloud shadow or cirrus"
+    },
+    {
+     "value": 3,
+     "name": "nodata",
+     "description": "Not imaged that day"
+    }
+   ],
+   "nodata": 255
+  },
+  "preview_r1c0": {
+   "href": "https://line.itogeospatial.com/snow/api/tile/2025-11-30/snow_r1c0.webp",
+   "type": "image/webp",
+   "title": "Map tile (RGBA), chunk r1c0",
+   "roles": [
+    "overview"
+   ]
+  },
+  "class_r1c1": {
+   "href": "https://line.itogeospatial.com/snow/api/tile/2025-11-30/snow_r1c1.tif",
+   "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+   "title": "Snow class raster, chunk r1c1",
+   "roles": [
+    "data"
+   ],
+   "proj:code": "EPSG:4326",
+   "proj:bbox": [
+    -111.13333333333334,
+    45.7,
+    -110.06666666666666,
+    46.5
+   ],
+   "classification:classes": [
+    {
+     "value": 0,
+     "name": "ground",
+     "description": "Imaged, not snow"
+    },
+    {
+     "value": 1,
+     "name": "snow",
+     "description": "NDSI >= 0.4 or SCL snow (11), and not masked"
+    },
+    {
+     "value": 2,
+     "name": "cloud",
+     "description": "SCL cloud, cloud shadow or cirrus"
+    },
+    {
+     "value": 3,
+     "name": "nodata",
+     "description": "Not imaged that day"
+    }
+   ],
+   "nodata": 255
+  },
+  "preview_r1c1": {
+   "href": "https://line.itogeospatial.com/snow/api/tile/2025-11-30/snow_r1c1.webp",
+   "type": "image/webp",
+   "title": "Map tile (RGBA), chunk r1c1",
+   "roles": [
+    "overview"
+   ]
+  },
+  "class_r1c2": {
+   "href": "https://line.itogeospatial.com/snow/api/tile/2025-11-30/snow_r1c2.tif",
+   "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+   "title": "Snow class raster, chunk r1c2",
+   "roles": [
+    "data"
+   ],
+   "proj:code": "EPSG:4326",
+   "proj:bbox": [
+    -110.06666666666666,
+    45.7,
+    -109.0,
+    46.5
+   ],
+   "classification:classes": [
+    {
+     "value": 0,
+     "name": "ground",
+     "description": "Imaged, not snow"
+    },
+    {
+     "value": 1,
+     "name": "snow",
+     "description": "NDSI >= 0.4 or SCL snow (11), and not masked"
+    },
+    {
+     "value": 2,
+     "name": "cloud",
+     "description": "SCL cloud, cloud shadow or cirrus"
+    },
+    {
+     "value": 3,
+     "name": "nodata",
+     "description": "Not imaged that day"
+    }
+   ],
+   "nodata": 255
+  },
+  "preview_r1c2": {
+   "href": "https://line.itogeospatial.com/snow/api/tile/2025-11-30/snow_r1c2.webp",
+   "type": "image/webp",
+   "title": "Map tile (RGBA), chunk r1c2",
+   "roles": [
+    "overview"
+   ]
+  }
+ }
+}

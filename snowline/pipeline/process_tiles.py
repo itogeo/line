@@ -34,6 +34,8 @@ CACHE_ROOT = REPO_ROOT / "cache"
 SITE_DIR = REPO_ROOT / "site" / "data_10m"
 BBOX = SNOWLINE.bbox_list   # west, south, east, north
 NDSI_THRESHOLD = 0.4
+SCL_SNOW = 11          # Sentinel-2 scene classification: snow / ice
+METHOD = "NDSI >= 0.4 or SCL = 11, excluding SCL 0/3/8/9/10"
 PIXEL_SIZE = 0.0003   # degrees/pixel — ~24 m horizontal, ~33 m vertical at 45°N
 DST_CRS = CRS.from_epsg(4326)
 MIN_LIST_COVERAGE = 10.0  # % of the AOI a map must cover to appear on the timeline
@@ -124,7 +126,12 @@ def process_chunk(chunk, tile_dirs, output_dir, quality):
         ndsi = np.where(denom > 0, (green - swir) / denom, 0.0)
     cloud = np.isin(scl.astype(int), [0, 3, 8, 9, 10]) | ~has_data
     valid = has_data & ~cloud
-    snow  = (ndsi >= NDSI_THRESHOLD) & valid
+    # Snow if the NDSI test passes OR ESA's scene classifier calls it snow
+    # (SCL 11). Sen2Cor's snow test handles terrain shadow, where green
+    # reflectance is too low for NDSI: in midwinter it recovered about a
+    # third of the SNOTEL stations NDSI alone missed, with no new false
+    # snow (snowline/site/methods.html, "Checking it against SNOTEL").
+    snow  = ((ndsi >= NDSI_THRESHOLD) | (scl.astype(int) == SCL_SNOW)) & valid
 
     # cls: 0=ground 1=snow 2=cloud 3=nodata
     cls = np.full((dst_h, dst_w), 3, dtype=np.uint8)
@@ -249,6 +256,7 @@ def main():
         'source': 'Sentinel-2 C1 L2A via s2-stac-geoparquet (Taylor Geospatial / TGE Labs)' if scenes else 'Sentinel-2 L2A (Earth Search)',
         'scenes': scenes,
         'ndsi_threshold': NDSI_THRESHOLD,
+        'method': METHOD,
         'bbox': BBOX,
         'bounds': {'west': BBOX[0], 'south': BBOX[1], 'east': BBOX[2], 'north': BBOX[3]},
         'snow_cover_pct': snow_pct,

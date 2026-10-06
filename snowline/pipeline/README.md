@@ -28,7 +28,8 @@ S2 STAC GeoParquet index (Source Cooperative)   ← lib/s2index.py, one DuckDB q
 fetch_bands.py      range-reads green/red/blue/swir16/SCL windows from the
         │           public Sentinel-2 C1 COGs on AWS, removes the C1 +1000 DN
         ▼           offset → cache/{date}/T{tile}/{band}.tif + meta.json
-process_tiles.py    reprojects to a 0.0003° grid, NDSI ≥ 0.4, SCL cloud mask
+process_tiles.py    reprojects to a 0.0003° grid; snow = NDSI ≥ 0.4 or SCL 11;
+        │           SCL cloud mask
         │           → site/data_10m/{date}/snow_r*c*.webp, truecolor_r*c*.webp,
         ▼             snowline.json (with the scene list), dates.json
 sync_r2.py          uploads the WebPs to R2 bucket snowline-tiles

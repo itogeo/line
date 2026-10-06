@@ -4,7 +4,7 @@ Open, reproducible outdoor-conditions maps for Montana, built from free public d
 
 **[Snowline](https://line.itogeospatial.com/snow)** is the first product. It maps snow cover across SW Montana, from the Bridgers to the Beartooths, with Sentinel-2 imagery, and checks every map against SNOTEL ground stations. RiverLine (river conditions) and SkyLine (mountain weather) are in progress in this repository.
 
-![Snowline map](docs/img/snowline-map.png)
+![Snowline map](docs/img/snowline-map.jpg)
 
 | | |
 |---|---|
@@ -20,7 +20,7 @@ flowchart LR
   idx["S2 STAC GeoParquet index<br/>(Source Cooperative)"] -- "DuckDB: one SQL query" --> find["lib/s2index.py<br/>scenes per tile per day"]
   find --> fetch["fetch_bands.py<br/>green · red · blue · swir16 · SCL"]
   cog["Sentinel-2 C1 L2A COGs<br/>(AWS, public)"] -- "range reads" --> fetch
-  fetch --> proc["process_tiles.py<br/>NDSI ≥ 0.4, SCL cloud mask"]
+  fetch --> proc["process_tiles.py<br/>NDSI ≥ 0.4 or SCL snow,<br/>SCL cloud mask"]
   proc -- "WebP tiles" --> r2[("Cloudflare R2")]
   proc -- "snowline.json, dates.json" --> git[("this repo")]
   snotel["NRCS SNOTEL"] --> check["build_snotel_agreement.py"]

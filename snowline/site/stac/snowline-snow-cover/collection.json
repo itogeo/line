@@ -1,0 +1,299 @@
+{
+ "type": "Collection",
+ "stac_version": "1.1.0",
+ "stac_extensions": [
+  "https://stac-extensions.github.io/classification/v2.0.0/schema.json"
+ ],
+ "id": "snowline-snow-cover",
+ "title": "Snowline snow cover, SW Montana",
+ "description": "Daily snow / ground / cloud / no-data classification of SW Montana from Sentinel-2 Collection 1 L2A (NDSI >= 0.4 or SCL snow, with the SCL cloud mask), on a 0.0003 degree grid. Method: https://line.itogeospatial.com/snow/methods.html",
+ "license": "other",
+ "keywords": [
+  "snow",
+  "Sentinel-2",
+  "Montana",
+  "NDSI"
+ ],
+ "providers": [
+  {
+   "name": "Ito Geospatial",
+   "roles": [
+    "processor",
+    "host"
+   ],
+   "url": "https://itogeospatial.com"
+  },
+  {
+   "name": "ESA Copernicus",
+   "roles": [
+    "producer",
+    "licensor"
+   ],
+   "url": "https://sentinels.copernicus.eu"
+  },
+  {
+   "name": "Taylor Geospatial / TGE Labs",
+   "roles": [
+    "host"
+   ],
+   "url": "https://research.taylorgeospatial.org/s2-stac-geoparquet/"
+  }
+ ],
+ "extent": {
+  "spatial": {
+   "bbox": [
+    [
+     -112.2,
+     44.9,
+     -109.0,
+     46.5
+    ]
+   ]
+  },
+  "temporal": {
+   "interval": [
+    [
+     "2025-10-06T00:00:00Z",
+     "2026-10-03T23:59:59Z"
+    ]
+   ]
+  }
+ },
+ "summaries": {
+  "classification:classes": [
+   {
+    "value": 0,
+    "name": "ground",
+    "description": "Imaged, not snow"
+   },
+   {
+    "value": 1,
+    "name": "snow",
+    "description": "NDSI >= 0.4 or SCL snow (11), and not masked"
+   },
+   {
+    "value": 2,
+    "name": "cloud",
+    "description": "SCL cloud, cloud shadow or cirrus"
+   },
+   {
+    "value": 3,
+    "name": "nodata",
+    "description": "Not imaged that day"
+   }
+  ]
+ },
+ "links": [
+  {
+   "rel": "root",
+   "href": "../catalog.json",
+   "type": "application/json"
+  },
+  {
+   "rel": "parent",
+   "href": "../catalog.json",
+   "type": "application/json"
+  },
+  {
+   "rel": "license",
+   "href": "https://github.com/itogeo/line/blob/main/DATA_LICENSE.md",
+   "type": "text/html",
+   "title": "Contains modified Copernicus Sentinel data; see DATA_LICENSE.md"
+  },
+  {
+   "rel": "item",
+   "href": "./2025-10-06/2025-10-06.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2025-10-08/2025-10-08.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2025-10-18/2025-10-18.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2025-10-23/2025-10-23.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2025-10-28/2025-10-28.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2025-10-31/2025-10-31.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2025-11-10/2025-11-10.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2025-11-12/2025-11-12.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2025-11-25/2025-11-25.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2025-11-30/2025-11-30.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2025-12-15/2025-12-15.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2025-12-20/2025-12-20.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2025-12-30/2025-12-30.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2026-01-14/2026-01-14.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2026-01-21/2026-01-21.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2026-01-26/2026-01-26.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2026-01-31/2026-01-31.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2026-02-05/2026-02-05.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2026-02-10/2026-02-10.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2026-02-13/2026-02-13.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2026-02-25/2026-02-25.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2026-02-28/2026-02-28.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2026-03-15/2026-03-15.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2026-03-20/2026-03-20.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2026-03-22/2026-03-22.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2026-03-27/2026-03-27.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2026-04-04/2026-04-04.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2026-04-06/2026-04-06.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2026-04-09/2026-04-09.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2026-04-19/2026-04-19.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2026-05-01/2026-05-01.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2026-05-03/2026-05-03.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2026-05-06/2026-05-06.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2026-05-11/2026-05-11.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2026-05-14/2026-05-14.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2026-05-23/2026-05-23.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2026-05-24/2026-05-24.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2026-05-29/2026-05-29.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2026-10-03/2026-10-03.json",
+   "type": "application/geo+json"
+  }
+ ]
+}

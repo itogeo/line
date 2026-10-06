@@ -95,8 +95,9 @@
     <li><strong>Mask cloud and no data.</strong> A pixel is masked if ESA's classifier calls it no data (0), cloud shadow (3), cloud medium or high probability (8, 9) or thin cirrus (10).</li>
     <li><strong>Normalized Difference Snow Index.</strong> Snow is bright in green and dark in shortwave infrared. Cloud is bright in both.
       <pre>NDSI = (green − swir16) / (green + swir16)
-snow  = NDSI ≥ 0.4  and not masked</pre>
-      0.4 is the standard threshold from the MODIS and Landsat snow products (Hall et&nbsp;al., 1995; Dozier, 1989).</li>
+snow  = (NDSI ≥ 0.4  or  SCL = 11)  and not masked</pre>
+      0.4 is the standard threshold from the MODIS and Landsat snow products (Hall et&nbsp;al., 1995; Dozier, 1989).
+      <br><strong>Why SCL too:</strong> on shaded midwinter slopes green reflectance can drop to 2–5%, and the index falls below 0.4 over deep snow. ESA's classifier (class 11, snow) uses more tests and catches many of those pixels. Adding it raised agreement with SNOTEL on the 14 dates we tested from 75% to 87% of station-days, without adding any false snow.</li>
   </ol>
   <table>
     <tr><th>On the map</th><th>Meaning</th></tr>
@@ -121,7 +122,7 @@ snow  = NDSI ≥ 0.4  and not masked</pre>
   <h3>Forest canopy</h3>
   <p>Under dense conifers the satellite sees needles, not the snow below. Forested slopes can show as bare when the ground is white. Turn on the <em>Forest</em> layer (ESA WorldCover) to see where this applies. This is the most common cause of a miss.</p>
   <h3>Terrain shadow in midwinter</h3>
-  <p>From November to January the sun is low over Montana at the ~11:30 am overpass. North-facing slopes sit in shadow, reflectance is low in every band, and the index gets noisy. Snow in deep shadow can be missed. Spring maps are the most reliable.</p>
+  <p>From November to January the sun is low over Montana at the ~11:30 am overpass. North-facing slopes sit in shadow, reflectance is low in every band, and the index gets noisy. Adding ESA's snow class recovers much of this, but snow in deep shadow can still be missed. Spring maps are the most reliable.</p>
   <h3>Cloud and snow confusion</h3>
   <p>ESA's classifier sometimes calls thin cloud snow, or calls bright snowfields cloud. Thin cloud that passes the mask can turn up as patchy false snow. Fresh snow on a cloudy morning is the classic case.</p>
   <h3>Thin or patchy snow</h3>

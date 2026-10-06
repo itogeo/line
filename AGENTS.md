@@ -11,7 +11,7 @@ costs more than a missing one.
 ## What this is
 
 Snowline is a daily snow-cover map of SW Montana. Sentinel-2 Collection 1
-L2A imagery goes in, an NDSI snow/no-snow raster comes out, and every map
+L2A imagery goes in, a snow/no-snow raster comes out, and every map
 is checked against NRCS SNOTEL snow depth. RiverLine (`riverline/`) and
 SkyLine (`skyline/`) share the repository and the Cloudflare deployment but
 are separate products.
@@ -62,8 +62,11 @@ These are every tile whose footprint intersects the bbox in the index
   before, and the processed snow-pixel count differs by 0.0%. Note that the
   old collection's metadata *also* advertised offset −0.1, but its pixels
   were already shifted. Don't apply an offset to `sentinel-2-l2a`.
-* Snow: `NDSI = (green − swir16)/(green + swir16) ≥ 0.4`, excluding SCL
-  classes 0, 3, 8, 9, 10. The grid is 0.0003° (3×2 chunks, `snow_r{row}c{col}.webp`).
+* Snow: `NDSI = (green − swir16)/(green + swir16) ≥ 0.4` **or** SCL class
+  11 (snow), excluding SCL classes 0, 3, 8, 9, 10. The SCL term was added
+  on 2026-10-06 after the SNOTEL check. On 14 dates, point-sampling SCL at
+  the stations raised agreement from 191/253 to 219/253 station-days,
+  with no new false snow. Each map's `snowline.json` records its `method`. The grid is 0.0003° (3×2 chunks, `snow_r{row}c{col}.webp`).
 * Until 2026-10-06 `fetch_bands.py` gave cached windows a transform that was
   off by up to half a source pixel (it used the fractional window while
   `read()` used the rounded one; found by an independent review). Maps
@@ -76,7 +79,7 @@ These are every tile whose footprint intersects the bbox in the index
 `columns` = `date, tile, id, cloud, snow, nodata, baseline, dir, extra`.
 An asset URL is `dir + files[key]` for keys `thumbnail, visual, green,
 swir16, scl`. If `dir` is null, the full URLs are in `extra`. `snow` is
-ESA's `s2:snow_ice_percentage`, **not** Snowline's NDSI map.
+ESA's `s2:snow_ice_percentage`, **not** Snowline's map.
 
 `snowline/site/data/sat_availability.json`: one row per pass date. Fields:
 `dt, s2n` (tiles imaged, excluding slivers with ≥95% nodata), `s2clr`
@@ -122,8 +125,12 @@ On 2025-11-30, the older per-tile pipeline's map agreed with 4 of 23
 SNOTEL stations. The same date reprocessed with the current pipeline
 agreed with 20 of 23 (87%), and snow cover went from 58.2% to 85.5% of
 imaged pixels (2026-10-05). The 2025–26 season was reprocessed for that
-reason. Most remaining misses are stations under forest canopy (see
-`snowline/site/methods.html`).
+reason, with the SCL snow term, on 2026-10-06. After that, 39 listed
+maps (2025-10-06 to 2026-10-03) agree with SNOTEL on 530 of 643
+station-days (82%). There are 87 misses and 26 false snow, and spring
+maps do best. Most remaining misses are stations under forest canopy or in
+midwinter shadow (see `snowline/site/methods.html`). Twelve passes that
+imaged under 10% of the area were processed but aren't listed.
 
 ## Working in this repository
 
