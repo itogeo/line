@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Print every bounds value we read or derive for a single date+tile.
-Tells us exactly where the sliver is introduced — STAC, COG, or our code.
+Tells us exactly where a sliver is introduced — the index, the COG, or our code.
 
 Usage:  python pipeline/diagnose_tile.py 2026-04-19 T12TVR
 """
@@ -12,13 +12,16 @@ from pathlib import Path
 os.environ.setdefault("GDAL_DISABLE_READDIR_ON_OPEN", "EMPTY_DIR")
 os.environ.setdefault("GDAL_HTTP_TIMEOUT", "60")
 
-import pystac_client
 import rasterio
 from rasterio.warp import transform_bounds
 from rasterio.crs import CRS
 import rasterio.windows as rwin
 
-BBOX = [-112.2, 44.9, -109.0, 46.5]
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # repo root
+from lib import s2index  # noqa: E402
+from lib.aoi import SNOWLINE  # noqa: E402
+
+BBOX = SNOWLINE.bbox_list
 
 def main():
     if len(sys.argv) < 3:
@@ -28,38 +31,23 @@ def main():
 
     print(f"\n=== DIAGNOSING {target_tile} on {date_str} ===\n")
 
-    # 1. Query STAC
-    cat = pystac_client.Client.open("https://earth-search.aws.element84.com/v1")
-    center = datetime.strptime(date_str, "%Y-%m-%d")
-    search = cat.search(
-        collections=["sentinel-2-l2a"],
-        bbox=BBOX,
-        datetime=f"{center:%Y-%m-%d}T00:00:00Z/{center + timedelta(days=1):%Y-%m-%d}T00:00:00Z",
-        max_items=50,
-    )
-    items = [it for it in search.items() if target_tile[1:] in it.id]
-    print(f"STAC items matching {target_tile}: {len(items)}")
+    # 1. Look the scene up in the S2 GeoParquet index
+    items = s2index.scenes([target_tile], date_str, date_str, dedupe_daily=False)
+    print(f"Index rows matching {target_tile}: {len(items)}")
     for it in items:
-        print(f"  id={it.id}")
-        print(f"  item.bbox (WGS84) = {it.bbox}  ← canonical per STAC spec")
-        width = it.bbox[2] - it.bbox[0]
-        print(f"  item.bbox width = {width:.4f}°  (expect ~1.0–1.4° for a full MGRS tile)")
-        gt = it.properties.get("proj:transform")
-        shp = it.properties.get("proj:shape")
-        proj_bbox = it.properties.get("proj:bbox")
-        epsg = it.properties.get("proj:epsg")
-        print(f"  proj:epsg = {epsg}")
-        print(f"  proj:shape = {shp}   (expect [10980,10980] for full tile)")
-        print(f"  proj:transform = {gt}")
-        print(f"  proj:bbox = {proj_bbox}")
+        print(f"  id={it['id']}  datetime={it['datetime']}")
+        print(f"  bbox (WGS84) = {it['bbox']}  ← scene footprint")
+        print(f"  proj:epsg = {it['epsg']}  baseline={it['baseline']}  "
+              f"cloud={it['cloud']}  nodata={it['nodata']}")
+        print(f"  green scale/offset = {s2index.scale_offset(it, 'green')}")
 
     if not items:
-        print("No STAC items matched. Exiting.")
+        print("No scenes matched. Exiting.")
         return
 
     # 2. Open the COG and check its actual native bounds
     item = items[0]
-    href = item.assets["green"].href
+    href = s2index.asset_href(item, "green")
     print(f"\nOpening green COG: {href}\n")
     with rasterio.open(href) as src:
         print(f"  src.crs       = {src.crs}")

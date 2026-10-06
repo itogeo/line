@@ -27,9 +27,12 @@ from rasterio.warp import reproject
 from PIL import Image
 
 REPO_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(REPO_ROOT.parent))  # repo root, for `lib`
+from lib.aoi import SNOWLINE  # noqa: E402
+
 CACHE_ROOT = REPO_ROOT / "cache"
 SITE_DIR = REPO_ROOT / "site" / "data_10m"
-BBOX = [-112.2, 44.9, -109.0, 46.5]   # west, south, east, north
+BBOX = SNOWLINE.bbox_list   # west, south, east, north
 NDSI_THRESHOLD = 0.4
 PIXEL_SIZE = 0.0003   # degrees/pixel — ~24 m horizontal, ~33 m vertical at 45°N
 DST_CRS = CRS.from_epsg(4326)
@@ -213,8 +216,33 @@ def main():
     coverage_pct = round(total_valid_px / max(1, total_aoi_px)   * 100, 1)
     snow_pct     = round(total_snow_px  / max(1, total_valid_px) * 100, 1)
 
+    # Provenance: which Sentinel-2 scenes went into this map. Written by
+    # fetch_bands.py into each tile's meta.json; surfaced on the site so every
+    # pixel traces back to a COG anyone can open.
+    scenes = []
+    for d in tile_dirs:
+        mp = d / "meta.json"
+        if not mp.exists():
+            continue
+        try:
+            m = json.loads(mp.read_text())
+        except Exception:
+            continue
+        if m.get("scene_id"):
+            scenes.append({
+                "id": m["scene_id"],
+                "tile": m.get("tile_id", d.name).lstrip("T"),
+                "datetime": m.get("datetime"),
+                "cloud": m.get("cloud"),
+                "nodata": m.get("nodata"),
+                "baseline": m.get("processing_baseline"),
+            })
+
     out_meta = {
         'scene_date': args.date,
+        'source': 'Sentinel-2 C1 L2A via s2-stac-geoparquet (Taylor Geospatial / TGE Labs)' if scenes else 'Sentinel-2 L2A (Earth Search)',
+        'scenes': scenes,
+        'ndsi_threshold': NDSI_THRESHOLD,
         'bbox': BBOX,
         'bounds': {'west': BBOX[0], 'south': BBOX[1], 'east': BBOX[2], 'north': BBOX[3]},
         'snow_cover_pct': snow_pct,

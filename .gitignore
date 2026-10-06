@@ -27,3 +27,9 @@ node_modules/
 
 # Data downloads
 riverline/data/
+
+# OS / tooling junk
+.DS_Store
+.wrangler/
+**/cache/
+riverline/raw/

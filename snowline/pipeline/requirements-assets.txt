@@ -1,0 +1,5 @@
+# One-shot static asset builds only (build_forest_mask.py, build_historical.py).
+# These read ESA WorldCover and MODIS from Microsoft Planetary Computer.
+-r requirements.txt
+pystac-client
+planetary-computer

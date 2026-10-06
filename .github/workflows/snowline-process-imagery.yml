@@ -6,7 +6,10 @@ name: Snowline — Process Imagery
 #   1. Go to Actions → Snowline — Process Imagery → Run workflow
 #   2. Optional: enter a date (YYYY-MM-DD) to process just that date
 #   3. Leave date blank to process EVERY unprocessed S2 pass from the
-#      last 10 days listed in sat_availability.json
+#      last 10 days listed in sat_availability.json (with >= 2 clear tiles)
+#
+# Scenes are found in the S2 STAC GeoParquet index (lib/s2index.py) and the
+# pixels are read from the public Sentinel-2 Collection 1 COGs on AWS.
 
 on:
   schedule:
@@ -92,7 +95,6 @@ jobs:
             bash snowline/pipeline/update_date.sh "$dt" || echo "FAILED $dt — continuing"
           done < /tmp/dates_to_process.txt
         env:
-          GDAL_HTTP_UNSAFESSL: 'YES'
           CF_ACCOUNT_ID: 3b134bb7dc7ac46e5a2ffe71302f8d69
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
 

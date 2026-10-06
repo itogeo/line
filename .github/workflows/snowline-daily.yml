@@ -3,10 +3,13 @@ name: Snowline — Daily Update
 # Daily metadata refresh ONLY. Fast and reliable.
 #
 # Each morning:
-#   1. Rebuilds sat_availability.json — every Sentinel-2 + Landsat pass over
-#      the AOI is logged so the metadata page always shows full transparency.
+#   1. Rebuilds sat_availability.json + scenes.json — every Sentinel-2 pass
+#      over the AOI, from the S2 STAC GeoParquet index (one DuckDB query,
+#      metadata only, no API keys).
 #   2. Refreshes snotel_season.json — full current-season SWE + snow depth
 #      history for every station in the bbox.
+#   3. Weekly (Mondays): rebuilds snow_timeline.json, the 2015→ per-tile
+#      snow history, also from index metadata.
 #
 # Imagery processing is in snowline-process-imagery.yml (manual workflow).
 
@@ -41,15 +44,21 @@ jobs:
       - name: Install dependencies
         run: pip install -r snowline/pipeline/requirements.txt
 
-      - name: 1. Rebuild satellite availability table
+      - name: 1. Rebuild satellite pass tables (S2 GeoParquet)
         run: python snowline/pipeline/build_sat_availability.py
-        env:
-          GDAL_HTTP_UNSAFESSL: 'YES'
 
       - name: 2. Refresh SNOTEL season-wide history
         run: python snowline/pipeline/build_snotel_season.py
         env:
           GDAL_HTTP_UNSAFESSL: 'YES'
+
+      - name: 2b. Rebuild snow timeline (Mondays or manual)
+        run: |
+          if [ "$(date -u +%u)" = "1" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            python snowline/pipeline/build_snow_timeline.py
+          else
+            echo "Not Monday — skipping timeline rebuild"
+          fi
 
       - name: 3. Commit and push
         run: |
@@ -59,7 +68,7 @@ jobs:
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "Daily: $(date -u +%Y-%m-%d) — sat_availability + snotel_season"
+            git commit -m "Daily: $(date -u +%Y-%m-%d) — satellite passes + snotel_season"
             for i in 1 2 3; do
               git pull --rebase origin main && git push && break
               echo "Push attempt $i failed, retrying in 10s..."

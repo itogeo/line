@@ -1,6 +1,7 @@
+# Daily + imagery pipeline (what CI installs)
+duckdb>=1.1
+pytz            # duckdb needs it to return TIMESTAMPTZ values to Python
 numpy
 rasterio
-pystac-client
-planetary-computer
 Pillow
 requests

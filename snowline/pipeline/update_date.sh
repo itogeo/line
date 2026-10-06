@@ -2,7 +2,8 @@
 # Run the full snowline imagery pipeline for one date.
 #
 # Phase 1 (fetch_bands.py): downloads Sentinel-2 band windows from
-#   Element84 to cache/{date}/{tile_id}/{band}.tif. Resumable — re-running
+#   the public Sentinel-2 C1 COGs (found via the S2 GeoParquet index) to
+#   cache/{date}/{tile_id}/{band}.tif. Resumable — re-running
 #   skips bands already on disk.
 #
 # Phase 2 (process_tiles.py): reads from the cache, computes NDSI, encodes
