@@ -49,7 +49,7 @@ build_snotel_agreement.py   map class vs SNOTEL depth at each station
 | `prune_r2.py` | per run | Deletes old true-colour tiles from R2 (keeps 10 dates). Snow tiles are kept forever (`--keep-snow 0`). |
 | `build_sat_availability.py` | daily | Every S2 pass over the AOI from the index → `sat_availability.json` + `scenes.json`. |
 | `check_new_clear_pass.py` | daily | Prints the newest good/excellent pass without a map, so CI can trigger processing. |
-| `build_snotel_season.py` | daily | Current-season SNOTEL depth and SWE → `snotel_season.json`. |
+| `build_snotel_season.py` | daily | SNOTEL depth and SWE for the season → `snotel_season_{YEAR}.json` (+ `snotel_season.json` for the current one). `--season 2025` rebuilds an archive. |
 | `build_snow_timeline.py` | weekly | `s2:snow_ice_percentage` per tile since 2015 → `snow_timeline.json`. Metadata only. |
 | `build_snotel_agreement.py` | after maps | Satellite vs SNOTEL → `snotel_agreement.json`. |
 | `build_composite.py` | per run | Latest view: newest clear look per pixel over the last 10 days → `latest_r*c*.webp/.tif` + `latest` in snowline.json. `--upload` in CI. |

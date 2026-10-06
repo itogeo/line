@@ -767,29 +767,64 @@ let DATES = [];
 // If today's date is appended to DATES as a "live" position with no
 // processed imagery, it's stored here so other code can detect it.
 let TODAY_VIRTUAL = null;
-let SNOTEL = [];
 let SNOTEL_SEASON = null;  // {stations: [{id, name, lat, lon, elevation_ft, history: [{date, swe_in, depth_in}]}]}
 
-// Build a snapshot of SNOTEL stations for a specific date by looking up
-// each station's history. Returns the same shape as the legacy snotel.json
-// (one reading per station) so it's a drop-in replacement for buildSnotelFeatures.
+// SNOTEL for the season on screen: data/snotel_season_{YEAR}.json, written by
+// build_snotel_season.py (the current season also as snotel_season.json).
+// Loaded again when the viewer moves into another season, so a February
+// map shows February's readings, not this week's.
+const SNOTEL_SEASON_FILES = {};
+async function loadSnotelSeason(s) {
+  if (!SNOTEL_SEASON_FILES[s.year]) {
+    const urls = [`data/snotel_season_${s.year}.json`];
+    if (s.year === seasonOf(todayStr()).year) urls.push('data/snotel_season.json');
+    SNOTEL_SEASON_FILES[s.year] = (async () => {
+      for (const u of urls) {
+        try { const r = await fetch(u); if (r.ok) return await r.json(); } catch (e) { /* next */ }
+      }
+      return null;
+    })();
+  }
+  const d = await SNOTEL_SEASON_FILES[s.year];
+  if (s.year !== SEASON.year) return;   // the viewer has moved on
+  SNOTEL_SEASON = d;
+  const el = document.getElementById('data-freshness');
+  if (el) el.textContent = d?.generated_at ? 'Updated ' + formatAge(d.generated_at) : '';
+  refreshSnotelDots();
+  loadRangeDepths();
+}
+
+// The day whose SNOTEL readings go with a map. The newest map shows today's
+// readings (current snowpack over the latest clear image); an older map
+// shows that day's.
+function snotelDateFor(dateStr) {
+  const newest = TODAY_VIRTUAL ? DATES[DATES.length - 2] : DATES[DATES.length - 1];
+  return (!dateStr || dateStr === newest || dateStr === TODAY_VIRTUAL) ? todayStr() : dateStr;
+}
+
+// Newest reading at or before dateStr, at most 7 days old.
+function readingAt(history, dateStr) {
+  for (let i = (history || []).length - 1; i >= 0; i--) {
+    if (history[i].date <= dateStr) {
+      return (Date.parse(dateStr) - Date.parse(history[i].date)) / 86400000 <= 7 ? history[i] : null;
+    }
+  }
+  return null;
+}
+
+function refreshSnotelDots() {
+  if (!map.getSource('snotel') || !CURRENT_DATE) return;
+  const snap = snotelForDate(snotelDateFor(CURRENT_DATE)) || [];
+  map.getSource('snotel').setData({ type: 'FeatureCollection', features: buildSnotelFeatures(snap) });
+}
+
+// SNOTEL stations on one date: one reading per station from its season
+// history, in the shape buildSnotelFeatures takes.
 function snotelForDate(dateStr) {
   if (!SNOTEL_SEASON || !SNOTEL_SEASON.stations) return null;
   return SNOTEL_SEASON.stations.map(s => {
-    const history = s.history || [];
-    // Try exact match first; if today's reading isn't in yet (NRCS lag),
-    // fall back to the most recent reading at-or-before the target date
-    // within the last 7 days.
-    let reading = history.find(r => r.date === dateStr);
-    if (!reading) {
-      for (let i = history.length - 1; i >= 0; i--) {
-        if (history[i].date <= dateStr) {
-          const ageDays = (Date.parse(dateStr) - Date.parse(history[i].date)) / 86400000;
-          if (ageDays <= 7) reading = history[i];
-          break;
-        }
-      }
-    }
+    // Today's reading may not be in yet (NRCS lag): newest within 7 days.
+    const reading = readingAt(s.history, dateStr);
     return {
       id: s.id,
       name: s.name,
@@ -985,13 +1020,6 @@ async function init() {
   }
 
   // Load SNOTEL in background — don't block map display
-  fetch('data/snotel.json').then(r => r.ok ? r.json() : []).then(d => { SNOTEL = d; }).catch(() => {});
-  // Load full season SNOTEL (per-station history) — used for date-matched lookups
-  fetch('data/snotel_season.json').then(r => r.ok ? r.json() : null).then(d => {
-    SNOTEL_SEASON = d;
-    const el = document.getElementById('data-freshness');
-    if (el && d?.generated_at) el.textContent = 'Updated ' + formatAge(d.generated_at);
-  }).catch(() => {});
   loadSnotelNormals(); // fire and forget — don't await
 
   // Every satellite pass (clear or cloudy) for the timeline ticks and the
@@ -1080,7 +1108,6 @@ async function loadDate(dateStr) {
   if (seasonOf(dateStr).label !== SEASON.label) {
     setSeason(seasonOf(dateStr));
     buildTimeline();
-    if (SNOTEL_NORMALS) loadRangeDepths();
   }
 
   // If this date isn't in the available dates list, we're in "today / no
@@ -1117,6 +1144,7 @@ async function loadDate(dateStr) {
   renderPanel();
   renderSource();
   renderSeasonTrend();
+  renderRangeDepths();
   updateTimelineUI();
   updateWebcamVisibility();
 
@@ -1155,14 +1183,7 @@ async function loadDate(dateStr) {
     // TODAY's SNOTEL readings — the user wants current snowpack conditions
     // overlaid on the most recent clear image, not stale readings from the
     // imagery date. When scrolling to older dates, show that date's readings.
-    const latestProcessed = TODAY_VIRTUAL ? DATES[DATES.length - 2] : DATES[DATES.length - 1];
-    const useToday = dateStr === latestProcessed;
-    const snotelDate = useToday ? new Date().toISOString().slice(0, 10) : dateStr;
-    const dateSnotel = (useToday ? snotelForDate(snotelDate) : null)
-      || data.snotel || snotelForDate(dateStr) || SNOTEL;
-    if (dateSnotel && map.getSource('snotel')) {
-      map.getSource('snotel').setData({ type: 'FeatureCollection', features: buildSnotelFeatures(dateSnotel) });
-    }
+    refreshSnotelDots();
 
     // Update historical overlay for this date's DOY
     if (HISTORICAL_INDEX && document.getElementById('tog-historical').checked) {
@@ -1335,10 +1356,12 @@ let MAP_SEASON_START = SEASON.start;
 let MAP_SEASON_END = SEASON.end;
 let MAP_SEASON_DAYS = seasonDays(SEASON);
 function setSeason(s) {
+  const changed = !SNOTEL_SEASON_FILES[s.year] || s.year !== SEASON.year;
   SEASON = s;
   MAP_SEASON_START = s.start;
   MAP_SEASON_END = s.end;
   MAP_SEASON_DAYS = seasonDays(s);
+  if (changed) { SNOTEL_SEASON = null; RANGE_SEASON_DATA = {}; loadSnotelSeason(s); }
 }
 
 function mapDateToX(dateStr, w, padL) {
@@ -1442,26 +1465,33 @@ function renderSeasonTrend() {
   const area = line + ` L${points[points.length-1].x.toFixed(1)},${padT+ch} L${padL},${padT+ch} Z`;
 
   // Date marker for current view
-  const curIdx = avgValues.findIndex(v => v.date === CURRENT_DATE);
+  const viewDay = snotelDateFor(CURRENT_DATE);
+  const curIdx = avgValues.findIndex(v => v.date === viewDay);
   let marker = '';
   if (curIdx >= 0) {
     marker = `<line x1="${points[curIdx].x.toFixed(1)}" y1="${padT}" x2="${points[curIdx].x.toFixed(1)}" y2="${h-padB}" stroke="#FFB74D" stroke-width="1" stroke-dasharray="2,2"/>`;
     marker += `<circle cx="${points[curIdx].x.toFixed(1)}" cy="${points[curIdx].y.toFixed(1)}" r="2" fill="var(--accent)"/>`;
   }
 
-  // % of normal
-  const latestVal = avgValues[avgValues.length - 1].value;
+  // % of normal on the map's day: the summed depth of every station with a
+  // reading and a 20-year median that day, over the sum of those medians.
+  // Same stations on both sides, so a station without normals can't skew it.
+  // Skipped while the medians are near zero (early season, late melt).
   let pctText = '';
   if (SNOTEL_NORMALS) {
-    const md = avgValues[avgValues.length - 1].date.slice(5);
-    const normVals = Object.values(SNOTEL_NORMALS.normals).map(n => n[md]?.median).filter(Boolean);
-    if (normVals.length > 0) {
-      const normAvg = normVals.reduce((a,b) => a+b, 0) / normVals.length;
-      if (normAvg > 0) {
-        const pct = Math.round(latestVal / normAvg * 100);
-        const pctColor = pct >= 90 ? '#8bbdd9' : pct >= 70 ? '#FFB74D' : '#EF5350';
-        pctText = `<text x="${w-2}" y="${padT+10}" text-anchor="end" fill="${pctColor}" font-family="var(--mono)" font-size="8" font-weight="bold">${pct}% of normal</text>`;
+    const md = viewDay.slice(5);
+    let sumD = 0, sumM = 0, n = 0;
+    for (const data of Object.values(RANGE_SEASON_DATA)) {
+      for (const [t, vals] of Object.entries(data?.stations || {})) {
+        const v = valueAtView(vals);
+        const med = SNOTEL_NORMALS.normals?.[t]?.[md]?.median;
+        if (v && med != null) { sumD += v.value; sumM += med; n++; }
       }
+    }
+    if (n >= 5 && sumM / n >= 3) {
+      const pct = Math.round(sumD / sumM * 100);
+      const pctColor = pct >= 90 ? '#8bbdd9' : pct >= 70 ? '#FFB74D' : '#EF5350';
+      pctText = `<text x="${w-2}" y="${padT+10}" text-anchor="end" fill="${pctColor}" font-family="var(--mono)" font-size="8" font-weight="bold"><title>${n} stations: ${sumD}" of snow vs a 20-year median of ${Math.round(sumM)}" on ${md}</title>${pct}% of normal</text>`;
     }
   }
 
@@ -1574,11 +1604,9 @@ function addOverlayLayers() {
     });
   }
 
-  // SNOTEL: prefer the per-date lookup against snotel_season.json for the
-  // currently-selected date so the FIRST render matches whatever date the
-  // user landed on (TODAY by default). Falls back to snotel.json (today's
-  // global snapshot) if season data isn't loaded yet.
-  const initSnotel = snotelForDate(CURRENT_DATE) || SNOTEL;
+  // SNOTEL readings for the map on screen (snotelDateFor). Empty until the
+  // season file lands; loadSnotelSeason() then fills the dots in.
+  const initSnotel = snotelForDate(snotelDateFor(CURRENT_DATE));
   const features = buildSnotelFeatures(initSnotel || []);
   if (!map.getSource('snotel')) {
     map.addSource('snotel', { type: 'geojson', data: { type: 'FeatureCollection', features } });
@@ -1883,7 +1911,7 @@ function buildSnotelPopupBody(p, viewDate) {
   let seasonChartHtml = '';
   if (history.length >= 5) {
     const seasonValues = history
-      .filter(h => h.depth_in != null)
+      .filter(h => h.depth_in != null && h.date >= SEASON.start && h.date <= SEASON.end)
       .map(h => ({ date: h.date, value: h.depth_in }));
     if (seasonValues.length >= 5) {
       seasonChartHtml = renderDepthSVG(seasonValues, viewDate, triplet);
@@ -1913,7 +1941,7 @@ function buildSnotelPopupBody(p, viewDate) {
 
 async function onSnotelClick(e) {
   const p = e.features[0].properties;
-  const viewDate = CURRENT_DATE || DATES[DATES.length - 1];
+  const viewDate = snotelDateFor(CURRENT_DATE);
 
   new mapboxgl.Popup({ offset: 14, maxWidth: '300px' })
     .setLngLat(e.features[0].geometry.coordinates)
@@ -2584,8 +2612,8 @@ let RANGE_SEASON_DATA = {};   // { rangeName: { avg: [...], stations: { triplet:
 let RANGE_STATIONS = {};      // { rangeName: [triplets] }
 let expandedRange = null;
 
-async function loadRangeDepths() {
-  if (!SNOTEL_NORMALS) return;
+function loadRangeDepths() {
+  if (!SNOTEL_NORMALS || !SNOTEL_SEASON) return;
   const el = document.getElementById('range-depths');
   if (!el) return;
 
@@ -2610,49 +2638,43 @@ async function loadRangeDepths() {
     }
   }
 
-  el.innerHTML = '<div class="depth-loading">Loading season depth...</div>';
-
-  // Fetch all ranges in parallel
-  const today = new Date().toISOString().slice(0, 10);
-  const fetches = Object.entries(RANGE_STATIONS).map(async ([rng, triplets]) => {
-    if (triplets.length === 0) return;
-    try {
-      const batch = triplets.slice(0, 8).join(',');
-      const r = await fetch(`https://wcc.sc.egov.usda.gov/awdbRestApi/services/v1/data?stationTriplets=${encodeURIComponent(batch)}&elements=SNWD&duration=DAILY&beginDate=${SEASON.start}&endDate=${seasonFetchEnd(SEASON)}`);
-      if (!r.ok) return;
-      const data = await r.json();
-
-      // Store per-station and compute average
-      const stationData = {};
-      const byDate = {};
-      for (const rec of data) {
-        const t = rec.stationTriplet;
-        stationData[t] = [];
-        for (const elem of (rec.data || [])) {
-          for (const v of (elem.values || [])) {
-            if (v.value != null) {
-              stationData[t].push(v);
-              if (!byDate[v.date]) byDate[v.date] = [];
-              byDate[v.date].push(v.value);
-            }
-          }
-        }
-      }
-      const avg = Object.entries(byDate)
-        .map(([date, vals]) => ({ date, value: Math.round(vals.reduce((a,b) => a+b, 0) / vals.length) }))
-        .sort((a, b) => a.date.localeCompare(b.date));
-
-      RANGE_SEASON_DATA[rng] = { avg, stations: stationData };
-    } catch (e) { /* skip */ }
-  });
-
-  await Promise.all(fetches);
+  // Per-range series from the season file (every station in the range, the
+  // same readings as the dots), clipped to the chart's Oct–May axis.
+  const byId = Object.fromEntries((SNOTEL_SEASON?.stations || []).map(st => [st.id, st]));
+  RANGE_SEASON_DATA = {};
+  for (const [rng, triplets] of Object.entries(RANGE_STATIONS)) {
+    if (triplets.length === 0) continue;
+    const stationData = {};
+    const byDate = {};
+    for (const t of triplets) {
+      stationData[t] = (byId[t]?.history || [])
+        .filter(h => h.depth_in != null && h.date >= SEASON.start && h.date <= SEASON.end)
+        .map(h => ({ date: h.date, value: h.depth_in }));
+      for (const v of stationData[t]) (byDate[v.date] = byDate[v.date] || []).push(v.value);
+    }
+    const avg = Object.entries(byDate)
+      .map(([date, vals]) => ({ date, value: Math.round(vals.reduce((a,b) => a+b, 0) / vals.length) }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+    RANGE_SEASON_DATA[rng] = { avg, stations: stationData };
+  }
   renderRangeDepths();
   renderSeasonTrend(); // Update overall trend with SNOTEL data
 }
 
+// Series entries up to the SNOTEL day of the map on screen (snotelDateFor).
+function upToView(values) {
+  const d = snotelDateFor(CURRENT_DATE);
+  return (values || []).filter(v => v.date <= d);
+}
+function valueAtView(values) {
+  const v = upToView(values);
+  const last = v[v.length - 1];
+  return last && (Date.parse(snotelDateFor(CURRENT_DATE)) - Date.parse(last.date)) / 86400000 <= 7 ? last : null;
+}
+
 function renderRangeDepths() {
   const el = document.getElementById('range-depths');
+  if (!el) return;
   let html = '';
 
   for (const [rng, triplets] of Object.entries(RANGE_STATIONS)) {
@@ -2661,25 +2683,12 @@ function renderRangeDepths() {
     const avg = data?.avg;
     const isExpanded = expandedRange === rng;
 
-    // Use API data if available, otherwise fall back to snotel.json current readings
-    let latestDepth = null;
-    if (avg && avg.length > 0) {
-      latestDepth = avg[avg.length - 1].value;
-    } else {
-      // Fallback: average current depth from snotel.json for stations in this range
-      const currentSnotel = CURRENT_DATA?.snotel || SNOTEL || [];
-      const rangeDepths = triplets
-        .map(t => currentSnotel.find(s => s.id === t))
-        .filter(s => s && s.snow_depth_in != null)
-        .map(s => s.snow_depth_in);
-      if (rangeDepths.length > 0) {
-        latestDepth = Math.round(rangeDepths.reduce((a,b) => a+b, 0) / rangeDepths.length);
-      }
-    }
-    const depthText = latestDepth != null && latestDepth > 0 ? `${latestDepth}"` : latestDepth === 0 ? '0"' : '<span class="none">loading...</span>';
+    // Range average on the day of the map on screen.
+    const latestDepth = valueAtView(avg)?.value ?? null;
+    const depthText = latestDepth != null ? `${latestDepth}"` : data ? '<span class="none">–</span>' : '<span class="none">loading...</span>';
 
-    // 7-day trend (delta + inline sparkline)
-    const trend7 = build7DayTrend(avg);
+    // 7-day trend up to that day (delta + inline sparkline)
+    const trend7 = build7DayTrend(upToView(avg));
 
     // Full-season sparkline (only visible when expanded via CSS)
     let sparkSvg = '';
@@ -2738,9 +2747,9 @@ function renderRangeDepths() {
       // Station lines + labels
       let stationSvg = '';
       stationEntries.forEach(([triplet, values], idx) => {
-        const info = SNOTEL_NORMALS?.stations?.[triplet];
+        const info = SNOTEL_NORMALS?.stations?.[triplet] || SNOTEL_SEASON?.stations?.find(st => st.id === triplet);
         const color = stationColor(triplet);
-        const latest = values[values.length - 1];
+        const latest = valueAtView(values);
         const sLon = info?.lon, sLat = info?.lat;
 
         const pts = values.map(v => `${mapDateToX(v.date,dw,dPadL).toFixed(1)},${(dPadT+dCh-(Math.min(v.value,maxAll)/maxAll)*dCh).toFixed(1)}`);
@@ -2755,7 +2764,7 @@ function renderRangeDepths() {
         html += `<div class="range-station-label" style="cursor:pointer" onclick="${flyCmd}">
           <span class="rs-name" style="color:${color}">${info?.name || triplet}</span>
           <span class="rs-elev">${info?.elevation_ft?.toLocaleString() || '?'}ft</span>
-          <span class="rs-depth">${latest?.value || 0}"</span>
+          <span class="rs-depth">${latest ? latest.value + '"' : '–'}</span>
         </div>`;
       });
 
@@ -2767,7 +2776,7 @@ function renderRangeDepths() {
       });
       let dateMarker = '';
       if (CURRENT_DATE) {
-        const cx = mapDateToX(CURRENT_DATE, dw, dPadL);
+        const cx = mapDateToX(snotelDateFor(CURRENT_DATE), dw, dPadL);
         dateMarker = `<line x1="${cx}" y1="${dPadT}" x2="${cx}" y2="${dPadT+dCh}" stroke="#FFB74D" stroke-width="0.5" stroke-dasharray="2,2"/>`;
       }
 
@@ -2790,7 +2799,7 @@ function toggleRange(rng) {
 
     // Get current depth data
     const currentById = {};
-    for (const s of (CURRENT_DATA?.snotel || SNOTEL || [])) {
+    for (const s of (snotelForDate(snotelDateFor(CURRENT_DATE)) || [])) {
       if (s.id) currentById[s.id] = s;
     }
 
@@ -3016,6 +3025,7 @@ async function loadSnotelNormals() {
     const r = await fetch('data/snotel_normals.json');
     if (r.ok) SNOTEL_NORMALS = await r.json();
   } catch (e) { /* normals not yet built */ }
+  loadRangeDepths();   // needs both this and the season file, whichever lands last
 }
 
 async function fetchSeasonDepth(triplet) {
@@ -3092,18 +3102,8 @@ function renderDepthSVG(values, currentDate, triplet) {
   const todayX = mapDateToX(new Date().toISOString().slice(0,10), w, padL);
   const todayMark = `<line x1="${todayX}" y1="${padT}" x2="${todayX}" y2="${padT+ch}" stroke="rgba(255,255,255,0.1)" stroke-width="0.5" stroke-dasharray="1,2"/>`;
 
-  // % of normal
-  const latest = values[values.length - 1];
-  let pctNormal = '';
-  if (norms) {
-    const md = latest.date.slice(5);
-    const n = norms[md];
-    if (n && n.median > 0) {
-      const pct = Math.round(latest.value / n.median * 100);
-      const color = pct >= 90 ? '#8bbdd9' : pct >= 70 ? '#FFB74D' : '#EF5350';
-      pctNormal = `<div style="font-family:var(--mono);font-size:9px;color:${color};margin-top:2px">${pct}% of 20yr median</div>`;
-    }
-  }
+  // % of the 20-year median for the viewed day is shown by the popup above the chart.
+  const pctNormal = '';
 
   return `<div class="depth-chart"><svg viewBox="0 0 ${w} ${h}">
     ${months}${yTicks}${todayMark}

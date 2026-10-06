@@ -132,6 +132,15 @@ Measured 2026-10-05: 3,139 scenes, of which 2015–2017 have 0 and 2022 has
 18. The index's AGENTS.md says the C1 reprocessing hasn't reached those
 years yet. That's a gap in the index, not a gap in the imagery.
 
+`snowline/site/data/snotel_season_{YEAR}.json` (written by
+`build_snotel_season.py`): daily `depth_in` and `swe_in` for every SNOTEL
+station in `[-112.5, 44.4, -108.5, 46.6]`, Oct 1 of YEAR to Jun 30, from the
+NRCS AWDB API. `snotel_season.json` is the current season. The map and the
+Data page load the file for the season on screen. "% of normal" is the summed
+depth of the stations that have a 20-year median that day over the sum of
+those medians (`snotel_normals.json`), not shown while the medians average
+under 3 in.
+
 `snowline/site/data/snotel_agreement.json`: per date, `evaluated, agree,
 pct, snow_agree, bare_agree, miss, false_snow, cloud, stations[]`. A
 station counts as snow at depth ≥2 in and as bare at 0. The map class is

@@ -102,10 +102,11 @@ def classify_at(date_dir, images, lat, lon, cache):
 
 
 def load_depths(stations, dates):
-    """{date: {station_id: depth_in}} from snotel_season.json, then NRCS for gaps."""
+    """{date: {station_id: depth_in}} from the snotel_season files, then NRCS for gaps."""
     depths = defaultdict(dict)
-    if SEASON_JSON.exists():
-        season = json.loads(SEASON_JSON.read_text())
+    # Season archives (snotel_season_YYYY.json) and the current season.
+    for path in sorted(SEASON_JSON.parent.glob("snotel_season*.json")):
+        season = json.loads(path.read_text())
         for s in season.get("stations", []):
             for h in s.get("history", []):
                 if h.get("date") in dates and h.get("depth_in") is not None:

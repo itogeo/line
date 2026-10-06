@@ -225,15 +225,15 @@
     <div class="section" style="margin-bottom:24px">
       <h2 style="font-size:13px;margin-bottom:8px">Snow Distribution Across Stations</h2>
       <div style="font-size:10px;color:var(--text-dim);margin-bottom:8px;line-height:1.5">
-        Each SNOTEL station colored by its current snow depth as a percentage of today's
-        regional <em>maximum</em>. Blue dots = the highest-snow stations right now. Red dots = the lowest.
+        Each SNOTEL station colored by its snow depth on the date shown, as a percentage of that day's
+        regional <em>maximum</em>. Blue dots = the highest-snow stations. Red dots = the lowest.
         Hover for details, click to jump to that station's chart below.
       </div>
       <div id="snow-dist-map" style="width:100%;height:480px;background:rgba(0,0,0,0.3);border-radius:8px;border:1px solid var(--border);overflow:hidden"></div>
       <div style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:9px;font-family:var(--mono);color:var(--text-dim)">
         <span>Lowest</span>
         <div style="flex:1;height:8px;border-radius:2px;background:linear-gradient(to right,#FF5252,#FF8A65,#FFB74D,#FFF59D,#E0F7FA,#81D4FA,#26C6DA,#0288D1)"></div>
-        <span>Highest (regional max today)</span>
+        <span>Highest (regional max that day)</span>
       </div>
     </div>
 
@@ -335,24 +335,46 @@ function stationColor(triplet) {
 }
 
 let SNOTEL_LIST = [], NORMALS = null;
+// Name, elevation and location for a station: the normals file has 30
+// stations, the season list has every SNTL station in the area.
+function stationInfo(t) {
+  return NORMALS?.stations?.[t] || SNOTEL_LIST.find(s => s.id === t);
+}
 let snotelSort = { col:'elevation_ft', dir:-1 };
 
 async function loadSnotelData() {
   const statsEl = document.getElementById('snotel-stats');
 
-  const [snotelResp, normalsResp] = await Promise.all([
-    fetch('data/snotel.json').then(r => r.ok ? r.json() : []),
+  // Readings come from the season file the map uses (build_snotel_season.py),
+  // for the season shown: each station's newest reading in that season.
+  const seasonUrls = [`data/snotel_season_${SNOTEL_SEASON.year}.json`];
+  if (SNOTEL_SEASON.year === seasonOf(todayStr()).year) seasonUrls.push('data/snotel_season.json');
+  const getSeason = async () => {
+    for (const u of seasonUrls) {
+      try { const r = await fetch(u); if (r.ok) return await r.json(); } catch (e) { /* next */ }
+    }
+    return null;
+  };
+  const [seasonResp, normalsResp] = await Promise.all([
+    getSeason(),
     fetch('data/snotel_normals.json').then(r => r.ok ? r.json() : null),
   ]);
   NORMALS = normalsResp;
 
-  const sntl = snotelResp.filter(s => s.id && s.id.endsWith(':SNTL'));
-  const today = new Date().toISOString().slice(5,10);
+  const sntl = (seasonResp?.stations || [])
+    .filter(s => s.id && s.id.endsWith(':SNTL'))
+    .map(s => {
+      const h = (s.history || []).filter(r => r.date <= SNOTEL_END && r.depth_in != null);
+      const last = h[h.length - 1];
+      return { id: s.id, name: s.name, elevation_ft: s.elevation_ft, lat: s.lat, lon: s.lon,
+               date: last?.date ?? null, snow_depth_in: last?.depth_in ?? null, swe_in: last?.swe_in ?? null };
+    });
+  const asOf = sntl.map(s => s.date).filter(Boolean).sort().pop();
 
   SNOTEL_LIST = sntl.map(s => {
     let median=null, pctNormal=null, range='Other';
-    if (NORMALS?.normals?.[s.id]?.[today]) {
-      const n = NORMALS.normals[s.id][today];
+    const n = s.date ? NORMALS?.normals?.[s.id]?.[s.date.slice(5)] : null;
+    if (n) {
       median = n.median;
       if (s.snow_depth_in != null && n.median > 0) pctNormal = Math.round(s.snow_depth_in / n.median * 100);
     }
@@ -370,7 +392,8 @@ async function loadSnotelData() {
     <div class="stat-card"><div class="sv">${sntl.length}</div><div class="sl">Stations</div></div>
     <div class="stat-card"><div class="sv">${hasSnow.length}</div><div class="sl">With Snow</div></div>
     <div class="stat-card"><div class="sv">${maxD}"</div><div class="sl">Max Depth</div></div>
-    <div class="stat-card"><div class="sv">${NORMALS ? Object.keys(NORMALS.stations).length : '?'}</div><div class="sl">20yr Normals</div></div>`;
+    <div class="stat-card"><div class="sv">${NORMALS ? Object.keys(NORMALS.stations).length : '?'}</div><div class="sl">20yr Normals</div></div>
+    <div style="grid-column:1/-1;font-size:10px;font-family:var(--mono);color:var(--text-dim)">Season ${SNOTEL_SEASON.label} · readings as of ${asOf || '—'} · <a href="data/snotel_season_${SNOTEL_SEASON.year}.json">data</a></div>`;
 
   // Fetch ALL station season data in parallel
   const triplets = sntl.map(s => s.id);
@@ -547,7 +570,7 @@ async function loadBasinChart(triplets) {
     const stationIds = [];
 
     entries.forEach(([t, vals]) => {
-      const info = NORMALS?.stations?.[t];
+      const info = stationInfo(t);
       const color = stationColor(t);
       const name = info?.name || t;
       const latest = vals[vals.length-1];
@@ -592,7 +615,7 @@ async function loadBasinChart(triplets) {
       const rLineIds = rStations.map(([t]) => 'bline-' + t.replace(/[^a-zA-Z0-9]/g, ''));
       rangeLegend += `<div style="margin-bottom:4px"><strong style="color:${rangeColor(rng)};cursor:pointer" onmouseenter="highlightBasinRange('${rLineIds.join(',')}')" onmouseleave="unhighlightBasinLines()">${rng}</strong>: `;
       for (const [t, vals] of rStations) {
-        const info = NORMALS?.stations?.[t];
+        const info = stationInfo(t);
         const color = stationColor(t);
         const latest = vals[vals.length-1];
         const lineId = 'bline-' + t.replace(/[^a-zA-Z0-9]/g, '');
@@ -706,7 +729,8 @@ function renderSnowDistMap() {
   }
 
   // Today's date stamp + max-depth annotation
-  const today = new Date().toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+  const asOf = SNOTEL_LIST.map(s => s.date).filter(Boolean).sort().pop();
+  const today = asOf ? new Date(asOf + 'T00:00:00').toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) : '';
   svg += `<text x="${w - pad - 4}" y="${pad + 12}" text-anchor="end" fill="rgba(255,255,255,0.5)" font-size="10" font-family="var(--mono)">${today} &middot; max ${maxDepth}″</text>`;
 
   svg += '</svg>';
@@ -727,17 +751,17 @@ async function loadRangeCharts(allTriplets) {
     const latest = stations.filter(s => s.snow_depth_in != null);
     const avgDepth = latest.length > 0 ? Math.round(latest.reduce((a,s) => a + (s.snow_depth_in||0), 0) / latest.length) : 0;
 
-    // Compute range % of normal
-    const today = new Date().toISOString().slice(5,10);
-    let rangeNormSum = 0, rangeNormCnt = 0;
+    // Range % of normal: summed depth over summed 20-year median, each
+    // station on the day of its reading (same rule as the map). Skipped
+    // while the medians are near zero.
+    let rangeD = 0, rangeM = 0, rangeNormCnt = 0;
     for (const s of stations) {
-      const n = NORMALS?.normals?.[s.id]?.[today];
-      if (n && n.median > 0 && s.snow_depth_in != null) {
-        rangeNormSum += s.snow_depth_in / n.median;
-        rangeNormCnt++;
+      const n = s.date ? NORMALS?.normals?.[s.id]?.[s.date.slice(5)] : null;
+      if (n && s.snow_depth_in != null) {
+        rangeD += s.snow_depth_in; rangeM += n.median; rangeNormCnt++;
       }
     }
-    const rangePctNormal = rangeNormCnt > 0 ? Math.round(rangeNormSum / rangeNormCnt * 100) : null;
+    const rangePctNormal = rangeNormCnt > 0 && rangeM / rangeNormCnt >= 3 ? Math.round(rangeD / rangeM * 100) : null;
     let pctBadge = '';
     if (rangePctNormal != null) {
       const pctColor = rangePctNormal >= 90 ? '#26c6da' : rangePctNormal >= 70 ? '#FFB74D' : '#EF5350';
@@ -811,7 +835,7 @@ async function toggleRangeChart(rowId, tripletsStr) {
 
     Object.entries(stationData).forEach(([t, vals]) => {
       if (vals.length < 10) return;
-      const info = NORMALS?.stations?.[t];
+      const info = stationInfo(t);
       const color = stationColor(t);
       const name = info?.name || t;
       const latest = vals[vals.length-1];
@@ -967,9 +991,9 @@ async function toggleSnotelChart(rowId, triplet) {
     const latest = values[values.length - 1];
 
     // Get 20yr data for this station — full historical context
-    const today = new Date().toISOString().slice(5,10);
-    const n = NORMALS?.normals?.[triplet]?.[today];
-    const info = NORMALS?.stations?.[triplet];
+    // 20-year stats for the day of the station's last reading, not today.
+    const n = NORMALS?.normals?.[triplet]?.[latest.date.slice(5)];
+    const info = stationInfo(triplet);
 
     let histHtml = '';
     if (n) {
@@ -978,7 +1002,7 @@ async function toggleSnotelChart(rowId, triplet) {
 
       histHtml = `
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-top:8px;padding:8px;background:rgba(255,180,50,0.04);border-radius:6px;border:1px solid rgba(255,180,50,0.1)">
-          <div><div style="font-size:9px;color:var(--text-dim)">Current Depth</div><div style="font-size:16px;font-weight:700;color:var(--accent)">${latest.value}"</div></div>
+          <div><div style="font-size:9px;color:var(--text-dim)">Depth ${latest.date.slice(5)}</div><div style="font-size:16px;font-weight:700;color:var(--accent)">${latest.value}"</div></div>
           <div><div style="font-size:9px;color:var(--text-dim)">20yr Median</div><div style="font-size:16px;font-weight:700;color:#FFB74D">${n.median}"</div></div>
           ${pct != null ? `<div><div style="font-size:9px;color:var(--text-dim)">% of Normal</div><div style="font-size:16px;font-weight:700;color:${pctColor}">${pct}%</div></div>` : ''}
           <div><div style="font-size:9px;color:var(--text-dim)">Normal Range</div><div style="font-size:14px;color:var(--text-muted)">${n.p25}" – ${n.p75}"</div></div>

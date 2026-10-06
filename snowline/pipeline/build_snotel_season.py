@@ -9,16 +9,21 @@ day and the frontend looks up the right reading for whichever timeline
 date the user clicks.
 
 Usage:
-    python snowline/pipeline/build_snotel_season.py
+    python snowline/pipeline/build_snotel_season.py               # current season
+    python snowline/pipeline/build_snotel_season.py --season 2025 # Oct 2025 - Jun 2026
 
 Output:
-    site/data/snotel_season.json (~150KB for ~110 stations × ~200 days)
+    site/data/snotel_season_{YEAR}.json for the season that starts in Oct YEAR
+    (the map loads the file for whichever season is on screen), and for the
+    current season also site/data/snotel_season.json.
 """
 
 if __name__ == "__main__":
     # --help before the heavy imports below (and before anything runs).
     import argparse
-    argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter).parse_args()
+    _ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    _ap.add_argument("--season", type=int, help="season start year (default: the current season)")
+    ARGS = _ap.parse_args()
 
 import json
 import time
@@ -27,7 +32,8 @@ from pathlib import Path
 import requests
 
 SNOTEL_BBOX = [-112.5, 44.4, -108.5, 46.6]
-OUTPUT = Path(__file__).parent.parent / "site" / "data" / "snotel_season.json"
+DATA_DIR = Path(__file__).parent.parent / "site" / "data"
+OUTPUT = DATA_DIR / "snotel_season.json"
 
 BASE = "https://wcc.sc.egov.usda.gov/awdbRestApi/services/v1"
 
@@ -51,16 +57,18 @@ def fetch_json(url, params, attempts=3):
     return None
 
 
-def main():
-    # Determine the season window. Snowline season runs Oct 1 → June 1.
-    # If we're in Oct-Dec we're in the new season; otherwise we want the
-    # season that started last October.
+def main(season=None):
+    # Snowline season runs Oct 1 → May 31; SNOTEL is kept to June 30 so the
+    # melt-out is in the chart. In Oct-Dec we're in the new season; otherwise
+    # it's the season that started last October.
     today = datetime.utcnow()
-    if today.month >= 10:
-        season_start = f"{today.year}-10-01"
-    else:
-        season_start = f"{today.year - 1}-10-01"
-    season_end = today.strftime("%Y-%m-%d")
+    current = today.year if today.month >= 10 else today.year - 1
+    season = current if season is None else season
+    if season > current:
+        log(f"FATAL: season {season} hasn't started")
+        return 1
+    season_start = f"{season}-10-01"
+    season_end = min(today.strftime("%Y-%m-%d"), f"{season + 1}-06-30")
     log(f"Season window: {season_start} → {season_end}")
 
     log("Fetching station list...")
@@ -139,22 +147,30 @@ def main():
         })
 
     output = {
+        "season": season,
         "season_start": season_start,
         "season_end": season_end,
         "generated_at": today.isoformat() + "Z",
         "stations": stations_out,
     }
 
-    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    with open(OUTPUT, "w") as f:
-        json.dump(output, f)
-
     total_readings = sum(len(s["history"]) for s in stations_out)
-    size_kb = OUTPUT.stat().st_size // 1024
+    if total_readings == 0:
+        log("FATAL: no readings came back; keeping the old files.")
+        return 1
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    outputs = [DATA_DIR / f"snotel_season_{season}.json"]
+    if season == current:
+        outputs.append(OUTPUT)
+    for out in outputs:
+        with open(out, "w") as f:
+            json.dump(output, f)
+        log(f"Wrote {out.name}")
+    size_kb = outputs[0].stat().st_size // 1024
     log(f"Done. {len(stations_out)} stations, {total_readings} readings, {size_kb}KB")
     return 0
 
 
 if __name__ == "__main__":
     import sys
-    sys.exit(main())
+    sys.exit(main(ARGS.season))

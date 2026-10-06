@@ -16,7 +16,7 @@
 
 ### What's broken / missing
 - **No tiles since May 6** — It's now mid-June. `snowline-process-imagery.yml` is manual-trigger only. The last 6 weeks have no tile data. This is expected behavior (someone has to run imagery processing), but it means the "today" view is perpetually stale.
-- **`snowline/site/data/snotel.json` is stale** — This file (the non-season snapshot, used by the main map's SNOTEL panel) was last written in April. The daily job updates `snotel_season.json` but not this legacy `snotel.json`. The SNOTEL panel on the map shows April values.
+- ~~`snowline/site/data/snotel.json` is stale~~ Fixed 2026-10-06: the file is gone; the map and Data page read `snotel_season_{YEAR}.json` for the season on screen.
 - **Snow season is ending** — SW Montana is past peak snowpack (it was gone by early May). The site's utility window is Oct–May. For the rest of June through September, there's nothing to show. This isn't a bug; it's a product question (see "hard questions" below).
 
 ### What a user sees right now
@@ -24,7 +24,7 @@ Map loads. Can scrub through Oct 2025 – May 6, 2026. SNOTEL panel shows April 
 
 ### Blockers to a polished daily site
 1. **Automate imagery processing** — today it's a manual run. For a daily site, the process-imagery workflow should run automatically when a clear satellite pass is detected (trigger off `sat_availability.json` updates, or run nightly and skip if no clear pass).
-2. **Fix `snotel.json` staleness** — either merge it into `snotel_season.json` or have the daily job regenerate it.
+2. ~~Fix `snotel.json` staleness~~ (fixed 2026-10-06)
 3. **Off-season experience** — Jun–Sep, there's no snow. Options: (a) show the last known snow extent frozen with a "season complete" banner, (b) redirect attention to the watershed context data (SWE history, annual peak dates), (c) go dormant with a "back in October" message. There's no product decision here yet.
 4. **Process missing June tiles** — there may be a few clear passes in late May / early June. Run `snowline-process-imagery.yml` manually to catch up.
 
@@ -127,7 +127,7 @@ After Step 3, the site will show real live data. After that, the GitHub Action r
 1. **RiverLine: add CF_API_TOKEN + run D1 migration** (user action, one afternoon) → site shows live data
 2. **RiverLine: forecast panel** (1–2 hr dev) → the most useful new feature; data is already in current.json
 3. **Snowline: run imagery processing** (user triggers workflow) → tiles up to date
-4. **Snowline: fix snotel.json staleness** (1 hr dev) → accurate snowpack panel
+4. ~~Snowline: fix snotel.json staleness~~ (fixed 2026-10-06)
 5. **Both: data-freshness timestamp** (1 hr dev each) → users know when data is from
 6. **RiverLine: mobile pass** (2 hr dev) → makes it shareable
 7. **Snowline: off-season plan** → product decision, then implement
