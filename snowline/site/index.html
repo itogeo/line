@@ -629,7 +629,7 @@
   <div style="font-family:var(--mono);font-size:8px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Layers</div>
   <div class="layers">
     <label class="layer-row"><input type="checkbox" id="tog-snow" checked><div class="sw"></div><span class="layer-label">Snow</span></label>
-    <div class="opacity-wrap" id="opacity-snow"><label>Opacity</label><input type="range" min="0" max="100" value="60" id="slider-snow"></div>
+    <div class="opacity-wrap" id="opacity-snow"><label>Opacity</label><input type="range" min="0" max="100" value="70" id="slider-snow"></div>
     <label class="layer-row"><input type="checkbox" id="tog-s2" checked><div class="sw"></div><span class="layer-label">S2 Imagery</span></label>
     <div class="opacity-wrap" id="opacity-s2"><label>Opacity</label><input type="range" min="0" max="100" value="90" id="slider-s2"></div>
     <label class="layer-row"><input type="checkbox" id="tog-historical"><div class="sw"></div><span class="layer-label">Historical</span></label>
@@ -2419,8 +2419,20 @@ function applyBasemapStyling() {
   // basemaps, leave the cyan as-is.
   // Topo: soften the cyan to an icy blue (it used to go fully white, which
   // made snow nearly invisible on the light basemap).
-  const snowSat = isTopo ? -0.35 : 0;      // -1=grayscale, 0=untouched
-  const snowBrightnessMin = isTopo ? 0.25 : 0;
+  const snowSat = isTopo ? -0.55 : 0;      // -1=grayscale, 0=untouched
+  const snowBrightnessMin = isTopo ? 0.4 : 0;
+
+  // Topo: the basemap's forest and park greens mixed with the blue snow into
+  // a mint wash. Mute them to a neutral grey so snow reads as pale ice over
+  // the terrain and bare ground stays the basemap's own colour.
+  if (isTopo) {
+    for (const l of map.getStyle().layers) {
+      if (l.type === 'fill' && /^(landcover|landuse|national-park)$/.test(l.id)) {
+        map.setPaintProperty(l.id, 'fill-color', '#e4e2dc');
+        map.setPaintProperty(l.id, 'fill-opacity', 0.35);
+      }
+    }
+  }
   for (const id of currentTileLayerIds) {
     if (id.startsWith('layer-snow-') && map.getLayer(id)) {
       map.setPaintProperty(id, 'raster-saturation', snowSat);
