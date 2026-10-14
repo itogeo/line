@@ -510,6 +510,10 @@
     .layers-title { cursor: pointer; font-size: 10px !important; }
     .layers-title::after { content: ' \25BE'; }
     .layers-wrap.closed .layers-title::after { content: ' \25B8'; }
+    /* Feedback sits under the legend, clear of the bottom sheet */
+    .feedback-toggle { top: 86px; left: 8px; right: auto; bottom: auto; padding: 5px 10px; }
+    .feedback-toggle .ft-sub { display: none; }
+    .feedback-box { top: 86px; left: 8px; right: 8px; bottom: auto; width: auto; }
     .opacity-wrap { margin-left: 0; }
     .opacity-wrap input { min-width: 0; width: 100%; }
 
