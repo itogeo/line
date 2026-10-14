@@ -12,3 +12,4 @@ One line per pass of `docs/release-loop.md`: date · item · result · release_c
 2026-10-14 04:45 · item 7 (part) · desktop: sliders fit, compass lower right, layers panel clear of zoom/fullscreen; live · 16/17
 2026-10-14 04:57 · item 7 (part) · Webcams and Data pages no longer scroll sideways on phones; all 4 pages 375 px live. Loop idle: items 2/4 wait for tonight's Process Imagery run (~19:48 UTC), 7 needs Ian's sign-off, 9 is Ian's · 16/17
 2026-10-14 16:56 · item 2 · first run on new code: prune worked (54 truecolor deleted), but no map made: read loop dropped the last date (no trailing newline); fixed. Newest map 2026-10-03, clear passes 10-06/08/09/13 waiting · 17/17
+2026-10-14 17:23 · items 2+4 · Ian's run 38603376451 mapped Oct 13/9/8/6/4 (70 tiles to R2, 0 failed); newest map 2026-10-13, 31.5% snow, latest view 98.1% seen; CF token writes R2 · 17/17

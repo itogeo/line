@@ -80,9 +80,9 @@ no progress (log what blocks it and who has to act).
 | # | Item | Owner | Status |
 |---|---|---|---|
 | 1 | Push the 10+ local commits (`push_snowline.command`). Until then GitHub runs the old pipeline, which hasn't made a map since 2026-05-06 and fails daily. | Ian (one double-click) | done 2026-10-13 (9311ff7) |
-| 2 | Watch the first nightly `snowline-process-imagery` on the new code; fix whatever fails. | loop | open: every run since at least 2026-10-10 died in `prune_r2.py` (R2 list returns a list, code expected a dict); fixed 2026-10-13 |
+| 2 | Watch the first nightly `snowline-process-imagery` on the new code; fix whatever fails. | loop | done 2026-10-14: run 38603376451 mapped Oct 4-13 (two bugs fixed: prune R2 list, read loop dropped last date) |
 | 3 | `riverline-ingest` (every 30 min): find out if it fails; if yes, fix or set it to `workflow_dispatch` only until RiverLine launches. | loop | done 2026-10-13: passes on schedule |
-| 4 | Confirm GitHub secret `CF_API_TOKEN` can write R2 (the nightly upload step fails otherwise; `update_date.sh` then unlists the date). | Ian / loop | read OK 2026-10-13 (CI listed R2); write unconfirmed |
+| 4 | Confirm GitHub secret `CF_API_TOKEN` can write R2 (the nightly upload step fails otherwise; `update_date.sh` then unlists the date). | Ian / loop | done 2026-10-14: 70 tiles uploaded, 0 failed |
 | 5 | Delete `tmp/line.bundle` from R2. | loop | done 2026-10-13 |
 | 6 | Run `release_check.py` in `snowline-daily` after the commit step, so a broken site fails CI the same morning. | loop | done 2026-10-14 (step 5, one retry after redeploy) |
 | 7 | Phone layout pass: panel, legend, timeline, SNOTEL popups at 375 px. | loop + Ian sign-off | loop done 2026-10-14 (all 4 pages 375 px wide; layers closed on phones; feedback, timeline, desktop controls fixed); waits for Ian's phone + laptop sign-off |
