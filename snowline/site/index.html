@@ -503,6 +503,13 @@
       width: 140px !important;
       font-size: 10px !important;
     }
+    /* Starts closed on phones so the map shows; tap "Layers" to open */
+    .layers-wrap.closed { width: auto !important; }
+    .layers-wrap.closed .layers { display: none; }
+    .layers-wrap.closed .layers-title { margin-bottom: 0 !important; }
+    .layers-title { cursor: pointer; font-size: 10px !important; }
+    .layers-title::after { content: ' \25BE'; }
+    .layers-wrap.closed .layers-title::after { content: ' \25B8'; }
     .opacity-wrap { margin-left: 0; }
     .opacity-wrap input { min-width: 0; width: 100%; }
 
@@ -634,7 +641,7 @@
 
 <!-- Layers panel (right side) -->
 <div class="layers-wrap" style="position:absolute;top:60px;right:12px;z-index:10;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px;box-shadow:0 4px 16px rgba(0,0,0,0.3);width:170px;font-size:11px">
-  <div style="font-family:var(--mono);font-size:8px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Layers</div>
+  <div class="layers-title" style="font-family:var(--mono);font-size:8px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Layers</div>
   <div class="layers">
     <label class="layer-row"><input type="checkbox" id="tog-snow" checked><div class="sw"></div><span class="layer-label">Snow</span></label>
     <div class="opacity-wrap" id="opacity-snow"><label>Opacity</label><input type="range" min="0" max="100" value="70" id="slider-snow"></div>
@@ -2335,6 +2342,13 @@ panelToggle.addEventListener('click', () => {
 // content below.
 let dragStartY = null;
 function isMobile() { return window.innerWidth < 768; }
+
+// Layers panel: closed by default on phones, the title toggles it.
+(function () {
+  const wrap = document.querySelector('.layers-wrap');
+  if (isMobile()) wrap.classList.add('closed');
+  wrap.querySelector('.layers-title').addEventListener('click', () => wrap.classList.toggle('closed'));
+})();
 function panelTopRegion(e) {
   if (!isMobile()) return false;
   const rect = panel.getBoundingClientRect();
