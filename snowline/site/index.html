@@ -1845,7 +1845,7 @@ function addWebcamLayer() {
 
   // Fan points the way each camera looks; small, so they don't hide the snow.
   if (!map.getLayer('webcam-icons')) {
-    map.addLayer({ id: 'webcam-icons', type: 'symbol', source: 'webcams', layout: {
+    map.addLayer({ id: 'webcam-icons', type: 'symbol', source: 'webcams', minzoom: 5, layout: {
       visibility: vis,
       'icon-image': ['case', ['get', 'hasBearing'], 'cam-viewshed', 'cam-dot'],
       'icon-anchor': ['case', ['get', 'hasBearing'], 'bottom', 'center'],
@@ -2404,6 +2404,55 @@ async function updateCompositeRegions() {
   set({ type: 'FeatureCollection', features });
 }
 
+// Approximate Sentinel-2 ground track for the globe view: a circular,
+// sun-synchronous orbit (98.62° inclination, 14.3 orbits a day, ESA's
+// published values) passing southbound through the centre of the observed
+// strip. It is a sketch for orientation, accurate near Montana and drifting
+// by tens of km far from it; the strip itself is the real footprint.
+function orbitGeo(fp) {
+  const D = Math.PI / 180, inc = 98.62 * D, T = 86400 / 14.3, n = 2 * Math.PI / T, we = 2 * Math.PI / 86164;
+  const poly = (fp.type === 'Polygon' ? [fp.coordinates] : fp.coordinates)
+    .map(pl => pl[0]).sort((a, b) => b.length - a.length)[0];
+  const lon0 = poly.reduce((a, p) => a + p[0], 0) / poly.length * D;
+  const lat0 = poly.reduce((a, p) => a + p[1], 0) / poly.length * D;
+  const L = u => Math.atan2(Math.cos(inc) * Math.sin(u), Math.cos(u));
+  const u0 = Math.PI - Math.asin(Math.sin(lat0) / Math.sin(inc));   // southbound
+  const om = lon0 - L(u0);
+  const at = t => {
+    const u = u0 + n * t;
+    return [(om + L(u) - we * t) / D, Math.asin(Math.sin(inc) * Math.sin(u)) / D];
+  };
+  const unwrap = pts => { for (let k = 1; k < pts.length; k++) { while (pts[k][0] - pts[k - 1][0] > 180) pts[k][0] -= 360; while (pts[k][0] - pts[k - 1][0] < -180) pts[k][0] += 360; } return pts; };
+  const track = unwrap(Array.from({ length: 241 }, (_, k) => at((k - 120) / 120 * T / 2)));
+  // Imaging swath (290 km) on the daylight, southbound half.
+  const half = 145 / 111.2, left = [], right = [];
+  const day = unwrap(Array.from({ length: 101 }, (_, k) => at((k - 50) / 50 * 24 * 60)));
+  day.forEach((p, k) => {
+    const q = day[Math.min(k + 1, day.length - 1)], o = day[Math.max(k - 1, 0)];
+    const dx = (q[0] - o[0]) * Math.cos(p[1] * D), dy = q[1] - o[1], len = Math.hypot(dx, dy) || 1;
+    const px = -dy / len, py = dx / len;   // unit normal (east-ish, north-ish)
+    left.push([p[0] + px * half / Math.cos(p[1] * D), p[1] + py * half]);
+    right.push([p[0] - px * half / Math.cos(p[1] * D), p[1] - py * half]);
+  });
+  return { type: 'FeatureCollection', features: [
+    { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[...left, ...right.reverse(), left[0]]] }, properties: { kind: 'swath' } },
+    { type: 'Feature', geometry: { type: 'LineString', coordinates: track }, properties: { kind: 'track', label: 'Sentinel-2 orbit (approximate)' } },
+  ] };
+}
+function updateOrbit(fp) {
+  const data = fp ? orbitGeo(fp) : { type: 'FeatureCollection', features: [] };
+  if (map.getSource('orbit')) { map.getSource('orbit').setData(data); return; }
+  map.addSource('orbit', { type: 'geojson', data });
+  map.addLayer({ id: 'orbit-swath', type: 'fill', source: 'orbit', filter: ['==', ['get', 'kind'], 'swath'],
+    paint: { 'fill-color': '#FFD54F', 'fill-opacity': 0.18 } });
+  map.addLayer({ id: 'orbit-track', type: 'line', source: 'orbit', filter: ['==', ['get', 'kind'], 'track'],
+    paint: { 'line-color': '#FFD54F', 'line-width': 1.5, 'line-dasharray': [3, 2] } });
+  map.addLayer({ id: 'orbit-label', type: 'symbol', source: 'orbit', filter: ['==', ['get', 'kind'], 'track'], layout: {
+    'symbol-placement': 'line', 'text-field': ['get', 'label'], 'text-size': 12, 'symbol-spacing': 500,
+    'text-font': ['DIN Pro Bold', 'Arial Unicode MS Bold'] },
+    paint: { 'text-color': '#FFD54F', 'text-halo-color': 'rgba(0,0,0,0.8)', 'text-halo-width': 1.5 } });
+}
+
 function renderNextPass() {
   const el = document.getElementById('next-pass');
   if (!el || !SAT_ROWS.length) return;
@@ -2439,15 +2488,12 @@ function renderNextPass() {
     PREDICTED_PASS = PREDICTED_PASS && PREDICTED_PASS.due === a.dataset.due ? null : { due: a.dataset.due, src: a.dataset.src };
     if (PREDICTED_PASS) document.getElementById('tog-pass').checked = true;
     updatePassFootprint();
-    // Zoom to where the predicted strip meets the map area, so a sliver at
-    // the edge is still visible.
+    // Zoom out to the globe and draw the satellite's orbit through the
+    // predicted strip; clicking the date again flies back to the map area.
     const fp = PREDICTED_PASS && (SAT_ROWS.find(r => r.dt === PREDICTED_PASS.src) || {}).footprint;
-    if (fp) {
-      const pts = (fp.type === 'Polygon' ? fp.coordinates : fp.coordinates.flat()).flat();
-      const [W, S, E, N] = [-112.2, 44.9, -109.0, 46.5];
-      const xs = pts.map(p => Math.min(E, Math.max(W, p[0]))), ys = pts.map(p => Math.min(N, Math.max(S, p[1])));
-      map.fitBounds([[Math.min(...xs), Math.min(...ys)], [Math.max(...xs), Math.max(...ys)]], { padding: 60, maxZoom: 9 });
-    }
+    updateOrbit(fp);
+    if (fp) map.flyTo({ center: [-111, 32], zoom: 1.7, pitch: 0, bearing: 0, duration: 2500 });
+    else map.fitBounds([[-112.2, 44.9], [-109.0, 46.5]], { padding: 40, duration: 2000 });
   });
   el.style.display = '';
 }
