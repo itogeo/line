@@ -82,7 +82,7 @@ FOOTPRINT_DAYS = 40   # recent passes get their imaged strip; the map draws
 
 def add_footprints(avail_rows, today):
     """Put each recent pass's imaged area ("footprint", GeoJSON geometry,
-    clipped near the AOI and simplified to ~500 m) and the share of the AOI
+    clipped 1.5° beyond the AOI and simplified to ~500 m) and the share of the AOI
     it covers ("aoi_cover_pct") on its row. Optional: if
     the query or shapely fails, rows go out without it."""
     try:
@@ -94,7 +94,7 @@ def add_footprints(avail_rows, today):
         log(f"  footprints skipped ({type(e).__name__}: {e})")
         return
     w, s, e_, n = SNOWLINE.bbox_list
-    near = box(w - 0.5, s - 0.5, e_ + 0.5, n + 0.5)
+    near = box(w - 1.5, s - 1.5, e_ + 1.5, n + 1.5)   # strips run past the AOI (to Jackson)
     aoi = box(w, s, e_, n)
     rnd = lambda c: [round(c[0], 3), round(c[1], 3)]
     def round_geom(g):

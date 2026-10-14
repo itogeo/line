@@ -92,6 +92,98 @@ async function initScenes(hash) {
     (g ? `Table rebuilt ${g.toLocaleString('en-US', { timeZone: 'America/Denver', dateStyle: 'medium', timeStyle: 'short' })} MT. ` : '') +
     `<a href="data/scenes.json">Download scenes.json</a>.`;
   refresh();
+  initPasses();
+}
+
+// ── Satellite passes: where each pass imaged, and where the next ones will ──
+// Footprints come from the pass list (build_sat_availability.py). The map runs
+// past the Snowline area (dashed box) so strips that only clip it still show.
+// Upcoming passes repeat the track of the pass 10 days earlier.
+const PASS_VIEW = [-113.7, 43.3, -107.5, 48.0];  // lon/lat, out to Jackson
+const PASS_TOWNS = [['Bozeman', 45.68, -111.04], ['Big Sky', 45.28, -111.37],
+  ['W. Yellowstone', 44.66, -111.10], ['Red Lodge', 45.19, -109.25], ['Ennis', 45.35, -111.73],
+  ['Jackson', 43.48, -110.76], ['Cody', 44.53, -109.06], ['Helena', 46.59, -112.04], ['Billings', 45.78, -108.50]];
+let PASS_ROWS = [], PASS_AOI = null, PASS_SEL = null;
+
+async function initPasses() {
+  const el = document.getElementById('pass-panel');
+  try {
+    const sa = await fetch('data/sat_availability.json').then(r => r.json());
+    PASS_ROWS = sa.rows || [];
+    PASS_AOI = sa.aoi && sa.aoi.bbox;
+  } catch (e) { el.innerHTML = ''; return; }
+  const today = new Date().toISOString().slice(0, 10);
+  const recent = PASS_ROWS.filter(r => r.footprint && (Date.parse(today) - Date.parse(r.dt)) / 86400000 < 10);
+  if (!recent.length) {
+    el.innerHTML = '<div class="pass-side">Pass strips appear after the next daily update.</div>';
+    return;
+  }
+  PASS_SEL = PASS_SEL || { dt: recent[0].dt };
+  renderPasses();
+}
+
+function passUpcoming() {
+  const today = new Date().toISOString().slice(0, 10);
+  const out = new Map();
+  for (const r of PASS_ROWS) {
+    if (!r.footprint || (r.aoi_cover_pct != null && r.aoi_cover_pct < 5)) continue;
+    for (const k of [10, 20]) {
+      const due = new Date(Date.parse(r.dt) + k * 86400000).toISOString().slice(0, 10);
+      if (due > today && !out.has(due)) out.set(due, r);
+    }
+  }
+  return [...out.entries()].sort((a, b) => a[0].localeCompare(b[0])).slice(0, 4).map(([due, r]) => ({ due, src: r }));
+}
+
+function renderPasses() {
+  const el = document.getElementById('pass-panel');
+  const today = new Date().toISOString().slice(0, 10);
+  const W = 340, H = 300;
+  const proj = makeGeoProjection(PASS_VIEW, W, H, 6);
+  const X = lon => proj.lonToX(lon).toFixed(1), Y = lat => proj.latToY(lat).toFixed(1);
+  const ringPath = ring => ring.map((c, i) => `${i ? 'L' : 'M'}${X(c[0])},${Y(c[1])}`).join('') + 'Z';
+  const geomPath = g => (g.type === 'Polygon' ? [g.coordinates] : g.coordinates).map(poly => poly.map(ringPath).join('')).join('');
+  const sel = PASS_SEL.due
+    ? { row: PASS_ROWS.find(r => r.dt === PASS_SEL.src), future: true }
+    : { row: PASS_ROWS.find(r => r.dt === PASS_SEL.dt), future: false };
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Satellite pass strips">`;
+  if (sel.row && sel.row.footprint) {
+    const c = sel.future ? '#FFD54F' : '#ffffff';
+    svg += `<path d="${geomPath(sel.row.footprint)}" fill="${c}" fill-opacity="0.08" stroke="${c}" stroke-width="1.5" stroke-dasharray="5,3"/>`;
+  }
+  if (PASS_AOI) {
+    const [w, s, e, n] = PASS_AOI;
+    svg += `<rect x="${X(w)}" y="${Y(n)}" width="${(X(e) - X(w)).toFixed(1)}" height="${(Y(s) - Y(n)).toFixed(1)}" fill="none" stroke="#4FC3F7" stroke-width="1.5"/>`;
+    svg += `<text x="${X(w) - 0 + 4}" y="${+Y(n) + 12}" fill="#4FC3F7" font-size="9" font-family="var(--mono)">Snowline area</text>`;
+  }
+  for (const [name, lat, lon] of PASS_TOWNS) {
+    svg += `<circle cx="${X(lon)}" cy="${Y(lat)}" r="2" fill="rgba(255,255,255,0.6)"/><text x="${+X(lon) + 4}" y="${+Y(lat) + 3}" fill="rgba(255,255,255,0.55)" font-size="8" font-family="var(--mono)">${name}</text>`;
+  }
+  svg += '</svg>';
+
+  const recent = PASS_ROWS.filter(r => r.footprint && (Date.parse(today) - Date.parse(r.dt)) / 86400000 < 12 && (r.aoi_cover_pct == null || r.aoi_cover_pct >= 5));
+  const pct = r => Math.round(r.aoi_cover_pct != null ? r.aoi_cover_pct : r.s2aoi);
+  const day = d => new Date(d + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+  const recentChips = recent.map(r => `<button type="button" class="pass-chip${!PASS_SEL.due && PASS_SEL.dt === r.dt ? ' on' : ''}" data-dt="${r.dt}"
+      title="${esc(r.why || '')}">${day(r.dt)} · ${pct(r)}% · ${esc(r.q)}</button>`).join('');
+  const futureChips = passUpcoming().map(u => `<button type="button" class="pass-chip future${PASS_SEL.due === u.due ? ' on' : ''}" data-due="${u.due}" data-src="${u.src.dt}"
+      title="Same track as ${day(u.src.dt)}">${day(u.due)} · ~${pct(u.src)}%</button>`).join('');
+  const label = sel.row ? (sel.future ? `Predicted strip for ${day(PASS_SEL.due)} (same track as ${day(sel.row.dt)})`
+    : `Strip imaged ${day(sel.row.dt)}: ${pct(sel.row)}% of the area, ${sel.row.s2n} tiles, ${esc(sel.row.q)}`) : '';
+  el.innerHTML = svg + `<div class="pass-side">
+    <h3>Recent passes</h3><div>${recentChips || '—'}</div>
+    <h3 style="margin-top:10px">Next passes (predicted)</h3><div>${futureChips || '—'}</div>
+    <div style="margin-top:8px;line-height:1.5">${label}</div>
+    <div style="margin-top:6px;color:var(--text-dim);font-size:10px;line-height:1.5">% = share of the Snowline area inside the strip. Each Sentinel-2 satellite repeats its track every 10 days; clouds decide whether a pass is useful. Click a recent pass to list its scenes below.</div>
+  </div>`;
+  el.querySelectorAll('.pass-chip[data-dt]').forEach(b => b.onclick = () => {
+    PASS_SEL = { dt: b.dataset.dt };
+    F.date = b.dataset.dt; F.month = ''; document.getElementById('f-month').value = '';
+    writeHash({ date: F.date }); refresh(); renderPasses();
+  });
+  el.querySelectorAll('.pass-chip[data-due]').forEach(b => b.onclick = () => {
+    PASS_SEL = { due: b.dataset.due, src: b.dataset.src }; renderPasses();
+  });
 }
 
 function filtered() {
