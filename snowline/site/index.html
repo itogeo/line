@@ -1978,6 +1978,9 @@ async function onSpotClick(e) {
   // Up to the date on screen, so an archive date answers "what did it look like then".
   const seen = dates.map((d, i) => [d, out[i]]).filter(([d, c]) => d <= CURRENT_DATE && (c === 'snow' || c === 'snow-free'));
   const last = seen[seen.length - 1];
+  // Upcoming passes whose strip covers this spot (predicted, 10-day repeat).
+  const nextLooks = CURRENT_DATE >= DATES.filter(x => x !== TODAY_VIRTUAL).pop()
+    ? UPCOMING.filter(u => pointInGeom([lng, lat], u.src.footprint)).map(u => fmt(u.due)) : [];
   const cw = Math.max(3, Math.min(22, Math.floor(260 / dates.length) - 1));
   const every = Math.ceil(20 / (cw + 1));   // label every Nth bar so dates don't collide
   const md = d => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`;
@@ -1988,7 +1991,8 @@ async function onSpotClick(e) {
   const recent = seen.slice(-5).reverse().map(([d, c]) =>
     `<div><span style="color:var(--text-muted)">${fmt(d)}</span> &nbsp;<span style="color:${SPOT_COLOR[c]}">${c}</span></div>`).join('');
   el.innerHTML = `<div class="cam-name">Snow at this spot &middot; ${SEASON.label}</div>
-    <div style="font-size:11px;margin:4px 0 8px">${last ? `Last clear look by ${fmt(CURRENT_DATE)}: <strong>${fmt(last[0])}</strong>, <span style="color:${SPOT_COLOR[last[1]]}">${last[1]}</span>` : 'No clear look this season yet.'}</div>
+    <div style="font-size:11px;margin:4px 0 2px">${last ? `Last clear look: <strong>${fmt(last[0])}</strong>, <span style="color:${SPOT_COLOR[last[1]]}">${last[1]}</span>` : 'No clear look this season yet.'}</div>
+    <div style="font-size:11px;margin:0 0 8px">${nextLooks.length ? `Next look: <strong>${nextLooks.join(', ')}</strong> <span style="color:var(--text-dim)">(if clear)</span>` : ''}</div>
     <div style="white-space:nowrap;overflow:hidden">${cells}</div>
     <div style="font-size:8px;color:var(--text-dim);font-family:var(--mono);margin:3px 0 8px">${fmt(dates[0])} &rarr; ${fmt(dates[dates.length - 1])} &middot; one bar per pass &middot;
       <span style="color:${SPOT_COLOR.snow}">snow</span> <span style="color:${SPOT_COLOR['snow-free']}">snow-free</span> <span style="color:${SPOT_COLOR.cloud}">cloud</span> &middot; blank = not imaged</div>
@@ -2318,7 +2322,14 @@ let PREDICTED_PASS = null;   // { due, src } while a future pass is shown
 // Strips are drawn only inside the mapped area (the footprint runs on past
 // it, which read as a box bigger than the data).
 const AOI_BBOX = [-112.2, 44.9, -109.0, 46.5];
-const NEXT_COLORS = ['#66BB6A', '#D4E157', '#FFA726', '#EF5350'];  // soonest → furthest
+const NEXT_COLOR = '#FFD54F';   // predicted passes
+let LAYERS_BEFORE_NEXT = null;  // Imagery/Snow state to restore when the next-pass view closes
+// Is [lon, lat] inside a (Multi)Polygon? Ray casting, holes respected.
+function pointInGeom(pt, g) {
+  const inRing = r => { let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+    if ((r[i][1] > pt[1]) !== (r[j][1] > pt[1]) && pt[0] < (r[j][0] - r[i][0]) * (pt[1] - r[i][1]) / (r[j][1] - r[i][1]) + r[i][0]) c = !c; } return c; };
+  return (g.type === 'Polygon' ? [g.coordinates] : g.coordinates).some(p => inRing(p[0]) && !p.slice(1).some(inRing));
+}
 let UPCOMING = [];            // [{ due, src (pass row), color }] next 4 predicted passes
 function clipToAoi(geom) {
   const [w, s, e, n] = AOI_BBOX;
@@ -2328,8 +2339,8 @@ function clipToAoi(geom) {
 }
 // The strip's real edges (its outline, not our area's border) inside the area:
 // each outline segment clipped to the box (Liang–Barsky), joined into lines.
-function edgesInAoi(geom) {
-  const [w, s, e, n] = AOI_BBOX;
+function edgesInAoi(geom, bbox = AOI_BBOX) {
+  const [w, s, e, n] = bbox;
   const clipSeg = (a, b) => {
     let t0 = 0, t1 = 1;
     const dx = b[0] - a[0], dy = b[1] - a[1];
@@ -2341,7 +2352,9 @@ function edgesInAoi(geom) {
     }
     return [[a[0] + t0 * dx, a[1] + t0 * dy], [a[0] + t1 * dx, a[1] + t1 * dy]];
   };
-  const onBorder = p => Math.abs(p[0] - w) < 1e-6 || Math.abs(p[0] - e) < 1e-6 || Math.abs(p[1] - s) < 1e-6 || Math.abs(p[1] - n) < 1e-6;
+  // Footprints are rounded/simplified, so the clip border is matched loosely.
+  const tol = 0.02;
+  const onBorder = p => Math.abs(p[0] - w) < tol || Math.abs(p[0] - e) < tol || Math.abs(p[1] - s) < tol || Math.abs(p[1] - n) < tol;
   const lines = [];
   for (const poly of (geom.type === 'Polygon' ? [geom.coordinates] : geom.coordinates)) {
     for (const ring of poly) {
@@ -2349,7 +2362,11 @@ function edgesInAoi(geom) {
       for (let k = 0; k + 1 < ring.length; k++) {
         const seg = clipSeg(ring[k], ring[k + 1]);
         // Skip pieces lying along the box border (the ±1.5° clip of the footprint).
-        if (!seg || (onBorder(seg[0]) && onBorder(seg[1]) && (seg[0][0] === seg[1][0] || seg[0][1] === seg[1][1]))) { cur = null; continue; }
+        if (!seg || (onBorder(seg[0]) && onBorder(seg[1]) && (Math.abs(seg[0][0] - seg[1][0]) < tol || Math.abs(seg[0][1] - seg[1][1]) < tol))) { cur = null; continue; }
+        // The swath edge runs ~12° off north; segments within 5° of north-south
+        // or east-west are the 110 km tile grid's edges, not the satellite's.
+        const ang = Math.atan2(Math.abs((seg[1][0] - seg[0][0]) * Math.cos(seg[0][1] * Math.PI / 180)), Math.abs(seg[1][1] - seg[0][1])) * 180 / Math.PI;
+        if (Math.min(ang, 90 - ang) < 5) { cur = null; continue; }
         if (cur && cur[cur.length - 1][0] === seg[0][0] && cur[cur.length - 1][1] === seg[0][1]) cur.push(seg[1]);
         else { cur = [seg[0], seg[1]]; lines.push(cur); }
       }
@@ -2371,8 +2388,22 @@ function updatePassFootprint() {
     if (edges) features.push({ type: 'Feature', geometry: edges, properties: props });
   };
   if (show && PREDICTED_PASS) {
-    // The next passes, each dashed in its colour and labelled with its date.
-    UPCOMING.forEach(u => add(u.src.footprint, { label: fmt(u.due), color: u.color, sel: u.due === PREDICTED_PASS.due }));
+    // The next passes in full (past the area too), each with its date and a
+    // satellite marker; the area outline stays for reference.
+    const [w, s, e, n] = AOI_BBOX;
+    const near = [w - 1.5, s - 1.5, e + 1.5, n + 1.5];
+    UPCOMING.forEach(u => {
+      const fp = u.src.footprint, props = { label: fmt(u.due), color: NEXT_COLOR, sel: u.due === PREDICTED_PASS.due };
+      if (props.sel) features.push({ type: 'Feature', geometry: fp, properties: props });
+      const edges = edgesInAoi(fp, near);
+      if (edges) features.push({ type: 'Feature', geometry: edges, properties: props });
+      const ring = (fp.type === 'Polygon' ? [fp.coordinates] : fp.coordinates).map(p => p[0]).sort((a, b) => b.length - a.length)[0];
+      const c = [ring.reduce((a, p) => a + p[0], 0) / ring.length, ring.reduce((a, p) => a + p[1], 0) / ring.length];
+      features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: c }, properties: props });
+    });
+    // The mapped area, for reference.
+    features.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: [[w, s], [e, s], [e, n], [w, n], [w, s]] },
+      properties: { label: 'Snowline area', color: '#ffffff', sel: false } });
   } else if (show && CURRENT_DATA) {
     const row = SAT_ROWS.find(r => r.dt === CURRENT_DATA.scene_date);
     if (row) add(row.footprint, { label: `Edge of the ${fmt(row.dt)} pass`, color: '#FF4FD8', sel: false });
@@ -2381,8 +2412,8 @@ function updatePassFootprint() {
   if (map.getSource('pass')) map.getSource('pass').setData(data);
   else map.addSource('pass', { type: 'geojson', data });
   if (!map.getLayer('pass-fill')) {
-    map.addLayer({ id: 'pass-fill', type: 'fill', source: 'pass', filter: ['all', ['get', 'sel'], ['==', ['geometry-type'], 'Polygon']],
-      paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.12 } });
+    map.addLayer({ id: 'pass-fill', type: 'fill', source: 'pass', filter: ['==', ['geometry-type'], 'Polygon'],
+      paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.16 } });
   }
   if (!map.getLayer('pass-line')) {
     // Dark casing under a bright dashed line so the strip edge reads on snow.
@@ -2396,6 +2427,16 @@ function updatePassFootprint() {
       'symbol-placement': 'line', 'text-field': ['get', 'label'], 'text-size': 12,
       'text-font': ['DIN Pro Bold', 'Arial Unicode MS Bold'], 'symbol-spacing': 250,
     }, paint: { 'text-color': ['get', 'color'], 'text-halo-color': 'rgba(10,18,30,0.9)', 'text-halo-width': 1.8 }});
+    // Satellite marker + date in the middle of each predicted strip.
+    map.loadImage('/snow/img/ito-sat.png', (err, img) => {
+      if (!err && !map.hasImage('pass-sat')) map.addImage('pass-sat', img);
+      if (map.getLayer('pass-sat')) return;
+      map.addLayer({ id: 'pass-sat', type: 'symbol', source: 'pass', filter: ['==', ['geometry-type'], 'Point'], layout: {
+        'icon-image': 'pass-sat', 'icon-size': ['case', ['get', 'sel'], 0.75, 0.55], 'icon-allow-overlap': true,
+        'text-field': ['get', 'label'], 'text-size': 13, 'text-offset': [0, 1.9], 'text-anchor': 'top',
+        'text-font': ['DIN Pro Bold', 'Arial Unicode MS Bold'], 'text-allow-overlap': true,
+      }, paint: { 'text-color': ['get', 'color'], 'text-halo-color': 'rgba(10,18,30,0.9)', 'text-halo-width': 1.8 } });
+    });
   }
   document.querySelectorAll('#next-pass .pass-chip').forEach(a =>
     a.classList.toggle('on', !!PREDICTED_PASS && a.dataset.due === PREDICTED_PASS.due));
@@ -2530,7 +2571,7 @@ function renderNextPass() {
   // Passes that barely touch the area (strip mostly outside it) aren't worth announcing.
   UPCOMING = [...due].sort().map(d => ({ due: d, src: sourceOf(d) }))
     .filter(u => u.src && (u.src.aoi_cover_pct == null || u.src.aoi_cover_pct >= 5))
-    .slice(0, 4).map((u, i) => ({ ...u, color: NEXT_COLORS[i] }));
+    .slice(0, 4).map(u => ({ ...u, color: NEXT_COLOR }));
   if (!UPCOMING.length) { el.style.display = 'none'; return; }
   const fmt = dt => new Date(dt + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
   const pct = r => Math.round(r.aoi_cover_pct != null ? r.aoi_cover_pct : r.s2aoi);
@@ -2542,12 +2583,25 @@ function renderNextPass() {
   el.querySelectorAll('.pass-chip').forEach(a => a.onclick = ev => {
     ev.preventDefault();
     const off = PREDICTED_PASS && PREDICTED_PASS.due === a.dataset.due;
+    const was = !!PREDICTED_PASS;
     PREDICTED_PASS = off ? null : { due: a.dataset.due };
     if (PREDICTED_PASS) document.getElementById('tog-pass').checked = true;
+    // Imagery and snow off while looking ahead (back on when this closes).
+    const setBox = (id, on) => { const cb = document.getElementById(id); if (cb.checked !== on) { cb.checked = on; cb.dispatchEvent(new Event('change')); } };
+    if (PREDICTED_PASS && !was) {
+      LAYERS_BEFORE_NEXT = { s2: document.getElementById('tog-s2').checked, snow: document.getElementById('tog-snow').checked };
+      setBox('tog-s2', false); setBox('tog-snow', false);
+    } else if (!PREDICTED_PASS && LAYERS_BEFORE_NEXT) {
+      setBox('tog-s2', LAYERS_BEFORE_NEXT.s2); setBox('tog-snow', LAYERS_BEFORE_NEXT.snow);
+      LAYERS_BEFORE_NEXT = null;
+    }
     updatePassFootprint();
     updateOrbit(null);
     globe.style.display = PREDICTED_PASS ? '' : 'none';
-    map.fitBounds([[AOI_BBOX[0], AOI_BBOX[1]], [AOI_BBOX[2], AOI_BBOX[3]]], { padding: 40, duration: 1500 });
+    globe.innerHTML = 'See on the globe &rarr;';
+    // Zoomed out a little so the strips show past the area.
+    const pad = PREDICTED_PASS ? 1.2 : 0;
+    map.fitBounds([[AOI_BBOX[0] - pad, AOI_BBOX[1] - pad], [AOI_BBOX[2] + pad, AOI_BBOX[3] + pad]], { padding: 40, duration: 1500 });
   });
   // The globe view: each upcoming pass's orbit (approximate), the picked one with its swath.
   globe.onclick = ev => {
