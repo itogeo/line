@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Snow Cover — SW Montana · itogeospatial</title>
+<link rel="icon" href="/snow/img/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" href="/snow/img/favicon-32.png">
+<link rel="apple-touch-icon" href="/snow/img/apple-touch-icon.png">
+<script src="/snow/ito-loader.js"></script>
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.js"></script>
 <link href="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.css" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,400&family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -297,8 +301,11 @@
   .legend-text { color: var(--text-muted); }
 
   /* ── Loading ── */
-  .loader-wrap { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 30; text-align: center; }
+  .loader-wrap { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 30; text-align: center;
+    background: rgba(10, 18, 30, 0.88); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 22px 30px 18px; box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
   .loader-wrap.hidden { display: none; }
+  :root { --ito-busy-right: 80px; --ito-busy-bottom: 150px; }  /* clear of compass + feedback */
+  .loader-mark { margin: 0 auto 18px; height: 72px; display: flex; align-items: center; justify-content: center; }
   .loader-spinner { width: 28px; height: 28px; border: 2.5px solid rgba(139,189,217,0.15); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 10px; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .loader-text { font-family: var(--mono); font-size: 12px; color: var(--accent); }
@@ -577,9 +584,10 @@
 <div class="map-section">
 
 <div class="loader-wrap" id="loader">
-  <div class="loader-spinner"></div>
+  <div class="loader-mark"></div>
   <div class="loader-text">Loading snowline data&hellip;</div>
 </div>
+<script>document.querySelector('#loader .loader-mark').appendChild(itoMark(2));</script>
 
 <div id="map"></div>
 

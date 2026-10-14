@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Snowline Data</title>
+<link rel="icon" href="/snow/img/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" href="/snow/img/favicon-32.png">
+<link rel="apple-touch-icon" href="/snow/img/apple-touch-icon.png">
+<script src="/snow/ito-loader.js"></script>
 <meta name="description" content="Every Sentinel-2 scene behind the Snowline snow map, per-tile snow history since 2018, and SNOTEL ground truth for SW Montana. Open data.">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700&display=swap" rel="stylesheet">
 <style>
@@ -367,6 +371,7 @@ async function loadSnotelData() {
     fetch('data/snotel_normals.json').then(r => r.ok ? r.json() : null),
   ]);
   NORMALS = normalsResp;
+  SEASON_FILE = seasonResp;
 
   const sntl = (seasonResp?.stations || [])
     .filter(s => s.id && s.id.endsWith(':SNTL'))
@@ -559,13 +564,34 @@ function buildChart(values, triplets, w, h, opts = {}) {
   </svg>`;
 }
 
+// Daily depths for these stations, shaped like the NRCS AWDB reply. Read from
+// our nightly season file (already loaded, no wait on NRCS); only stations
+// missing from it are asked of NRCS directly.
+let SEASON_FILE = null;
+async function seasonRecords(triplets) {
+  const byId = Object.fromEntries((SEASON_FILE?.stations || []).map(st => [st.id, st]));
+  const out = [], missing = [];
+  for (const t of triplets) {
+    const st = byId[t];
+    if (!st) { missing.push(t); continue; }
+    const values = (st.history || []).filter(r => r.depth_in != null && r.date >= SEASON_START && r.date <= SNOTEL_END)
+      .map(r => ({ date: r.date, value: r.depth_in }));
+    out.push({ stationTriplet: t, data: [{ values }] });
+  }
+  if (missing.length) {
+    try {
+      const r = await fetch(`https://wcc.sc.egov.usda.gov/awdbRestApi/services/v1/data?stationTriplets=${encodeURIComponent(missing.join(','))}&elements=SNWD&duration=DAILY&beginDate=${SEASON_START}&endDate=${SNOTEL_END}`);
+      if (r.ok) out.push(...await r.json());
+    } catch (e) { /* NRCS down: chart the stations we have */ }
+  }
+  return out;
+}
+
 // ── Basin-wide chart (all stations averaged + individual lines) ──
 async function loadBasinChart(triplets) {
   const el = document.getElementById('basin-chart');
-  const batch = triplets.slice(0, 30).join(',');
   try {
-    const r = await fetch(`https://wcc.sc.egov.usda.gov/awdbRestApi/services/v1/data?stationTriplets=${encodeURIComponent(batch)}&elements=SNWD&duration=DAILY&beginDate=${SEASON_START}&endDate=${SNOTEL_END}`);
-    const data = await r.json();
+    const data = await seasonRecords(triplets);
 
     // Per-station values + average
     const byDate = {}, stationLines = {};
@@ -836,8 +862,7 @@ async function toggleRangeChart(rowId, tripletsStr) {
 
   const triplets = tripletsStr.split(',');
   try {
-    const r = await fetch(`https://wcc.sc.egov.usda.gov/awdbRestApi/services/v1/data?stationTriplets=${encodeURIComponent(tripletsStr)}&elements=SNWD&duration=DAILY&beginDate=${SEASON_START}&endDate=${SNOTEL_END}`);
-    const data = await r.json();
+    const data = await seasonRecords(triplets);
 
     const byDate = {};
     const stationData = {};
@@ -1022,8 +1047,7 @@ async function toggleSnotelChart(rowId, triplet) {
   chartEl.innerHTML = '<span style="color:var(--text-dim)">Loading...</span>';
 
   try {
-    const r = await fetch(`https://wcc.sc.egov.usda.gov/awdbRestApi/services/v1/data?stationTriplets=${encodeURIComponent(triplet)}&elements=SNWD&duration=DAILY&beginDate=${SEASON_START}&endDate=${SNOTEL_END}`);
-    const data = await r.json();
+    const data = await seasonRecords([triplet]);
     if (!data[0]?.data?.[0]?.values) { chartEl.textContent = 'No data'; return; }
 
     const values = data[0].data[0].values.filter(v => v.value != null);
