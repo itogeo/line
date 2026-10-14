@@ -79,7 +79,7 @@ no progress (log what blocks it and who has to act).
 | 2 | Watch the first nightly `snowline-process-imagery` on the new code; fix whatever fails. | loop | blocked by 1 |
 | 3 | `riverline-ingest` (every 30 min): find out if it fails; if yes, fix or set it to `workflow_dispatch` only until RiverLine launches. | loop | open |
 | 4 | Confirm GitHub secret `CF_API_TOKEN` can write R2 (the nightly upload step fails otherwise; `update_date.sh` then unlists the date). | Ian / loop | open |
-| 5 | Delete `tmp/line.bundle` from R2. | loop | open |
+| 5 | Delete `tmp/line.bundle` from R2. | loop | done 2026-10-13 |
 | 6 | Run `release_check.py` in `snowline-daily` after the commit step, so a broken site fails CI the same morning. | loop | open |
 | 7 | Phone layout pass: panel, legend, timeline, SNOTEL popups at 375 px. | loop + Ian sign-off | open |
 | 8 | First snow of 2026–27: compare the first snowy map with SNOTEL and webcams; note results on the Methods page. | loop | waits for snow |
