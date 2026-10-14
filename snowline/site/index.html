@@ -2235,7 +2235,19 @@ function renderSource() {
     b.classList.toggle('active', b.dataset.view === d.view);
     if (b.dataset.jump) return;
     b.disabled = b.dataset.view === 'latest' && !d.latest;
-    b.onclick = () => setViewMode(b.dataset.view);
+    b.onclick = () => {
+      // Coming back from "Last full day": return to the date you were on.
+      if (b.dataset.view === 'latest' && FULL_DAY_RETURN && CURRENT_DATE === FULL_DAY_RETURN.at) {
+        const back = FULL_DAY_RETURN.from;
+        FULL_DAY_RETURN = null;
+        VIEW_MODE = 'latest';
+        for (const k of Object.keys(SNOWLINE_CACHE)) delete SNOWLINE_CACHE[k];
+        writeHash({ view: null });
+        loadDate(back);
+        return;
+      }
+      setViewMode(b.dataset.view);
+    };
     if (b.dataset.view === 'pass') {
       b.textContent = new Date(d.scene_date + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) + ' pass only';
     }
@@ -2288,6 +2300,7 @@ function renderLastFullDay() {
   b.classList.toggle('active', !!found && found === CURRENT_DATE && VIEW_MODE === 'pass');
   b.onclick = () => {
     if (!found) return;
+    if (CURRENT_DATE !== found) FULL_DAY_RETURN = { from: CURRENT_DATE, at: found };
     if (VIEW_MODE !== 'pass') { VIEW_MODE = 'pass'; for (const k of Object.keys(SNOWLINE_CACHE)) delete SNOWLINE_CACHE[k]; writeHash({ view: 'pass' }); }
     loadDate(found);
   };
@@ -2297,6 +2310,7 @@ function renderLastFullDay() {
 // Outline of what the satellite imaged on the date on screen (footprints
 // come from the S2 index, data/sat_availability.json), or of a predicted
 // upcoming pass when one is picked in the "Next satellite pass" box.
+let FULL_DAY_RETURN = null;  // { from, at }: "Most recent composite" on day `at` goes back to `from`
 let PREDICTED_PASS = null;   // { due, src } while a future pass is shown
 function updatePassFootprint() {
   // Called on date changes and again once the map's layers are added.
@@ -2527,15 +2541,12 @@ function syncLayerButtons() {
   b2.classList.toggle('on', snow);
   b2.setAttribute('aria-pressed', snow);
 }
-// The two work as a pair: turning one on turns the other off, so it's always
-// clear which one you're looking at. (The layer panel still allows both.)
-for (const [btn, box, other] of [['big-s2-btn', 'tog-s2', 'tog-snow'], ['big-snow-btn', 'tog-snow', 'tog-s2']]) {
+for (const [btn, box] of [['big-s2-btn', 'tog-s2'], ['big-snow-btn', 'tog-snow']]) {
   document.getElementById(btn).addEventListener('click', function () {
     if (this.disabled) return;
-    const cb = document.getElementById(box), ob = document.getElementById(other);
+    const cb = document.getElementById(box);
     cb.checked = !cb.checked;
     cb.dispatchEvent(new Event('change'));
-    if (ob.checked === cb.checked) { ob.checked = !cb.checked; ob.dispatchEvent(new Event('change')); }
   });
 }
 syncLayerButtons();
