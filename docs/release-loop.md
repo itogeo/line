@@ -1,5 +1,9 @@
 # Snowline release loop
 
+**End goal:** a super simple, open-source website that helps people plan ski
+trips: where the snow is today, how much the stations measure, and how
+that compares with normal. When a choice comes up, pick the simpler one.
+
 A spec for an agent (or a person) working on Snowline in repeated passes
 until it is ready for the public. Each pass is short. Every pass ends with
 the site at least as healthy as it started, and with one line in
