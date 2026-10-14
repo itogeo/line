@@ -76,6 +76,47 @@ def explain(q, n_tiles, n_clear, mean_cloud, snow):
     return f"Too cloudy — {n_tiles} tiles imaged, average {mean_cloud:.0f}% cloud. Snow hidden by clouds."
 
 
+FOOTPRINT_DAYS = 40   # recent passes get their imaged strip; the map draws
+                      # them and predicts the next ones (same track 10 days on)
+
+
+def add_footprints(avail_rows, today):
+    """Put each recent pass's imaged area ("footprint", GeoJSON geometry,
+    clipped near the AOI and simplified to ~500 m) and the share of the AOI
+    it covers ("aoi_cover_pct") on its row. Optional: if
+    the query or shapely fails, rows go out without it."""
+    try:
+        from shapely import wkb as shp_wkb
+        from shapely.geometry import box, mapping
+        from shapely.ops import unary_union
+        by_date = s2index.footprints(SNOWLINE.tiles, today - timedelta(days=FOOTPRINT_DAYS), today)
+    except Exception as e:  # noqa: BLE001
+        log(f"  footprints skipped ({type(e).__name__}: {e})")
+        return
+    w, s, e_, n = SNOWLINE.bbox_list
+    near = box(w - 0.5, s - 0.5, e_ + 0.5, n + 0.5)
+    aoi = box(w, s, e_, n)
+    rnd = lambda c: [round(c[0], 3), round(c[1], 3)]
+    def round_geom(g):
+        m = mapping(g)
+        if m["type"] == "Polygon":
+            return {"type": "Polygon", "coordinates": [[rnd(c) for c in ring] for ring in m["coordinates"]]}
+        return {"type": "MultiPolygon", "coordinates": [[[rnd(c) for c in ring] for ring in poly] for poly in m["coordinates"]]}
+    done = 0
+    for row in avail_rows:
+        polys = by_date.get(row["dt"])
+        if not polys:
+            continue
+        full = unary_union([shp_wkb.loads(b) for b in polys])
+        # Share of the AOI inside the imaged strip (cloud or not).
+        row["aoi_cover_pct"] = round(full.intersection(aoi).area / aoi.area * 100, 1)
+        g = full.intersection(near).simplify(0.005)
+        if not g.is_empty and g.geom_type in ("Polygon", "MultiPolygon"):
+            row["footprint"] = round_geom(g)
+            done += 1
+    log(f"  footprints for {done} recent passes")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--days", type=int, default=400, help="How far back to look (default 400)")
@@ -148,6 +189,8 @@ def main():
             dirs.pop() + "/" if fits else None,
             None if fits else hrefs,
         ])
+
+    add_footprints(avail_rows, today)
 
     generated = datetime.now(timezone.utc).isoformat(timespec="seconds")
     source = {

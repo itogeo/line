@@ -1,7 +1,8 @@
 # Daily + imagery pipeline (what CI installs)
-duckdb>=1.1
+duckdb>=1.5       # 1.5 reads the index geometry (ST_AsWKB) for pass footprints
 pytz            # duckdb needs it to return TIMESTAMPTZ values to Python
 numpy
 rasterio
 Pillow
 requests
+shapely         # pass footprints (merge + simplify)

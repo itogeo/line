@@ -211,6 +211,33 @@ def scenes(
     return rows
 
 
+def footprints(tiles: Iterable[str], start, end) -> dict[str, list[bytes]]:
+    """Data footprints (WKB polygons, lon/lat) of every scene over ``tiles``
+    from ``start`` to ``end`` (inclusive UTC dates), grouped by UTC date.
+    Needs DuckDB's built-in ST_AsWKB (1.5+); callers should treat it as
+    optional."""
+    tiles = sorted({norm_tile(t) for t in tiles})
+    start_d, end_d = _to_date(start), _to_date(end)
+    files: list[str] = []
+    for y in range(start_d.year, end_d.year + 1):
+        files.extend(year_files(y))
+    if not files:
+        return {}
+    placeholders = ",".join("?" for _ in tiles)
+    sql = f"""
+        SELECT datetime, ST_AsWKB(geometry) AS wkb
+        FROM read_parquet(?, union_by_name = true)
+        WHERE _tile IN ({placeholders})
+          AND datetime >= CAST(? AS TIMESTAMPTZ)
+          AND datetime <  CAST(? AS TIMESTAMPTZ)
+    """
+    out: dict[str, list[bytes]] = {}
+    params = [files, *tiles, start_d.isoformat(), (end_d + timedelta(days=1)).isoformat()]
+    for dt, wkb in _con().execute(sql, params).fetchall():
+        out.setdefault(dt.astimezone(timezone.utc).date().isoformat(), []).append(bytes(wkb))
+    return out
+
+
 def asset_href(row: dict, band: str) -> str:
     """The COG URL for ``band`` (an upstream asset key: green, swir16, scl,
     visual, thumbnail, ...). Never build these from a template."""
