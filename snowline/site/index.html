@@ -594,7 +594,7 @@
   </div>
 
   <div class="snow-bar-wrap">
-    <div class="snow-bar-label"><span>AOI Coverage</span><span class="pct" id="coverage-pct" style="color:#FFB74D"></span></div>
+    <div class="snow-bar-label"><span id="coverage-label">AOI Coverage</span><span class="pct" id="coverage-pct" style="color:#FFB74D"></span></div>
     <div class="snow-bar"><div class="snow-bar-fill" id="coverage-bar-fill" style="background:linear-gradient(90deg,#FFB74D,#FF8A65)"></div></div>
   </div>
 
@@ -602,6 +602,7 @@
     <div class="snow-bar-label"><span>Snow Cover</span><span class="pct" id="snow-pct"></span></div>
     <div class="snow-bar"><div class="snow-bar-fill" id="snow-bar-fill"></div></div>
   </div>
+  <div id="coverage-note" style="font-size:9px;color:var(--text-dim);font-family:var(--mono);line-height:1.5;margin:-2px 0 8px;display:none"></div>
 
   <!-- Recent change callout — auto-generated week-over-week summary
        comparing the current date's stats to the closest date 5+ days ago.
@@ -878,6 +879,7 @@ function applyView(raw) {
     ...raw,
     view: 'latest',
     pass_coverage_pct: raw.coverage_pct,
+    pass_snow_cover_pct: raw.snow_cover_pct,
     coverage_pct: raw.latest.coverage_pct,
     snow_cover_pct: raw.latest.snow_cover_pct,
     chunks: raw.latest.chunks.map(c => ({ ...c, truecolor_file: tc[c.chunk_id] })),
@@ -1313,8 +1315,24 @@ function renderPanel() {
   document.getElementById('panel').classList.toggle('archive-mode', !isLive);
   document.getElementById('timeline').classList.toggle('archive-mode', !isLive);
 
-  // AOI coverage
-  const coveragePct = d.coverage_pct != null ? d.coverage_pct : null;
+  // AOI coverage. In the latest view the bars show what this day's pass
+  // actually saw; the rest of the map comes from earlier passes, which can
+  // predate new snow, so it is named separately rather than counted as seen.
+  const fill = d.view === 'latest' && d.pass_coverage_pct != null && d.coverage_pct - d.pass_coverage_pct >= 1;
+  const coveragePct = fill ? d.pass_coverage_pct : (d.coverage_pct != null ? d.coverage_pct : null);
+  const snowPct = fill ? d.pass_snow_cover_pct : d.snow_cover_pct;
+  document.getElementById('coverage-label').textContent = fill ? 'Seen this day' : 'AOI Coverage';
+  const note = document.getElementById('coverage-note');
+  if (fill) {
+    const fmt = s => new Date(s + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+    const older = (d.latest.sources || []).filter(x => x.date !== d.scene_date && x.pct_of_seen >= 0.5).map(x => x.date).sort();
+    const span = older.length ? (older.length > 1 ? `${fmt(older[0])}–${fmt(older[older.length - 1])}` : fmt(older[0])) : 'earlier passes';
+    note.innerHTML = `The map fills the other ${Math.round(d.coverage_pct - d.pass_coverage_pct)}% from ${span}, `
+      + `<span style="color:#FFB74D">which may be older than recent snow</span>.`;
+    note.style.display = '';
+  } else {
+    note.style.display = 'none';
+  }
   if (coveragePct != null) {
     document.getElementById('coverage-pct').textContent = coveragePct + '%';
     document.getElementById('coverage-bar-fill').style.width = Math.max(coveragePct, 1) + '%';
@@ -1325,8 +1343,8 @@ function renderPanel() {
   }
 
   // Snow cover (of covered area)
-  document.getElementById('snow-pct').textContent = d.snow_cover_pct + '%';
-  document.getElementById('snow-bar-fill').style.width = Math.max(d.snow_cover_pct, 1) + '%';
+  document.getElementById('snow-pct').textContent = snowPct + '%';
+  document.getElementById('snow-bar-fill').style.width = Math.max(snowPct, 1) + '%';
 
   // Week-over-week change callout — fire and forget, async
   renderChangeCallout();
