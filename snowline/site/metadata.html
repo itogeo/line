@@ -128,6 +128,9 @@
     .nav-links { margin-left:0; }
     .nav-links a { padding:4px 6px; white-space:nowrap; letter-spacing:0.4px; }
   }
+  .compare-btn { margin: 4px 0 12px; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-family: var(--mono); font-size: 11px;
+    background: transparent; color: #CE93D8; border: 1px solid rgba(206,147,216,0.5); }
+  .compare-btn.on { background: rgba(206,147,216,0.15); }
 </style>
 </head>
 <body>
@@ -218,6 +221,7 @@
       NRCS SNOTEL ground measurement stations. All data from <a href="https://wcc.sc.egov.usda.gov/awdbRestApi/" target="_blank">NRCS AWDB API</a> (free).
       <span style="color:#FFB74D">Dashed line = 20-year median</span>. Click any station or range to expand.
     </div>
+    <button type="button" id="compare-btn" class="compare-btn" onclick="setCompare(!COMPARE)">Compare to last year</button>
     <div class="stats-grid" id="snotel-stats"></div>
 
     <div class="section" style="margin-bottom:24px">
@@ -404,6 +408,8 @@ async function loadSnotelData() {
 
   // Fetch ALL station season data in parallel
   const triplets = sntl.map(s => s.id);
+  window._allTriplets = triplets;
+  document.getElementById('compare-btn').textContent = `Compare to last year (${PREV_SEASON.label})`;
   await loadBasinChart(triplets);
   await loadRangeCharts(triplets);
   renderSnotelTable();
@@ -412,14 +418,53 @@ async function loadSnotelData() {
 // ── Shared chart builder with scales, dates, and historical ──
 // Full season: Oct 1 to May 31
 // SNOTEL season shown: ?season=2025 picks one; otherwise the current season,
-// or the previous one during its first three weeks (too little data yet).
+// however young. "Compare to last year" overlays the season before.
 const SNOTEL_SEASON = (() => {
   const q = new URLSearchParams(location.search).get('season');
   if (/^\d{4}$/.test(q || '')) return seasonOf(`${q}-12-01`);
-  const cur = seasonOf(todayStr());
-  const daysIn = (Date.parse(todayStr()) - Date.parse(cur.start)) / 86400000;
-  return daysIn < 21 ? seasonOf(`${cur.year - 1}-12-01`) : cur;
+  return seasonOf(todayStr());
 })();
+const PREV_SEASON = seasonOf(`${SNOTEL_SEASON.year - 1}-12-01`);
+const COMPARE_COLOR = '#CE93D8';
+let COMPARE = false;
+let PREV_DATA = null;   // the previous season's file, loaded on first compare
+async function loadPrevSeason() {
+  if (!PREV_DATA) {
+    try { const r = await fetch(`data/snotel_season_${PREV_SEASON.year}.json`); PREV_DATA = r.ok ? await r.json() : { stations: [] }; }
+    catch (e) { PREV_DATA = { stations: [] }; }
+  }
+  return PREV_DATA;
+}
+// Last season's average depth over `triplets`, each date moved one year on so
+// it lines up with this season's Oct–May axis.
+function prevSeasonAvg(triplets) {
+  if (!COMPARE || !PREV_DATA) return null;
+  const want = new Set(triplets), byDate = {};
+  for (const st of PREV_DATA.stations || []) {
+    if (!want.has(st.id)) continue;
+    for (const r of st.history || []) {
+      if (r.depth_in == null) continue;
+      const d = (+r.date.slice(0, 4) + 1) + r.date.slice(4);
+      (byDate[d] = byDate[d] || []).push(r.depth_in);
+    }
+  }
+  const out = Object.entries(byDate).map(([date, v]) => ({ date, value: Math.round(v.reduce((a, b) => a + b, 0) / v.length) }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  return out.length >= 5 ? out : null;
+}
+async function setCompare(on) {
+  COMPARE = on;
+  document.getElementById('compare-btn').classList.toggle('on', on);
+  document.getElementById('compare-btn').textContent = on ? `Comparing to ${PREV_SEASON.label}` : `Compare to last year (${PREV_SEASON.label})`;
+  if (on) await loadPrevSeason();
+  await loadBasinChart(window._allTriplets || []);
+  // Re-draw any open range charts; closed ones redraw when opened.
+  document.querySelectorAll('#range-charts [id^="range-"]').forEach(el => {
+    const open = el.style.display !== 'none';
+    el.dataset.loaded = '';
+    if (open) { el.style.display = 'none'; el.parentElement.click(); }
+  });
+}
 const SEASON_START = SNOTEL_SEASON.start;
 const SEASON_END = SNOTEL_SEASON.end;
 const SEASON_DAYS = seasonDays(SNOTEL_SEASON);
@@ -436,8 +481,9 @@ function buildChart(values, triplets, w, h, opts = {}) {
   const ch = h - pad.top - pad.bottom;
   if (!values || values.length < 5) return '<div style="color:var(--text-dim);font-size:10px">No data</div>';
 
+  const prev = triplets ? prevSeasonAvg(triplets) : null;
   // Max should include historical peaks so the chart shows proper scale
-  let maxD = Math.max(10, ...values.map(v => v.value));
+  let maxD = Math.max(10, ...values.map(v => v.value), ...(prev || []).map(v => v.value));
   if (NORMALS && triplets) {
     for (const t of triplets) {
       const n = NORMALS.normals?.[t];
@@ -511,6 +557,14 @@ function buildChart(values, triplets, w, h, opts = {}) {
   const line = pts.map((p,i) => `${i===0?'M':'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
   const area = line + ` L${pts[pts.length-1].x.toFixed(1)},${pad.top+ch} L${pad.left},${pad.top+ch} Z`;
 
+  // Last season's average, shifted onto this season's axis
+  let prevPath = '';
+  if (prev) {
+    const pp = prev.map((v, i) => `${i === 0 ? 'M' : 'L'}${dateToSeasonX(v.date, cw, pad.left).toFixed(1)},${(pad.top + ch - (Math.min(v.value, maxD) / maxD) * ch).toFixed(1)}`).join(' ');
+    prevPath = `<path d="${pp}" fill="none" stroke="${COMPARE_COLOR}" stroke-width="2" opacity="0.9" pointer-events="none"/>`
+      + `<text x="${w - pad.right - 4}" y="${pad.top + 10}" text-anchor="end" fill="${COMPARE_COLOR}" font-size="9" font-family="var(--mono)">${PREV_SEASON.label}</text>`;
+  }
+
   // Extra lines (station overlays — rendered LAST so they're on top for hover)
   let extraLines = opts.extraLines || '';
 
@@ -518,6 +572,7 @@ function buildChart(values, triplets, w, h, opts = {}) {
     ${yTicks}${xTicks}
     <path d="${area}" fill="rgba(79,195,247,0.08)" pointer-events="none"/>
     ${normalPath}
+    ${prevPath}
     <path d="${line}" fill="none" stroke="#4FC3F7" stroke-width="2" pointer-events="none"/>
     ${extraLines}
   </svg>`;
