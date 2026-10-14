@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Snowline Data</title>
-<meta name="description" content="Every Sentinel-2 scene behind the Snowline snow map, per-tile snow history since 2018, and SNOTEL ground truth for SW Montana. Open data, reproducible with DuckDB.">
+<meta name="description" content="Every Sentinel-2 scene behind the Snowline snow map, per-tile snow history since 2018, and SNOTEL ground truth for SW Montana. Open data.">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700&display=swap" rel="stylesheet">
 <style>
   :root { --bg:#0b0f1a; --panel:rgba(11,15,26,0.95); --border:rgba(79,195,247,0.12); --accent:#4FC3F7; --text:#e0e4ec; --text-muted:#9aa6b8; --text-dim:#6f7b8f; --mono:'JetBrains Mono',monospace; --sans:'DM Sans',-apple-system,sans-serif; }
@@ -69,7 +69,6 @@
   .filter-check { font-family:var(--mono); font-size:10px; color:var(--text-muted); display:inline-flex; gap:5px; align-items:center; cursor:pointer; }
   .filter-chip { font-family:var(--mono); font-size:10px; padding:3px 8px; border-radius:999px; background:rgba(79,195,247,0.12); color:var(--accent); cursor:pointer; }
   #f-cloud { width:110px; accent-color:var(--accent); }
-  #copy-sql { margin-left:auto; }
   .table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; border:1px solid var(--border); border-radius:8px; }
   .table-wrap table { min-width:720px; }
   td.num { text-align:right; font-variant-numeric:tabular-nums; }
@@ -80,9 +79,7 @@
   .row-links button:hover { color:var(--accent); border-color:var(--accent); }
   .mapped-dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--accent); margin-left:6px; vertical-align:middle; }
   #scene-more { margin:10px 0; }
-  .repro { margin:18px 0 8px; }
-  .repro summary { font-family:var(--mono); font-size:12px; color:var(--accent); cursor:pointer; }
-  .repro pre, pre.sql { background:rgba(0,0,0,0.35); border:1px solid var(--border); border-radius:6px; padding:12px; overflow-x:auto; font-family:var(--mono); font-size:11px; line-height:1.55; color:#cfe6f5; white-space:pre; }
+  pre.sql { background:rgba(0,0,0,0.35); border:1px solid var(--border); border-radius:6px; padding:12px; overflow-x:auto; font-family:var(--mono); font-size:11px; line-height:1.55; color:#cfe6f5; white-space:pre; }
   .source-line { font-size:11px; color:var(--text-muted); margin-top:14px; line-height:1.6; }
   .chart-box { position:relative; background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:8px; padding:10px; min-height:120px; }
   .chart-box svg { display:block; width:100%; height:auto; }
@@ -97,7 +94,6 @@
     body { padding:16px; }
     .top-nav { margin:-16px -16px 16px; padding:0 12px; overflow-x:auto; }
     .header h1 { font-size:22px; }
-    #copy-sql { margin-left:0; }
     .tabs { overflow-x:auto; }
   }
 
@@ -136,9 +132,6 @@
   .pass-chip.on { border-color: #fff; color: #fff; }
   .pass-chip.future { color: #FFD54F; border-color: rgba(255,213,79,0.35); }
   .pass-chip.future.on { border-color: #FFD54F; background: rgba(255,213,79,0.12); }
-  .compare-btn { margin: 4px 0 12px; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-family: var(--mono); font-size: 11px;
-    background: transparent; color: #CE93D8; border: 1px solid rgba(206,147,216,0.5); }
-  .compare-btn.on { background: rgba(206,147,216,0.15); }
 </style>
 </head>
 <body>
@@ -160,7 +153,7 @@
 
 <div class="header">
   <h1>SNOWLINE DATA</h1>
-  <div class="subtitle">Every satellite scene behind the map, snow history since 2018, and the ground stations that check it. All open, all reproducible.</div>
+  <div class="subtitle">Every satellite scene behind the map, snow history since 2018, and the ground stations that check it. All open data.</div>
   <div class="back"><a href="/snow/">&larr; Back to map</a> &middot; <a href="/snow/methods.html">How the map is made</a> &middot; <a href="/snow/stac/catalog.json" title="Every Snowline map as Cloud-Optimized GeoTIFFs, in a static STAC catalog">Download the maps (STAC + GeoTIFF)</a></div>
 </div>
 
@@ -174,12 +167,9 @@
   <div class="section">
     <h2>Sentinel-2 scenes</h2>
     <div class="desc">
-      Every Sentinel-2 scene over the Snowline area in the last 13 months, one row per tile per day.
-      The list comes from one <a href="https://duckdb.org" target="_blank" rel="noopener">DuckDB</a> query against the
-      <a href="https://research.taylorgeospatial.org/s2-stac-geoparquet/" target="_blank" rel="noopener">S2 STAC GeoParquet index</a>
-      (Taylor Geospatial / TGE Labs, a mirror of Element&nbsp;84's Earth Search), with no API and no key.
-      The pixels are ESA's public Collection&nbsp;1 Cloud-Optimized GeoTIFFs on AWS, and every link below opens the actual file.
-      <strong>Snow %</strong> is ESA's own scene classifier (<code>s2:snow_ice_percentage</code>), not Snowline's map.
+      Every Sentinel-2 picture of the Snowline area in the last 13 months: one row per 110&nbsp;km tile per day.
+      Click a thumbnail for a preview, <strong>COG</strong> for the full-resolution image, or <strong>map</strong> for that day's snow map.
+      <strong>Cloud</strong> and <strong>Snow</strong> are ESA's own estimates for the whole tile, not Snowline's map.
     </div>
     <div id="pass-panel" class="pass-panel"></div>
     <div class="stats-grid" id="scene-stats"></div>
@@ -192,16 +182,9 @@
         <input type="range" id="f-cloud" min="0" max="100" step="5" value="100"></label>
       <label class="filter-check"><input type="checkbox" id="f-mapped"> Only days with a snow map</label>
       <span id="f-date-chip" class="filter-chip" style="display:none"></span>
-      <button class="filter-btn" id="copy-sql" type="button" title="Copy a DuckDB query that returns these scenes">Copy DuckDB query</button>
     </div>
     <div class="table-wrap"><div id="scene-table" class="loading">Loading scenes&hellip;</div></div>
     <div id="scene-more"></div>
-    <details class="repro" open>
-      <summary>Reproduce it yourself</summary>
-      <div class="desc" style="margin-top:8px">Install DuckDB (<code>pip install duckdb</code>, or the CLI) and run this. It follows the filters above. DuckDB fetches only the row groups for these tiles over HTTP: a few seconds for one month, a minute or two for the whole year, and a few megabytes rather than the 4.8&nbsp;GB file.</div>
-      <pre id="repro-sql"></pre>
-      <div class="desc">More examples are in <a href="https://data.source.coop/tge-labs/s2-stac-geoparquet/sentinel-2-c1-l2a/AGENTS.md" target="_blank" rel="noopener">the index's AGENTS.md</a> and Snowline's <a href="https://github.com/itogeo/line/blob/main/lib/s2index.py" target="_blank" rel="noopener"><code>lib/s2index.py</code></a>.</div>
-    </details>
     <div class="source-line" id="scenes-source"></div>
   </div>
 </div>
@@ -228,9 +211,8 @@
     <h2>SNOTEL Station Data</h2>
     <div class="desc">
       NRCS SNOTEL ground measurement stations. All data from <a href="https://wcc.sc.egov.usda.gov/awdbRestApi/" target="_blank">NRCS AWDB API</a> (free).
-      <span style="color:#FFB74D">Dashed line = 20-year median</span>. Click any station or range to expand.
+      <span style="color:#FFB74D">Orange dashed = 20-year median</span>, <span style="color:#EF5350">red dashed = last season (<span id="prev-label"></span>)</span>. Click any station or range to expand.
     </div>
-    <button type="button" id="compare-btn" class="compare-btn" onclick="setCompare(!COMPARE)">Compare to last year</button>
     <div class="stats-grid" id="snotel-stats"></div>
 
     <div class="section" style="margin-bottom:24px">
@@ -293,6 +275,11 @@ const RANGES = {
   'Absaroka':     { lat:[45.0,45.5], lon:[-110.5,-110.2], hue:165 },
   'Beartooth':    { lat:[44.9,45.6], lon:[-110.2,-109.5], hue:155 },
   'Yellowstone':  { lat:[44.5,45.0], lon:[-111.2,-110.4], hue:50 },
+  'Henrys Lake':  { hue:15 },
+  'Centennial':   { hue:130 },
+  'Elkhorn':      { hue:290 },
+  'Big Belt':     { hue:330 },
+  'Castle':       { hue:45 },
 };
 
 // Get range base color (used for labels, dots, etc)
@@ -399,9 +386,7 @@ async function loadSnotelData() {
       if (s.snow_depth_in != null && n.median > 0) pctNormal = Math.round(s.snow_depth_in / n.median * 100);
     }
     // Assign range
-    for (const [rng, b] of Object.entries(RANGES)) {
-      if (s.lat >= b.lat[0] && s.lat <= b.lat[1] && s.lon >= b.lon[0] && s.lon <= b.lon[1]) { range = rng; break; }
-    }
+    range = rangeOf(s.id, s.lat, s.lon, RANGES);
     return { ...s, median, pctNormal, range };
   });
 
@@ -418,7 +403,8 @@ async function loadSnotelData() {
   // Fetch ALL station season data in parallel
   const triplets = sntl.map(s => s.id);
   window._allTriplets = triplets;
-  document.getElementById('compare-btn').textContent = `Compare to last year (${PREV_SEASON.label})`;
+  document.getElementById('prev-label').textContent = PREV_SEASON.label;
+  await loadPrevSeason();
   await loadBasinChart(triplets);
   await loadRangeCharts(triplets);
   renderSnotelTable();
@@ -427,16 +413,15 @@ async function loadSnotelData() {
 // ── Shared chart builder with scales, dates, and historical ──
 // Full season: Oct 1 to May 31
 // SNOTEL season shown: ?season=2025 picks one; otherwise the current season,
-// however young. "Compare to last year" overlays the season before.
+// however young, with last season drawn as a red dashed line.
 const SNOTEL_SEASON = (() => {
   const q = new URLSearchParams(location.search).get('season');
   if (/^\d{4}$/.test(q || '')) return seasonOf(`${q}-12-01`);
   return seasonOf(todayStr());
 })();
 const PREV_SEASON = seasonOf(`${SNOTEL_SEASON.year - 1}-12-01`);
-const COMPARE_COLOR = '#CE93D8';
-let COMPARE = false;
-let PREV_DATA = null;   // the previous season's file, loaded on first compare
+const COMPARE_COLOR = '#EF5350';
+let PREV_DATA = null;   // the previous season's file
 async function loadPrevSeason() {
   if (!PREV_DATA) {
     try { const r = await fetch(`data/snotel_season_${PREV_SEASON.year}.json`); PREV_DATA = r.ok ? await r.json() : { stations: [] }; }
@@ -447,7 +432,7 @@ async function loadPrevSeason() {
 // Last season's average depth over `triplets`, each date moved one year on so
 // it lines up with this season's Oct–May axis.
 function prevSeasonAvg(triplets) {
-  if (!COMPARE || !PREV_DATA) return null;
+  if (!PREV_DATA) return null;
   const want = new Set(triplets), byDate = {};
   for (const st of PREV_DATA.stations || []) {
     if (!want.has(st.id)) continue;
@@ -460,19 +445,6 @@ function prevSeasonAvg(triplets) {
   const out = Object.entries(byDate).map(([date, v]) => ({ date, value: Math.round(v.reduce((a, b) => a + b, 0) / v.length) }))
     .sort((a, b) => a.date.localeCompare(b.date));
   return out.length >= 5 ? out : null;
-}
-async function setCompare(on) {
-  COMPARE = on;
-  document.getElementById('compare-btn').classList.toggle('on', on);
-  document.getElementById('compare-btn').textContent = on ? `Comparing to ${PREV_SEASON.label}` : `Compare to last year (${PREV_SEASON.label})`;
-  if (on) await loadPrevSeason();
-  await loadBasinChart(window._allTriplets || []);
-  // Re-draw any open range charts; closed ones redraw when opened.
-  document.querySelectorAll('#range-charts [id^="range-"]').forEach(el => {
-    const open = el.style.display !== 'none';
-    el.dataset.loaded = '';
-    if (open) { el.style.display = 'none'; el.parentElement.click(); }
-  });
 }
 const SEASON_START = SNOTEL_SEASON.start;
 const SEASON_END = SNOTEL_SEASON.end;
@@ -570,7 +542,7 @@ function buildChart(values, triplets, w, h, opts = {}) {
   let prevPath = '';
   if (prev) {
     const pp = prev.map((v, i) => `${i === 0 ? 'M' : 'L'}${dateToSeasonX(v.date, cw, pad.left).toFixed(1)},${(pad.top + ch - (Math.min(v.value, maxD) / maxD) * ch).toFixed(1)}`).join(' ');
-    prevPath = `<path d="${pp}" fill="none" stroke="${COMPARE_COLOR}" stroke-width="2" opacity="0.9" pointer-events="none"/>`
+    prevPath = `<path d="${pp}" fill="none" stroke="${COMPARE_COLOR}" stroke-width="1.6" stroke-dasharray="5,3" opacity="0.85" pointer-events="none"/>`
       + `<text x="${w - pad.right - 4}" y="${pad.top + 10}" text-anchor="end" fill="${COMPARE_COLOR}" font-size="9" font-family="var(--mono)">${PREV_SEASON.label}</text>`;
   }
 

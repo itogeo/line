@@ -5,7 +5,6 @@
 //   data_10m/dates.json      process_tiles.py          (dates with a snow map)
 // Depends on season.js.
 
-const INDEX_S3 = 's3://us-west-2.opendata.source.coop/tge-labs/s2-stac-geoparquet/sentinel-2-c1-l2a';
 const PAGE = 100;
 
 let SCENES = [];        // [{date,tile,id,cloud,snow,nodata,baseline,href:{thumbnail,visual,…}}]
@@ -24,10 +23,6 @@ function toast(msg) {
   if (!t) { t = document.createElement('div'); t.className = 'toast'; document.body.appendChild(t); }
   t.textContent = msg; t.style.display = 'block';
   clearTimeout(t._h); t._h = setTimeout(() => { t.style.display = 'none'; }, 1800);
-}
-async function copyText(text, what) {
-  try { await navigator.clipboard.writeText(text); toast(`Copied ${what}`); }
-  catch (e) { window.prompt(`Copy the ${what}:`, text); }
 }
 function tip() {
   let t = document.querySelector('.viz-tip');
@@ -81,7 +76,6 @@ async function initScenes(hash) {
   const fc = document.getElementById('f-cloud');
   fc.oninput = () => { F.cloud = +fc.value; document.getElementById('f-cloud-val').textContent = fc.value + '%'; refresh(); };
   document.getElementById('f-mapped').onchange = e => { F.mapped = e.target.checked; refresh(); };
-  document.getElementById('copy-sql').onclick = () => copyText(tableSQL(), 'DuckDB query');
 
   const g = SCENES_META.generated ? new Date(SCENES_META.generated) : null;
   document.getElementById('scenes-source').innerHTML =
@@ -206,7 +200,6 @@ function refresh() {
   } else chip.style.display = 'none';
   renderSceneStats();
   renderSceneTable();
-  document.getElementById('repro-sql').textContent = tableSQL();
 }
 
 function renderSceneStats() {
@@ -242,62 +235,17 @@ function renderSceneTable() {
       <td class="row-links">
         ${s.href.visual ? `<a href="${esc(s.href.visual)}" target="_blank" rel="noopener" title="True-colour COG (TCI.tif)">COG</a>` : ''}
         ${map}
-        <button type="button" data-i="${i}" title="Copy a DuckDB query for this one scene">reproduce</button>
       </td></tr>`;
   }).join('');
   el.innerHTML = `<table><thead><tr>
       <th></th><th>Date (UTC)</th><th>Tile</th><th class="num">Cloud</th><th class="num">Snow</th><th class="num">Nodata</th><th>Scene id</th><th></th>
     </tr></thead><tbody>${body}</tbody></table>`;
-  el.querySelectorAll('button[data-i]').forEach(b => {
-    b.onclick = () => copyText(sceneSQL(rows[+b.dataset.i]), 'query for ' + rows[+b.dataset.i].id);
-  });
   const more = document.getElementById('scene-more');
   more.innerHTML = rows.length > shown
     ? `<button class="filter-btn" id="more-btn" type="button">Show ${Math.min(PAGE, rows.length - shown)} more of ${rows.length - shown}</button>`
     : `<span class="filter-label">${rows.length} scene${rows.length === 1 ? '' : 's'}</span>`;
   const mb = document.getElementById('more-btn');
   if (mb) mb.onclick = () => { shown += PAGE; renderSceneTable(); };
-}
-
-// The bucket name has dots, so DuckDB must use path-style S3 URLs or TLS fails.
-const SQL_HEAD = "INSTALL httpfs; LOAD httpfs; SET s3_region='us-west-2'; SET s3_url_style='path'; SET TimeZone='UTC';";
-
-function sceneSQL(s) {
-  return `${SQL_HEAD}
-SELECT id, _tile, datetime, "eo:cloud_cover", "s2:snow_ice_percentage",
-       json_extract_string(assets, '$.green.href')  AS green,
-       json_extract_string(assets, '$.swir16.href') AS swir16,
-       json_extract_string(assets, '$.scl.href')    AS scl
-FROM read_parquet('${INDEX_S3}/year=${s.date.slice(0, 4)}/*.parquet')
-WHERE _tile = '${s.tile}' AND id = '${s.id}';`;
-}
-
-function tableSQL() {
-  const rows = filtered();
-  const tiles = F.tile ? [F.tile] : [...new Set(SCENES.map(s => s.tile))].sort();
-  let start, end;
-  if (F.date) { start = F.date; end = F.date; }
-  else if (F.month) { start = F.month + '-01'; const d = new Date(F.month + '-01T00:00:00Z'); d.setUTCMonth(d.getUTCMonth() + 1); d.setUTCDate(0); end = d.toISOString().slice(0, 10); }
-  else { start = rows.length ? rows[rows.length - 1].date : '2025-10-01'; end = rows.length ? rows[0].date : todayStr(); }
-  const years = [];
-  for (let y = +start.slice(0, 4); y <= +end.slice(0, 4); y++) years.push(y);
-  const src = years.length === 1
-    ? `'${INDEX_S3}/year=${years[0]}/*.parquet'`
-    : `[${years.map(y => `'${INDEX_S3}/year=${y}/*.parquet'`).join(', ')}]`;
-  return `${SQL_HEAD}
--- Sentinel-2 scenes over Snowline${F.tile ? ' tile ' + F.tile : ''}, ${start} to ${end}
-SELECT CAST(datetime AS DATE) AS date, _tile, id,
-       round("eo:cloud_cover", 1)             AS cloud,
-       round("s2:snow_ice_percentage", 1)     AS snow,
-       round("s2:nodata_pixel_percentage", 1) AS nodata,
-       json_extract_string(assets, '$.visual.href') AS visual_cog
-FROM read_parquet(${src}, union_by_name = true)
-WHERE _tile IN (${tiles.map(t => `'${t}'`).join(', ')})
-  AND datetime >= '${start}' AND datetime < CAST('${end}' AS DATE) + 1${F.cloud < 100 ? `\n  AND "eo:cloud_cover" <= ${F.cloud}` : ''}
--- a scene reprocessed since the last fold appears twice: keep the newest
-QUALIFY row_number() OVER (PARTITION BY id ORDER BY "s2:generation_time" DESC) = 1
-ORDER BY datetime DESC, _tile;
--- Snowline then keeps one scene per tile per day (least nodata, then least cloud).`;
 }
 
 // ── Snow history ────────────────────────────────────────────────────────────

@@ -621,8 +621,8 @@
     <button id="big-snow-btn" type="button" class="layer-btn"></button>
   </div>
   <div class="view-toggle" id="view-toggle" role="group" aria-label="Which imagery the map shows">
-    <button type="button" data-view="pass" title="Only what this one satellite pass saw">This pass only</button>
-    <button type="button" data-view="latest" title="Newest pass on top, earlier passes from the last 10 days fill what it missed">Most recent composite</button>
+    <button type="button" data-view="pass" title="The newest satellite pass, on its own">Most recent pass</button>
+    <button type="button" data-view="latest" title="Newest pass on top; passes from the last 10 days fill what it missed">Most recent composite</button>
     <button type="button" data-jump="full" title="The newest single pass that imaged (almost) the whole area">Last full day</button>
   </div>
 
@@ -897,12 +897,13 @@ function applyView(raw) {
     chunks: raw.latest.chunks.map(c => ({ ...c, truecolor_file: tc[c.chunk_id] })),
   };
 }
-function setViewMode(mode) {
-  if (mode === VIEW_MODE) return;
-  VIEW_MODE = mode;
-  for (const k of Object.keys(SNOWLINE_CACHE)) delete SNOWLINE_CACHE[k];
-  writeHash({ view: mode === 'latest' ? 'latest' : null });
-  loadDate(CURRENT_DATE);
+function jumpTo(mode, date) {
+  if (mode !== VIEW_MODE) {
+    VIEW_MODE = mode;
+    for (const k of Object.keys(SNOWLINE_CACHE)) delete SNOWLINE_CACHE[k];
+    writeHash({ view: mode === 'latest' ? 'latest' : null });
+  }
+  loadDate(date);
 }
 let AGREEMENT = null;       // satellite vs SNOTEL per date (data/snotel_agreement.json)
 let layersAdded = false;
@@ -1964,8 +1965,13 @@ async function onSpotClick(e) {
   // Up to the date on screen, so an archive date answers "what did it look like then".
   const seen = dates.map((d, i) => [d, out[i]]).filter(([d, c]) => d <= CURRENT_DATE && (c === 'snow' || c === 'snow-free'));
   const last = seen[seen.length - 1];
+  const cw = Math.max(3, Math.min(22, Math.floor(260 / dates.length) - 1));
+  const every = Math.ceil(20 / (cw + 1));   // label every Nth bar so dates don't collide
+  const md = d => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`;
   const cells = dates.map((d, i) =>
-    `<span title="${fmt(d)}: ${out[i]}" style="display:inline-block;width:${Math.max(3, Math.min(10, Math.floor(240 / dates.length)))}px;height:14px;margin-right:1px;border-radius:1px;background:${SPOT_COLOR[out[i]]};${out[i] === 'not imaged' ? 'box-shadow:inset 0 0 0 1px rgba(255,255,255,0.15);' : ''}"></span>`).join('');
+    `<span title="${fmt(d)}: ${out[i]}" style="display:inline-block;vertical-align:top;width:${cw}px;margin-right:1px">`
+    + `<span style="display:block;height:14px;border-radius:1px;background:${SPOT_COLOR[out[i]]};${out[i] === 'not imaged' ? 'box-shadow:inset 0 0 0 1px rgba(255,255,255,0.15);' : ''}"></span>`
+    + `<span style="display:block;height:9px;font-size:7px;line-height:9px;font-family:var(--mono);color:var(--text-dim);white-space:nowrap;overflow:visible">${i % every === 0 ? md(d) : ''}</span></span>`).join('');
   const recent = seen.slice(-5).reverse().map(([d, c]) =>
     `<div><span style="color:var(--text-muted)">${fmt(d)}</span> &nbsp;<span style="color:${SPOT_COLOR[c]}">${c}</span></div>`).join('');
   el.innerHTML = `<div class="cam-name">Snow at this spot &middot; ${SEASON.label}</div>
@@ -2233,27 +2239,13 @@ function renderSource() {
   if (!el) return;
   const d = CURRENT_DATA;
   if (!d || d.no_imagery) { el.innerHTML = ''; return; }
-  // View toggle state (latest view needs a composite for this date).
+  // The three view buttons are fixed jumps (newest pass, newest composite,
+  // last full day); the timeline is how you look at any other date.
+  const newest = DATES.filter(x => x !== TODAY_VIRTUAL).pop();
   document.querySelectorAll('#view-toggle button').forEach(b => {
-    b.classList.toggle('active', b.dataset.view === d.view);
     if (b.dataset.jump) return;
-    b.disabled = b.dataset.view === 'latest' && !d.latest;
-    b.onclick = () => {
-      // Coming back from "Last full day": return to the date you were on.
-      if (b.dataset.view === 'latest' && FULL_DAY_RETURN && CURRENT_DATE === FULL_DAY_RETURN.at) {
-        const back = FULL_DAY_RETURN.from;
-        FULL_DAY_RETURN = null;
-        VIEW_MODE = 'latest';
-        for (const k of Object.keys(SNOWLINE_CACHE)) delete SNOWLINE_CACHE[k];
-        writeHash({ view: 'latest' });
-        loadDate(back);
-        return;
-      }
-      setViewMode(b.dataset.view);
-    };
-    if (b.dataset.view === 'pass') {
-      b.textContent = new Date(d.scene_date + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) + ' pass only';
-    }
+    b.classList.toggle('active', b.dataset.view === d.view && CURRENT_DATE === newest);
+    b.onclick = () => jumpTo(b.dataset.view, newest);
   });
   const n = (d.scenes || []).length;
   let what = n ? `${n} Sentinel-2 scene${n === 1 ? '' : 's'}` : 'Sentinel-2 L2A';
@@ -2302,19 +2294,13 @@ function renderLastFullDay() {
   b.textContent = found ? `Last full day \u00b7 ${fmt(found)}` : 'Last full day';
   b.title = 'The newest pass whose strip covered the whole area (clouds can still hide parts of it)';
   b.classList.toggle('active', !!found && found === CURRENT_DATE && VIEW_MODE === 'pass');
-  b.onclick = () => {
-    if (!found) return;
-    if (CURRENT_DATE !== found) FULL_DAY_RETURN = { from: CURRENT_DATE, at: found };
-    if (VIEW_MODE !== 'pass') { VIEW_MODE = 'pass'; for (const k of Object.keys(SNOWLINE_CACHE)) delete SNOWLINE_CACHE[k]; writeHash({ view: null }); }
-    loadDate(found);
-  };
+  b.onclick = () => { if (found) jumpTo('pass', found); };
 }
 
 // ── Satellite pass strip ──
 // Outline of what the satellite imaged on the date on screen (footprints
 // come from the S2 index, data/sat_availability.json), or of a predicted
 // upcoming pass when one is picked in the "Next satellite pass" box.
-let FULL_DAY_RETURN = null;  // { from, at }: "Most recent composite" on day `at` goes back to `from`
 let PREDICTED_PASS = null;   // { due, src } while a future pass is shown
 function updatePassFootprint() {
   // Called on date changes and again once the map's layers are added.
@@ -2907,6 +2893,8 @@ const RANGES = {
   'Henrys Lake':   { lat: [44.45, 44.65], lon: [-111.55, -111.12], color: '#ffab91' },
   'Centennial':    { lat: [44.40, 44.70], lon: [-112.20, -111.55], color: '#69f0ae' },
   'Elkhorn':       { lat: [46.25, 46.50], lon: [-112.30, -111.75], color: '#ce93d8' },
+  'Big Belt':      { lat: [46.50, 46.70], lon: [-111.40, -111.15], color: '#f48fb1' },
+  'Castle':        { lat: [46.40, 46.55], lon: [-110.85, -110.60], color: '#ffe082' },
 };
 
 function rangeColor(rng) { return RANGES[rng]?.color || '#8bbdd9'; }
@@ -3067,11 +3055,7 @@ async function stackCompositeImagery(data) {
 function stationColor(triplet) {
   const station = SNOTEL_NORMALS?.stations?.[triplet];
   if (!station) return '#8bbdd9';
-  let rng = 'Other';
-  for (const [r, b] of Object.entries(RANGES)) {
-    if (station.lat >= b.lat[0] && station.lat <= b.lat[1] && station.lon >= b.lon[0] && station.lon <= b.lon[1]) { rng = r; break; }
-  }
-  return RANGES[rng]?.color || '#8bbdd9';
+  return RANGES[rangeOf(triplet, station.lat, station.lon, RANGES)]?.color || '#8bbdd9';
 }
 
 // Season depth data cache
@@ -3096,13 +3080,8 @@ function loadRangeDepths() {
     : Object.entries(SNOTEL_NORMALS.stations);
   for (const rng of Object.keys(RANGES)) RANGE_STATIONS[rng] = [];
   for (const [triplet, info] of source) {
-    for (const [rng, bounds] of Object.entries(RANGES)) {
-      if (info.lat >= bounds.lat[0] && info.lat <= bounds.lat[1] &&
-          info.lon >= bounds.lon[0] && info.lon <= bounds.lon[1]) {
-        RANGE_STATIONS[rng].push(triplet);
-        break;
-      }
-    }
+    const rng = rangeOf(triplet, info.lat, info.lon, RANGES);
+    if (RANGE_STATIONS[rng]) RANGE_STATIONS[rng].push(triplet);
   }
 
   // Per-range series from the season file (every station in the range, the
@@ -3293,21 +3272,21 @@ function toggleRange(rng) {
     if (!map.getSource('snotel-hl')) {
       map.addSource('snotel-hl', { type: 'geojson', data: { type: 'FeatureCollection', features: hlFeatures } });
       map.addLayer({ id: 'snotel-hl-circle', type: 'circle', source: 'snotel-hl', paint: {
-        'circle-radius': 8, 'circle-color': '#8bbdd9',
-        'circle-stroke-color': '#fff', 'circle-stroke-width': 2,
+        'circle-radius': 6, 'circle-color': '#4FC3F7', 'circle-opacity': 0.9,
+        'circle-stroke-color': '#fff', 'circle-stroke-width': 1.5,
       }});
       map.addLayer({ id: 'snotel-hl-depth', type: 'symbol', source: 'snotel-hl', layout: {
         'text-field': ['concat', ['to-string', ['get', 'depth']], '"'],
-        'text-size': 14, 'text-offset': [0, -1.8], 'text-anchor': 'bottom',
+        'text-size': 13, 'text-offset': [0, -1.1], 'text-anchor': 'bottom',
         'text-font': ['DIN Pro Bold', 'Arial Unicode MS Bold'],
         'text-allow-overlap': true, 'text-ignore-placement': true,
-      }, paint: { 'text-color': '#8bbdd9', 'text-halo-color': 'rgba(0,0,0,0.95)', 'text-halo-width': 2.5 }});
+      }, paint: { 'text-color': '#ffffff', 'text-halo-color': 'rgba(10,20,35,0.85)', 'text-halo-width': 1.6, 'text-halo-blur': 1 }});
       map.addLayer({ id: 'snotel-hl-label', type: 'symbol', source: 'snotel-hl', layout: {
         'text-field': ['concat', ['get', 'name'], '  ', ['to-string', ['get', 'elevation_ft']], 'ft'],
-        'text-size': 10, 'text-offset': [0, 2.0], 'text-anchor': 'top',
+        'text-size': 10, 'text-offset': [0, 1.1], 'text-anchor': 'top',
         'text-font': ['DIN Pro Medium', 'Arial Unicode MS Regular'],
         'text-allow-overlap': true, 'text-ignore-placement': true,
-      }, paint: { 'text-color': '#ddd', 'text-halo-color': 'rgba(0,0,0,0.95)', 'text-halo-width': 2 }});
+      }, paint: { 'text-color': '#e6eef5', 'text-halo-color': 'rgba(10,20,35,0.85)', 'text-halo-width': 1.6, 'text-halo-blur': 1 }});
     } else {
       map.getSource('snotel-hl').setData({ type: 'FeatureCollection', features: hlFeatures });
       map.setLayoutProperty('snotel-hl-circle', 'visibility', 'visible');
