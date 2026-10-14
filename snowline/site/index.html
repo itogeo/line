@@ -170,6 +170,11 @@
   .layers { display: flex; flex-direction: column; gap: 1px; }
   .layer-row { display: flex; align-items: center; gap: 7px; padding: 4px 5px; border-radius: 4px; cursor: pointer; user-select: none; }
   .layer-row:hover { background: rgba(255,255,255,0.03); }
+  .draw-area-btn { margin: 6px 5px 2px; width: calc(100% - 10px); padding: 5px 6px; border-radius: 5px; border: 1px dashed rgba(255,183,77,0.6);
+    background: transparent; color: #FFB74D; font-family: var(--mono); font-size: 10px; cursor: pointer; }
+  .draw-area-btn.on { background: rgba(255,183,77,0.15); }
+  .area-req textarea { width: 100%; height: 54px; margin: 6px 0; background: rgba(0,0,0,0.3); color: var(--text); border: 1px solid var(--border); border-radius: 5px; font: 11px var(--sans, sans-serif); padding: 5px; box-sizing: border-box; }
+  .area-req button { padding: 4px 10px; border-radius: 5px; border: none; background: #FFB74D; color: #0a121e; font-weight: 600; cursor: pointer; }
   .layer-row input { display: none; }
   .sw { width: 28px; height: 14px; border-radius: 7px; background: #1c2233; position: relative; transition: background 0.2s; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.06); }
   .sw::after { content: ''; position: absolute; top: 1.5px; left: 2px; width: 9px; height: 9px; border-radius: 50%; background: #3a4255; transition: all 0.2s; }
@@ -688,6 +693,8 @@
     <label class="layer-row"><input type="checkbox" id="tog-snotel" checked><div class="sw"></div><span class="layer-label">SNOTEL</span></label>
     <label class="layer-row"><input type="checkbox" id="tog-webcams" checked><div class="sw"></div><span class="layer-label">Webcams</span></label>
     <label class="layer-row"><input type="checkbox" id="tog-terrain"><div class="sw"></div><span class="layer-label">3D Terrain</span></label>
+    <label class="layer-row" title="The area Snowline maps now, and the larger area proposed"><input type="checkbox" id="tog-aoi"><div class="sw"></div><span class="layer-label">Map area</span></label>
+    <button type="button" id="draw-area-btn" class="draw-area-btn" title="Drag a box on the map to ask for that area to be mapped">Draw an area to request</button>
   </div>
 </div>
 
@@ -1773,6 +1780,8 @@ function addOverlayLayers() {
   addWebcamLayer();
   updatePassFootprint();
   updateCompositeRegions();
+  updateAreaLayer();
+  initAreaDrawing();
   updateWebcamVisibility();
 
   // Apply basemap-aware styling (snow color shift, SNOTEL stroke contrast)
@@ -1886,6 +1895,7 @@ function addWebcamLayer() {
   if (webcamHandlers) return;
   webcamHandlers = true;
   map.on('mouseenter', 'webcam-icons', e => {
+    if (DRAWING || drawStart) return;
     map.getCanvas().style.cursor = 'pointer';
     clearTimeout(webcamCloseTimer);
     const gid = e.features[0].properties.gid;
@@ -1952,7 +1962,91 @@ function nearestSnotelHtml(lng, lat) {
     <div style="font-size:10px;font-family:var(--mono);line-height:1.6">${rows}</div>`;
 }
 let spotPopup = null;
+// ── Map area: current and proposed, plus "draw an area to request" ──
+// Proposed bbox from Ian's list (2026-10-14): Rubies + Tobacco Roots to
+// Cooke City, all of the Madisons, the Crazies, south toward Yellowstone.
+const AOI_PROPOSED = [-112.6, 44.55, -109.6, 46.35];
+let DRAWING = false, drawStart = null, drawnBox = null, areaPopup = null;
+const boxRing = b => [[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]], [b[0], b[1]]];
+function updateAreaLayer() {
+  if (!map.getLayer('webcam-icons')) return;
+  const show = document.getElementById('tog-aoi').checked;
+  const f = (b, kind, label) => ({ type: 'Feature', geometry: { type: 'LineString', coordinates: boxRing(b) }, properties: { kind, label } });
+  const feats = [];
+  if (show) feats.push(f(AOI_BBOX, 'current', 'Current area'), f(AOI_PROPOSED, 'proposed', 'Proposed area'));
+  if (drawnBox) feats.push(f(drawnBox, 'drawn', 'Your area'));
+  const data = { type: 'FeatureCollection', features: feats };
+  if (map.getSource('areas')) { map.getSource('areas').setData(data); return; }
+  map.addSource('areas', { type: 'geojson', data });
+  const color = ['match', ['get', 'kind'], 'current', '#ffffff', 'proposed', '#4FC3F7', '#FFB74D'];
+  map.addLayer({ id: 'areas-casing', type: 'line', source: 'areas', paint: { 'line-color': 'rgba(10,18,30,0.75)', 'line-width': 5 } });
+  map.addLayer({ id: 'areas-line', type: 'line', source: 'areas', paint: {
+    'line-color': color, 'line-width': 2.5, 'line-dasharray': ['match', ['get', 'kind'], 'current', ['literal', [1, 0]], ['literal', [3, 2]]] } });
+  map.addLayer({ id: 'areas-label', type: 'symbol', source: 'areas', layout: {
+    'symbol-placement': 'line', 'text-field': ['get', 'label'], 'text-size': 12, 'symbol-spacing': 300,
+    'text-font': ['DIN Pro Bold', 'Arial Unicode MS Bold'] },
+    paint: { 'text-color': color, 'text-halo-color': 'rgba(10,18,30,0.9)', 'text-halo-width': 1.8 } });
+}
+function setDrawing(on) {
+  DRAWING = on;
+  document.getElementById('draw-area-btn').classList.toggle('on', on);
+  document.getElementById('draw-area-btn').textContent = on ? 'Drag a box on the map… (Esc to cancel)' : 'Draw an area to request';
+  map.getCanvas().style.cursor = on ? 'crosshair' : '';
+  if (on) { map.dragPan.disable(); map.boxZoom.disable(); } else { map.dragPan.enable(); map.boxZoom.enable(); }
+}
+function finishDrawn(b) {
+  drawnBox = [Math.min(b[0], b[2]), Math.min(b[1], b[3]), Math.max(b[0], b[2]), Math.max(b[1], b[3])].map(v => +v.toFixed(3));
+  updateAreaLayer();
+  const [w, s, e, n] = drawnBox;
+  const km = Math.round((e - w) * 111.32 * Math.cos((s + n) / 2 * Math.PI / 180)) + ' × ' + Math.round((n - s) * 110.57) + ' km';
+  if (areaPopup) areaPopup.remove();
+  areaPopup = new mapboxgl.Popup({ maxWidth: '280px' }).setLngLat([(w + e) / 2, n]).setHTML(`<div class="webcam-popup area-req">
+    <div class="cam-name">Request this area</div>
+    <div style="font-size:10px;font-family:var(--mono);color:var(--text-muted)">${w}, ${s} → ${e}, ${n} &middot; ${km}</div>
+    <textarea id="area-note" placeholder="What's here for you? (optional)"></textarea>
+    <button type="button" id="area-send">Send request</button> <span id="area-status" style="font-size:10px"></span></div>`).addTo(map);
+  areaPopup.on('close', () => { drawnBox = null; updateAreaLayer(); });
+  document.getElementById('area-send').onclick = async () => {
+    const note = document.getElementById('area-note').value.trim();
+    const text = `Area request: [${drawnBox.join(', ')}] (west, south, east, north), about ${km}.` + (note ? `\n\n${note}` : '');
+    const st = document.getElementById('area-status');
+    try {
+      const r = await fetch('/snow/api/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, date: CURRENT_DATE }) });
+      if (!r.ok) throw new Error('api');
+      st.textContent = 'Sent. Thanks!'; st.style.color = '#69f0ae';
+      document.getElementById('area-send').disabled = true;
+    } catch (e) {
+      st.innerHTML = `Couldn't send. <a href="mailto:itogeospatial@gmail.com?subject=${encodeURIComponent('Snowline area request')}&body=${encodeURIComponent(text)}">Email it</a>.`;
+    }
+  };
+}
+function initAreaDrawing() {
+  document.getElementById('tog-aoi').addEventListener('change', updateAreaLayer);
+  document.getElementById('draw-area-btn').onclick = () => {
+    setDrawing(!DRAWING);
+    if (DRAWING && !document.getElementById('tog-aoi').checked) { document.getElementById('tog-aoi').checked = true; updateAreaLayer(); }
+  };
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && DRAWING) { drawStart = null; setDrawing(false); } });
+  const start = e => { if (!DRAWING) return; e.preventDefault(); drawStart = e.lngLat; };
+  const move = e => {
+    if (!DRAWING || !drawStart) return;
+    drawnBox = [drawStart.lng, drawStart.lat, e.lngLat.lng, e.lngLat.lat];
+    const b = [Math.min(drawnBox[0], drawnBox[2]), Math.min(drawnBox[1], drawnBox[3]), Math.max(drawnBox[0], drawnBox[2]), Math.max(drawnBox[1], drawnBox[3])];
+    drawnBox = b; updateAreaLayer();
+  };
+  const end = e => {
+    if (!DRAWING || !drawStart) return;
+    const b = [drawStart.lng, drawStart.lat, e.lngLat.lng, e.lngLat.lat];
+    drawStart = null; setDrawing(false);
+    if (Math.abs(b[2] - b[0]) < 0.01 || Math.abs(b[3] - b[1]) < 0.01) { drawnBox = null; updateAreaLayer(); return; }
+    finishDrawn(b);
+  };
+  map.on('mousedown', start); map.on('mousemove', move); map.on('mouseup', end);
+  map.on('touchstart', start); map.on('touchmove', move); map.on('touchend', e => end({ lngLat: e.lngLat }));
+}
+
 async function onSpotClick(e) {
+  if (DRAWING || drawnBox) return;   // drawing an area, not asking about a spot
   if (map.queryRenderedFeatures(e.point, { layers: ['snotel-circles', 'webcam-icons'].filter(id => map.getLayer(id)) }).length) return;
   const { lng, lat } = e.lngLat;
   const dates = DATES.filter(d => d !== TODAY_VIRTUAL && d >= SEASON.start && d <= SEASON.end);
