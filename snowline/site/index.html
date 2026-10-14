@@ -127,6 +127,11 @@
     background: transparent; color: var(--text-muted); border: 0; cursor: pointer; }
   .view-toggle button.active { background: rgba(139,189,217,0.18); color: var(--accent); }
   .view-toggle button:disabled { opacity: 0.35; cursor: not-allowed; }
+  .layer-btns { display: flex; gap: 8px; margin-top: 10px; }
+  .layer-btn { flex: 1; padding: 10px 8px; border-radius: var(--radius); font-family: var(--mono); font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1px; cursor: pointer; transition: background 0.15s, color 0.15s;
+    background: transparent; color: var(--accent); border: 1.5px solid rgba(139,189,217,0.5); }
+  .layer-btn.on { background: linear-gradient(135deg,#8bbdd9,#5a95b8); color: #080e1a; border-color: transparent; box-shadow: 0 4px 12px rgba(139,189,217,0.25); }
   .scene-source { font-family: var(--mono); font-size: 9px; color: var(--text-muted); margin: -4px 0 10px; line-height: 1.6; }
   .scene-source a { color: var(--accent); text-decoration: none; border-bottom: 1px dotted rgba(139,189,217,0.4); }
   .scene-source a:hover { color: #fff; }
@@ -472,7 +477,7 @@
       transition: max-height 0.25s ease, opacity 0.3s, transform 0.3s;
       box-shadow: 0 -8px 24px rgba(0,0,0,0.45);
     }
-    .panel.expanded { max-height: 80vh; }
+    .panel.expanded { max-height: 80vh; z-index: 25; }  /* over the legend, compass and map buttons */
     .panel.collapsed-mobile {
       max-height: 36px;
       overflow: hidden;
@@ -581,7 +586,7 @@
   <div class="brand"><span class="wordmark">itogeospatial</span><h1>Snow Cover</h1><span class="region">SW Montana</span><span class="data-freshness" id="data-freshness"></span></div>
   <div class="scene-date-badge" id="date-badge"></div>
   <div class="view-toggle" id="view-toggle" role="group" aria-label="What the snow layer shows">
-    <button type="button" data-view="latest" title="Every pixel shows its most recent clear look from the last 10 days of passes">Latest view</button>
+    <button type="button" data-view="latest" title="Newest pass on top, earlier passes from the last 10 days fill what it missed">Most recent composite</button>
     <button type="button" data-view="pass" title="Only what this one satellite pass saw">This pass only</button>
   </div>
   <div class="scene-meta" id="meta"></div>
@@ -613,10 +618,10 @@
   <!-- Big button to toggle the satellite (truecolor) imagery overlay.
        This is a prominent CTA because the raw S2 imagery is the most loved
        feature of the product and the small layer toggle was hard to find. -->
-  <button id="big-s2-btn" type="button"
-    style="width:100%;margin-top:10px;padding:11px 14px;background:linear-gradient(135deg,#8bbdd9,#5a95b8);color:#080e1a;border:none;border-radius:var(--radius);font-family:var(--mono);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;cursor:pointer;box-shadow:0 4px 12px rgba(139,189,217,0.25);transition:transform 0.1s,box-shadow 0.1s">
-    🛰  Hide Satellite Imagery
-  </button>
+  <div class="layer-btns">
+    <button id="big-s2-btn" type="button" class="layer-btn"></button>
+    <button id="big-snow-btn" type="button" class="layer-btn"></button>
+  </div>
 
   <!-- SNOTEL depth section -->
   <div class="section-label">SNOTEL Ground Measurements</div>
@@ -1850,6 +1855,29 @@ async function spotClass(date, lng, lat) {
     return 'not imaged';
   }
 }
+// The three closest SNOTEL stations with readings, and their depth on the
+// date on screen (or the latest reading before it).
+function nearestSnotelHtml(lng, lat) {
+  const toRad = x => x * Math.PI / 180;
+  const miles = (la, lo) => {
+    const h = Math.sin(toRad(la - lat) / 2) ** 2 + Math.cos(toRad(lat)) * Math.cos(toRad(la)) * Math.sin(toRad(lo - lng) / 2) ** 2;
+    return 3958.8 * 2 * Math.asin(Math.sqrt(h));
+  };
+  const near = (SNOTEL_SEASON?.stations || [])
+    .filter(st => st.history && st.history.length)
+    .map(st => ({ st, mi: miles(st.lat, st.lon) }))
+    .sort((a, b) => a.mi - b.mi).slice(0, 3);
+  if (!near.length) return '';
+  const rows = near.map(({ st, mi }) => {
+    const r = [...st.history].reverse().find(h => h.date <= CURRENT_DATE && h.depth_in != null);
+    const depth = r ? `${r.depth_in}&Prime;` : '&mdash;';
+    const when = r && r.date !== CURRENT_DATE ? ` <span style="color:var(--text-dim)">(${r.date.slice(5)})</span>` : '';
+    return `<div style="display:flex;justify-content:space-between;gap:8px"><span>${st.name} <span style="color:var(--text-dim)">${Math.round(st.elevation_ft).toLocaleString()} ft</span></span>`
+      + `<span style="white-space:nowrap"><span style="color:var(--text-muted)">${mi.toFixed(1)} mi</span> &nbsp;<strong>${depth}</strong>${when}</span></div>`;
+  }).join('');
+  return `<div style="font-size:9px;color:var(--text-dim);font-family:var(--mono);text-transform:uppercase;letter-spacing:1px;margin:8px 0 3px">Nearest SNOTEL &middot; snow depth</div>
+    <div style="font-size:10px;font-family:var(--mono);line-height:1.6">${rows}</div>`;
+}
 let spotPopup = null;
 async function onSpotClick(e) {
   if (map.queryRenderedFeatures(e.point, { layers: ['snotel-circles', 'webcam-icons'].filter(id => map.getLayer(id)) }).length) return;
@@ -1859,7 +1887,9 @@ async function onSpotClick(e) {
   const fmt = d => new Date(d + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
   if (spotPopup) spotPopup.remove();
   const id = 'spot-' + Date.now();
-  spotPopup = new mapboxgl.Popup({ maxWidth: '300px' })
+  // Open away from the left info panel on desktop so the popup isn't hidden under it.
+  const leftSide = !isMobile() && e.point.x < map.getContainer().clientWidth / 2;
+  spotPopup = new mapboxgl.Popup({ maxWidth: '300px', ...(leftSide ? { anchor: 'left' } : {}) })
     .setLngLat(e.lngLat)
     .setHTML(`<div class="webcam-popup" id="${id}"><div class="cam-name">Snow at this spot &middot; ${SEASON.label}</div>
       <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono)">Reading ${dates.length} passes&hellip;</div></div>`)
@@ -1885,6 +1915,7 @@ async function onSpotClick(e) {
     <div style="font-size:8px;color:var(--text-dim);font-family:var(--mono);margin:3px 0 8px">${fmt(dates[0])} &rarr; ${fmt(dates[dates.length - 1])} &middot; one bar per pass &middot;
       <span style="color:${SPOT_COLOR.snow}">snow</span> <span style="color:${SPOT_COLOR['snow-free']}">snow-free</span> <span style="color:${SPOT_COLOR.cloud}">cloud</span> &middot; blank = not imaged</div>
     ${recent ? `<div style="font-size:10px;font-family:var(--mono);line-height:1.6">${recent}</div>` : ''}
+    ${nearestSnotelHtml(lng, lat)}
     <div class="cam-src" style="margin-top:6px">${lat.toFixed(4)}, ${lng.toFixed(4)} &middot; Sentinel-2, 10 m &middot; satellite sees snow cover, not depth</div>`;
 }
 
@@ -2125,6 +2156,9 @@ function renderSource() {
     b.classList.toggle('active', b.dataset.view === d.view);
     b.disabled = b.dataset.view === 'latest' && !d.latest;
     b.onclick = () => setViewMode(b.dataset.view);
+    if (b.dataset.view === 'pass') {
+      b.textContent = new Date(d.scene_date + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) + ' pass only';
+    }
   });
   const n = (d.scenes || []).length;
   let what = n ? `${n} Sentinel-2 scene${n === 1 ? '' : 's'}` : 'Sentinel-2 L2A';
@@ -2267,6 +2301,7 @@ document.addEventListener('keydown', (e) => {
 
 // ── Layer controls ──
 document.getElementById('tog-snow').addEventListener('change', function () {
+  syncLayerButtons();
   const vis = this.checked ? 'visible' : 'none';
   if (map.getLayer('snow-overlay')) map.setLayoutProperty('snow-overlay', 'visibility', vis);
   // Per-tile snow layers only (skip truecolor layers, which the S2 toggle owns)
@@ -2305,23 +2340,31 @@ document.getElementById('tog-s2').addEventListener('change', function () {
     }
   }
   document.getElementById('opacity-s2').classList.toggle('hidden', !this.checked);
-  // Reflect state on the big CTA button
-  const btn = document.getElementById('big-s2-btn');
-  if (btn) {
-    btn.textContent = this.checked ? '🛰  Hide Satellite Imagery' : '🛰  View Satellite Imagery';
-    btn.style.background = this.checked
-      ? 'linear-gradient(135deg,#8bbdd9,#5a95b8)'
-      : 'linear-gradient(135deg,#8bbdd9,#5a95b8)';
-  }
+  syncLayerButtons();
 });
 
-// Big CTA button — proxies to the s2 layer toggle so the prominent click
-// in the main left panel does the same thing as the tiny layer checkbox.
-document.getElementById('big-s2-btn').addEventListener('click', function () {
-  const cb = document.getElementById('tog-s2');
-  cb.checked = !cb.checked;
-  cb.dispatchEvent(new Event('change'));
-});
+// Big panel buttons proxy the layer checkboxes and show their state, so it's
+// obvious that turning imagery off reveals the snow layer and vice versa.
+function syncLayerButtons() {
+  const s2 = document.getElementById('tog-s2').checked;
+  const snow = document.getElementById('tog-snow').checked;
+  const b1 = document.getElementById('big-s2-btn'), b2 = document.getElementById('big-snow-btn');
+  b1.textContent = s2 ? '🛰  Imagery: on' : '🛰  Imagery: off';
+  b1.classList.toggle('on', s2);
+  b1.setAttribute('aria-pressed', s2);
+  b2.textContent = snow ? '❄  Snow: on' : '❄  Snow: off';
+  b2.classList.toggle('on', snow);
+  b2.setAttribute('aria-pressed', snow);
+}
+for (const [btn, box] of [['big-s2-btn', 'tog-s2'], ['big-snow-btn', 'tog-snow']]) {
+  document.getElementById(btn).addEventListener('click', function () {
+    if (this.disabled) return;
+    const cb = document.getElementById(box);
+    cb.checked = !cb.checked;
+    cb.dispatchEvent(new Event('change'));
+  });
+}
+syncLayerButtons();
 document.getElementById('slider-s2').addEventListener('input', function () {
   const op = this.value / 100;
   if (map.getLayer('s2-overlay')) map.setPaintProperty('s2-overlay', 'raster-opacity', op);
@@ -2609,6 +2652,7 @@ function updateTileLayers(data, basePath) {
         img.src = `${basePath}/${e.file}`;
       });
     }
+    if (data.view === 'latest' && data.latest) stackCompositeImagery(data);
 
     for (const chunk of data.chunks) {
       const b = chunk.bounds;
@@ -2683,7 +2727,7 @@ function addTruecolorLayers() {
     const tcSrcId = 'src-tc-' + e.tileId + subId;
     const tcLayerId = 'layer-tc-' + e.tileId + subId;
     if (!map.getSource(tcSrcId)) {
-      map.addSource(tcSrcId, { type: 'image', url: `${basePath}/${e.file}`, coordinates: eCoords });
+      map.addSource(tcSrcId, { type: 'image', url: e.url || `${basePath}/${e.file}`, coordinates: eCoords });
     }
     if (!map.getLayer(tcLayerId)) {
       map.addLayer({
@@ -2696,6 +2740,33 @@ function addTruecolorLayers() {
   }
   truecolorAdded = true;
   bringSnotelToTop();
+}
+
+// Most recent composite: the satellite imagery from every pass the composite
+// uses, oldest first, so the newest pass lands on top and older passes show
+// only where it has no image (outside its strip). Clouds in a newer pass do
+// cover older imagery; the snow layer is the per-pixel clear-look composite.
+async function stackCompositeImagery(data) {
+  const dates = (data.latest.sources || []).filter(x => x.pct_of_seen > 0).map(x => x.date).sort();
+  if (dates.length < 2) return;
+  const entries = [];
+  for (const d of dates) {
+    const m = await rawMeta(d);
+    for (const c of (m && m.chunks) || []) {
+      if (c.truecolor_file) entries.push({ tileId: c.chunk_id, subIdx: d.replace(/-/g, ''), file: c.truecolor_file, bounds: c.bounds, url: `/snow/api/tile/${d}/${c.truecolor_file}` });
+    }
+  }
+  // Still the same map and view? (the user may have moved on while we fetched)
+  if (CURRENT_DATA !== data || !entries.length) return;
+  const wasShown = truecolorAdded;
+  for (const id of currentTileLayerIds.filter(id => id.startsWith('layer-tc-'))) {
+    if (map.getLayer(id)) map.removeLayer(id);
+    if (map.getSource(id.replace('layer-', 'src-'))) map.removeSource(id.replace('layer-', 'src-'));
+  }
+  currentTileLayerIds = currentTileLayerIds.filter(id => !id.startsWith('layer-tc-'));
+  pendingTruecolorTiles = { basePath: '', entries };
+  truecolorAdded = false;
+  if (wasShown || document.getElementById('tog-s2').checked) addTruecolorLayers();
 }
 
 function stationColor(triplet) {
