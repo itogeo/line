@@ -2328,14 +2328,18 @@ function updatePassFootprint() {
       paint: { 'fill-color': '#FFD54F', 'fill-opacity': 0.10 } });
   }
   if (!map.getLayer('pass-line')) {
+    // Dark casing under a bright dashed line so the strip edge reads on snow.
+    map.addLayer({ id: 'pass-casing', type: 'line', source: 'pass', paint: {
+      'line-color': 'rgba(10,18,30,0.8)', 'line-width': 5,
+    }});
     map.addLayer({ id: 'pass-line', type: 'line', source: 'pass', paint: {
-      'line-color': ['case', ['get', 'predicted'], '#FFD54F', '#ffffff'],
-      'line-width': 1.6, 'line-opacity': 0.85, 'line-dasharray': [3, 2],
+      'line-color': ['case', ['get', 'predicted'], '#FFD54F', '#FF4FD8'],
+      'line-width': 2.5, 'line-dasharray': [3, 2],
     }});
     map.addLayer({ id: 'pass-label', type: 'symbol', source: 'pass', layout: {
       'symbol-placement': 'line', 'text-field': ['get', 'label'], 'text-size': 11,
       'text-font': ['DIN Pro Bold', 'Arial Unicode MS Bold'], 'symbol-spacing': 400,
-    }, paint: { 'text-color': ['case', ['get', 'predicted'], '#FFD54F', '#ffffff'], 'text-halo-color': 'rgba(0,0,0,0.75)', 'text-halo-width': 1.5 }});
+    }, paint: { 'text-color': ['case', ['get', 'predicted'], '#FFD54F', '#FF4FD8'], 'text-halo-color': 'rgba(10,18,30,0.9)', 'text-halo-width': 1.8 }});
   }
   document.querySelectorAll('#next-pass .pass-link').forEach(a =>
     a.classList.toggle('on', !!PREDICTED_PASS && a.dataset.due === PREDICTED_PASS.due));
