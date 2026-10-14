@@ -548,6 +548,7 @@
 </style>
 <script src="/snow/shared/freshness.js"></script>
 <script src="/snow/season.js"></script>
+<script src="/snow/cams.js"></script>
 </head>
 <body>
 
@@ -1766,119 +1767,82 @@ async function addHistoricalLayer() {
   }
 }
 
-// ── Webcams ──
-const WEBCAMS = [
-  // Bridger Bowl — direct S3 images
-  { name: 'Bridger Bowl - Base', lat: 45.8167, lon: -110.8967, img: 'https://webcam-images.s3-us-west-1.amazonaws.com/parking_lot.jpg', link: 'https://bridgerbowl.com/weather/webcams' },
-  { name: 'Bridger Bowl - Apron', lat: 45.8190, lon: -110.9050, img: 'https://webcam-images.s3-us-west-1.amazonaws.com/apron.jpg', link: 'https://bridgerbowl.com/weather/webcams' },
-  { name: 'Bridger Bowl - Ridge', lat: 45.8200, lon: -110.9060, img: 'https://webcam-images.s3-us-west-1.amazonaws.com/RidgeEast.jpg', link: 'https://bridgerbowl.com/weather/webcams' },
-  { name: 'Bridger Bowl - Alpine', lat: 45.8185, lon: -110.9045, img: 'https://webcam-images.s3-us-west-1.amazonaws.com/alpine_lift.jpg', link: 'https://bridgerbowl.com/weather/webcams' },
-  // Big Sky — YouTube live stream thumbnails
-  { name: 'Big Sky - Lone Peak', lat: 45.2855, lon: -111.4016, img: 'https://img.youtube.com/vi/6iW7bdSavUo/maxresdefault.jpg', link: 'https://bigskyresort.com/the-mountain/web-cams' },
-  { name: 'Big Sky - Everett 8800', lat: 45.2870, lon: -111.3980, img: 'https://img.youtube.com/vi/dMr-Jt_K3Cc/maxresdefault.jpg', link: 'https://bigskyresort.com/the-mountain/web-cams' },
-  // Cooke City — Upper Yellowstone Snowmobile Club live stream above the
-  // Sinclair gas station. The YouTube thumbnail URL only updates with live
-  // frames when the stream is actively broadcasting; off-season it returns
-  // the channel logo (which looks like a broken cam). Use live=true to
-  // mark this as a "watch live" entry — popup shows a button instead of
-  // a static thumbnail and clicking opens the live stream in a new tab.
-  { name: 'Cooke City - UYSC Town Cam', lat: 45.0197, lon: -109.9337, live: 'https://www.youtube.com/watch?v=hzcsPl8MtXU', link: 'https://ridecookecity.com/' },
-  // Yellowstone NPS — proxied through Cloudflare Worker
-  { name: 'West Yellowstone Gate', lat: 44.6573, lon: -111.0946, proxy: 'https://www.nps.gov/webcams-yell/west_gate.jpg', link: 'https://www.nps.gov/yell/learn/photosmultimedia/webcams.htm' },
-  { name: 'Mammoth - Electric Peak', lat: 44.9734, lon: -110.7043, proxy: 'https://www.nps.gov/webcams-yell/mammoth_electric.jpg', link: 'https://www.nps.gov/yell/learn/photosmultimedia/webcams.htm' },
-  { name: 'Mt Washburn', lat: 44.7979, lon: -110.4342, proxy: 'https://www.nps.gov/webcams-yell/washburn_sw.jpg', link: 'https://www.nps.gov/yell/learn/photosmultimedia/webcams.htm' },
-];
-
+// ── Webcams (list and icons in cams.js, shared with the Webcams page) ──
 function addWebcamLayer() {
-  const features = WEBCAMS.map(c => ({
+  if (!map.hasImage('cam-viewshed')) addCamIcons(map);
+  const features = WEBCAMS.map((c, i) => ({
     type: 'Feature',
     geometry: { type: 'Point', coordinates: [c.lon, c.lat] },
-    properties: { name: c.name, link: c.link, img: c.img || '', proxy: c.proxy || '', mdt: c.mdt || '', live: c.live || '' },
+    properties: { idx: i, name: c.name, hasBearing: c.bearing != null, bearing: c.bearing ?? 0 },
   }));
-
   if (!map.getSource('webcams')) {
     map.addSource('webcams', { type: 'geojson', data: { type: 'FeatureCollection', features } });
   }
-
   const vis = document.getElementById('tog-webcams').checked ? 'visible' : 'none';
 
-  // Webcam markers — white dot with orange border + "CAM" label
+  // Fan points the way the camera looks; smaller than on the Webcams page.
   if (!map.getLayer('webcam-icons')) {
-    map.addLayer({ id: 'webcam-icons', type: 'circle', source: 'webcams', layout: { visibility: vis }, paint: {
-      'circle-radius': ['interpolate', ['linear'], ['zoom'], 7, 5, 12, 8],
-      'circle-color': '#fff',
-      'circle-stroke-color': '#FF7043', 'circle-stroke-width': 2.5,
+    map.addLayer({ id: 'webcam-icons', type: 'symbol', source: 'webcams', layout: {
+      visibility: vis,
+      'icon-image': ['case', ['get', 'hasBearing'], 'cam-viewshed', 'cam-dot'],
+      'icon-anchor': ['case', ['get', 'hasBearing'], 'bottom', 'center'],
+      'icon-size': ['interpolate', ['linear'], ['zoom'], 6, 0.35, 9, 0.55, 13, 0.85],
+      'icon-rotate': ['get', 'bearing'],
+      'icon-rotation-alignment': 'map',
+      'icon-pitch-alignment': 'map',
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
     }});
   }
-  if (!map.getLayer('webcam-text')) {
-    map.addLayer({ id: 'webcam-text', type: 'symbol', source: 'webcams', layout: {
-      visibility: vis,
-      'text-field': 'CAM',
-      'text-size': ['interpolate', ['linear'], ['zoom'], 7, 6, 12, 8],
-      'text-font': ['DIN Pro Bold', 'Arial Unicode MS Bold'],
-      'text-allow-overlap': true,
-    }, paint: { 'text-color': '#FF7043' }});
-  }
-
   if (!map.getLayer('webcam-labels')) {
     map.addLayer({ id: 'webcam-labels', type: 'symbol', source: 'webcams', minzoom: 10, layout: {
       visibility: vis,
       'text-field': ['get', 'name'],
-      'text-size': 9, 'text-offset': [0, 1.8], 'text-anchor': 'top',
+      'text-size': 9, 'text-offset': [0, 0.8], 'text-anchor': 'top',
       'text-font': ['DIN Pro Medium', 'Arial Unicode MS Regular'], 'text-max-width': 8,
     }, paint: { 'text-color': '#FF7043', 'text-halo-color': 'rgba(0,0,0,0.7)', 'text-halo-width': 1.5 }});
   }
 
-  // Click: show webcam image in popup
-  map.off('click', 'webcam-icons', onWebcamClick);
-  map.on('click', 'webcam-icons', onWebcamClick);
-  map.on('mouseenter', 'webcam-icons', () => map.getCanvas().style.cursor = 'pointer');
-  map.on('mouseleave', 'webcam-icons', () => map.getCanvas().style.cursor = '');
+  // Hover shows what the camera sees; click (or tap) keeps it open.
+  // Layer handlers survive basemap switches, so register them once.
+  if (webcamHandlers) return;
+  webcamHandlers = true;
+  map.on('mouseenter', 'webcam-icons', e => { map.getCanvas().style.cursor = 'pointer'; showWebcamPopup(e, false); });
+  map.on('mouseleave', 'webcam-icons', () => {
+    map.getCanvas().style.cursor = '';
+    if (webcamPopup && !webcamPopup._pinned) { webcamPopup.remove(); webcamPopup = null; }
+  });
+  map.on('click', 'webcam-icons', e => showWebcamPopup(e, true));
 }
 
-async function onWebcamClick(e) {
-  const p = e.features[0].properties;
-  const ts = Date.now();
-  let bodyHtml = '';
-
-  // Live-stream-only entries (no static thumbnail) — render a big "Watch Live"
-  // button instead of a broken image. The YouTube live thumbnail trick only
-  // works for actively-broadcasting streams; off-season the URL returns the
-  // channel logo which looks like a broken cam.
-  if (p.live && p.live !== '') {
-    bodyHtml = `<a href="${p.live}" target="_blank" style="display:block;text-align:center;padding:14px;background:linear-gradient(135deg,#8bbdd9,#5a95b8);color:#080e1a;border-radius:6px;text-decoration:none;font-family:var(--mono);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;margin:6px 0">▶ Watch Live</a>`;
-  } else {
-    // Build the image URL — Mapbox serializes props as strings so check for non-empty
-    let imgSrc = '';
-    if (p.img && p.img !== '') {
-      imgSrc = p.img + '?t=' + ts;
-    } else if (p.proxy && p.proxy !== '') {
-      imgSrc = '/snow/api/camproxy?url=' + encodeURIComponent(p.proxy) + '&t=' + ts;
-    } else if (p.mdt && p.mdt !== '') {
-      imgSrc = '/snow/api/mdtcam?id=' + p.mdt + '&t=' + ts;
-    }
-    if (imgSrc) {
-      bodyHtml = '<img src="' + imgSrc + '" alt="' + p.name + '" style="width:100%;border-radius:6px;margin:6px 0" onerror="this.style.display=\'none\'">';
-    }
-  }
-
-  new mapboxgl.Popup({ offset: 12, maxWidth: '340px' })
-    .setLngLat(e.features[0].geometry.coordinates)
-    .setHTML(`<div class="webcam-popup">
-      <div class="cam-name">${p.name}</div>
-      <div id="cam-img-${ts}">${bodyHtml}</div>
-      <div class="cam-src"><a href="${p.link}" target="_blank">Source &rarr;</a></div>
-    </div>`)
+let webcamPopup = null;
+let webcamHandlers = false;
+function showWebcamPopup(e, pin) {
+  const f = e.features[0];
+  const cam = WEBCAMS[f.properties.idx];
+  if (webcamPopup) webcamPopup.remove();
+  // Same URL for two minutes so hovering again uses the browser cache.
+  const ts = Math.floor(Date.now() / 120000);
+  const body = cam.type === 'iframe'
+    ? `<a href="${cam.link}" target="_blank" style="display:block;text-align:center;padding:12px;margin:6px 0;background:rgba(255,112,67,0.15);color:#FF7043;border-radius:6px;text-decoration:none;font-family:var(--mono);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px">&#9654; Live video</a>`
+    : `<img src="${camSrc(cam, ts)}" alt="${cam.name}" style="width:100%;border-radius:6px;margin:6px 0;min-height:60px;background:rgba(255,255,255,0.04)" onerror="this.replaceWith(Object.assign(document.createElement('div'),{textContent:'Image unavailable right now',style:'font-size:10px;color:var(--text-dim);padding:10px 0'}))">`;
+  webcamPopup = new mapboxgl.Popup({ offset: 10, maxWidth: '320px', closeButton: pin, closeOnClick: true })
+    .setLngLat(f.geometry.coordinates)
+    .setHTML(`<div class="webcam-popup"><div class="cam-name">${cam.name}</div>${body}<div class="cam-src"><a href="${cam.link}" target="_blank">Source &rarr;</a></div></div>`)
     .addTo(map);
+  webcamPopup._pinned = pin;
 }
 
 // Webcams only show when viewing the most recent date (live conditions)
 function updateWebcamVisibility() {
   if (!CURRENT_DATE) return;
-  const isLatest = CURRENT_DATE === DATES[DATES.length - 1];
+  // Newest map or the live "today" entry; DATES ends with today when SNOTEL
+  // is newer than the imagery, which used to hide the cams on the default view.
+  const newestMap = DATES.filter(d => d !== TODAY_VIRTUAL).pop();
+  const isLatest = CURRENT_DATE >= newestMap;
   const show = isLatest && document.getElementById('tog-webcams').checked;
   const vis = show ? 'visible' : 'none';
-  ['webcam-icons', 'webcam-text', 'webcam-labels'].forEach(id => {
+  ['webcam-icons', 'webcam-labels'].forEach(id => {
     if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
   });
 }
@@ -2313,7 +2277,7 @@ document.getElementById('slider-historical').addEventListener('input', function 
 
 document.getElementById('tog-webcams').addEventListener('change', function () {
   const vis = this.checked ? 'visible' : 'none';
-  ['webcam-icons', 'webcam-text', 'webcam-labels'].forEach(id => {
+  ['webcam-icons', 'webcam-labels'].forEach(id => {
     if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
   });
 });
@@ -2449,7 +2413,7 @@ function bringSnotelToTop() {
   } catch (e) {}
 
   // Then: our own interactive layers on top of everything
-  ['snotel-circles', 'snotel-depth', 'snotel-labels', 'webcam-icons', 'webcam-text', 'webcam-labels'].forEach(id => {
+  ['snotel-circles', 'snotel-depth', 'snotel-labels', 'webcam-icons', 'webcam-labels'].forEach(id => {
     if (map.getLayer(id)) {
       try { map.moveLayer(id); } catch (e) {}
     }
