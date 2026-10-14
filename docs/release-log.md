@@ -9,3 +9,4 @@ One line per pass of `docs/release-loop.md`: date · item · result · release_c
 2026-10-14 04:27 · item 7 (part) · layers panel starts closed on phones (tap Layers to open); live, map and compass clear · 16/17
 2026-10-14 04:33 · item 7 (part) · Feedback button moved under the legend on phones, no longer covers the sheet text; live · 16/17
 2026-10-14 04:38 · item 7 (part) · timeline shows every other month on phones (labels no longer collide); live · 16/17
+2026-10-14 04:45 · item 7 (part) · desktop: sliders fit, compass lower right, layers panel clear of zoom/fullscreen; live · 16/17
