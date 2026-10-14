@@ -1,9 +1,16 @@
 // Snowline webcams, shared by the map (index.html) and the Webcams page.
 //
-// Montana DOT cameras were removed on 2026-10-14: MDT blocks requests from
-// Cloudflare (our image proxy runs there). Its camera API answered from a
-// home connection but returned 502 to the worker, and the image host served
-// an HTML block page. The browser can't call the API directly (no CORS).
+// Montana DOT: MDT's own camera API (app.mdt.mt.gov) blocks requests from
+// Cloudflare, so the old /api/mdtcam proxy failed. The Montana 511 site serves
+// the same images from a CDN at stable URLs that are overwritten in place
+// (mt.cdn.iteris-atis.com/rwis_images/{camId}.jpg, station list in
+// geojson/icons/metadata/icons.rwis.geojson). Browsers load them directly.
+// Bearings come from each camera's description (North, Southwest, ...);
+// roadway/underpass/lane views are left out. List checked 2026-10-14.
+//
+// FAA WeatherCams: the API answers only with a weathercams.faa.gov Referer,
+// which a browser can't send, so /snow/api/faacam looks up the newest image
+// and redirects to it. Sites with no current image were left out (2026-10-14).
 
 // bearing = degrees clockwise from north (direction camera is pointing)
 const WEBCAMS = [
@@ -37,11 +44,89 @@ const WEBCAMS = [
   { name: 'Mt Washburn — NE',             lat: 44.8072, lon: -110.4489, bearing:  45, type: 'proxy', src: 'https://www.nps.gov/webcams-yell/washburn_ne.jpg',                    link: 'https://www.nps.gov/yell/learn/photosmultimedia/webcams.htm', group: 'Yellowstone NPS' },
   { name: 'East Entrance — Out of Park',  lat: 44.3876, lon: -110.0054, bearing:  90, type: 'proxy', src: 'https://www.nps.gov/webcams-yell/east_out.jpg',                       link: 'https://www.nps.gov/yell/learn/photosmultimedia/webcams.htm', group: 'Yellowstone NPS' },
   { name: 'East Entrance — Into Park',    lat: 44.3880, lon: -110.0050, bearing: 270, type: 'proxy', src: 'https://www.nps.gov/webcams-yell/east_in.jpg',                        link: 'https://www.nps.gov/yell/learn/photosmultimedia/webcams.htm', group: 'Yellowstone NPS' },
+  // ── Montana DOT (road weather stations, via the 511 image CDN) ──
+  { name: 'MDT — Clancy (North)', lat: 46.4744, lon: -111.9798, bearing:   0, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/267111-00-02.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Clancy (South)', lat: 46.4744, lon: -111.9798, bearing: 180, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/267110-00-01.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Deep Creek (East)', lat: 46.3515, lon: -111.0668, bearing:  90, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/564053-00-04.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Deep Creek (West)', lat: 46.3515, lon: -111.0668, bearing: 270, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/564050-00-01.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Boulder Hill (Northeast)', lat: 46.3233, lon: -112.0689, bearing:  45, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/267030-00-01.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Boulder Hill (East)', lat: 46.3233, lon: -112.0689, bearing:  90, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/267031-00-02.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Boulder Hill (Southeast)', lat: 46.3233, lon: -112.0689, bearing: 135, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/267033-00-04.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Toston Bridge (Northeast)', lat: 46.1778, lon: -111.4433, bearing:  45, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/564070-00-01.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Toston Bridge (Southeast)', lat: 46.1778, lon: -111.4433, bearing: 135, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/564072-00-03.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Toston Bridge (West)', lat: 46.1778, lon: -111.4433, bearing: 270, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/564074-00-05.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Boulder South (North)', lat: 46.135, lon: -111.9815, bearing:   0, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/267120-00-01.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Boulder South (East)', lat: 46.135, lon: -111.9815, bearing:  90, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/267122-00-03.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Harlowton South (Northeast)', lat: 46.1325, lon: -109.9169, bearing:  45, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/268130-00-01.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Harlowton South (Southeast Horizon)', lat: 46.1325, lon: -109.9169, bearing: 135, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/268131-00-02.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Harlowton South (Southwest)', lat: 46.1325, lon: -109.9169, bearing: 225, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/268133-00-04.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Harlowton South (West Horizon)', lat: 46.1325, lon: -109.9169, bearing: 270, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/268134-00-05.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Bridger Canyon (South)', lat: 45.8292, lon: -110.8827, bearing: 180, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/564091-00-02.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Bridger Canyon (West Horizon)', lat: 45.8292, lon: -110.8827, bearing: 270, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/564093-00-04.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Bozeman (East)', lat: 45.7435, lon: -111.1168, bearing:  90, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/564110-00-01.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Bozeman (South Horizon)', lat: 45.7435, lon: -111.1168, bearing: 180, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/564111-00-02.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Bozeman (West)', lat: 45.7435, lon: -111.1168, bearing: 270, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/564113-00-04.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Springdale (Northeast)', lat: 45.7219, lon: -110.2486, bearing:  45, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/564142-00-03.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Springdale (Southwest)', lat: 45.7219, lon: -110.2486, bearing: 225, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/564140-00-01.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Reedpoint (East)', lat: 45.7101, lon: -109.5783, bearing:  90, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/263010-00-01.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Reedpoint (West)', lat: 45.7101, lon: -109.5783, bearing: 270, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/263012-00-03.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — East Livingston (South)', lat: 45.6854, lon: -110.5046, bearing: 180, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/564031-00-02.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — East Livingston (Southwest)', lat: 45.6854, lon: -110.5046, bearing: 225, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/564033-00-04.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — East Livingston (Northwest Horizon)', lat: 45.6854, lon: -110.5046, bearing: 315, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/564034-00-05.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Bozeman Pass (East)', lat: 45.6668, lon: -110.804, bearing:  90, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/564020-00-01.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Bozeman Pass (West)', lat: 45.6668, lon: -110.804, bearing: 270, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/564023-00-04.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Livingston River Hill (Northeast)', lat: 45.6445, lon: -110.5541, bearing:  45, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/564082-00-03.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Livingston River Hill (West)', lat: 45.6445, lon: -110.5541, bearing: 270, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/564080-00-01.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Livingston River Hill (Northwest Horizon)', lat: 45.6445, lon: -110.5541, bearing: 315, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/564083-00-04.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Norris Hill (Southwest)', lat: 45.4996, lon: -111.6962, bearing: 225, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/564040-00-01.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Norris Hill (Northwest)', lat: 45.4996, lon: -111.6962, bearing: 315, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/564042-00-03.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Karst (North)', lat: 45.3453, lon: -111.1726, bearing:   0, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/564010-00-01.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Roscoe Hill (Southwest)', lat: 45.3386, lon: -109.4936, bearing: 225, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/263023-00-04.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Roscoe Hill (West)', lat: 45.3386, lon: -109.4936, bearing: 270, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/263021-00-02.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Roscoe Hill (Northwest)', lat: 45.3386, lon: -109.4936, bearing: 315, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/263020-00-01.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Big Sky Road (East)', lat: 45.2854, lon: -111.3727, bearing:  90, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/564132-00-03.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Big Sky Road (Southeast Horizon)', lat: 45.2854, lon: -111.3727, bearing: 135, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/564133-00-04.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Big Sky Road (West)', lat: 45.2854, lon: -111.3727, bearing: 270, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/564130-00-01.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Gardiner (North)', lat: 45.1558, lon: -110.8223, bearing:   0, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/564101-00-02.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Gardiner (South)', lat: 45.1558, lon: -110.8223, bearing: 180, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/564103-00-04.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  { name: 'MDT — Gardiner (West Horizon)', lat: 45.1558, lon: -110.8223, bearing: 270, type: 'img', src: 'https://mt.cdn.iteris-atis.com/rwis_images/564100-00-01.jpg', link: 'https://www.511mt.net/', group: 'Montana DOT' },
+  // ── FAA WeatherCams (aviation weather cameras; image looked up by our worker) ──
+  { name: 'FAA — White Sulphur Springs Airport (East)', lat: 46.5029, lon: -110.9063, bearing:  65, type: 'faa', src: '13093', link: 'https://weathercams.faa.gov/map/846', group: 'FAA WeatherCams' },
+  { name: 'FAA — White Sulphur Springs Airport (SouthEast)', lat: 46.5029, lon: -110.9063, bearing: 140, type: 'faa', src: '13094', link: 'https://weathercams.faa.gov/map/846', group: 'FAA WeatherCams' },
+  { name: 'FAA — White Sulphur Springs Airport (SouthWest)', lat: 46.5029, lon: -110.9063, bearing: 225, type: 'faa', src: '13095', link: 'https://weathercams.faa.gov/map/846', group: 'FAA WeatherCams' },
+  { name: 'FAA — White Sulphur Springs Airport (NorthWest)', lat: 46.5029, lon: -110.9063, bearing: 315, type: 'faa', src: '13092', link: 'https://weathercams.faa.gov/map/846', group: 'FAA WeatherCams' },
+  { name: 'FAA — Three Forks (East)', lat: 45.8849, lon: -111.5632, bearing:  70, type: 'faa', src: '12384', link: 'https://weathercams.faa.gov/map/676', group: 'FAA WeatherCams' },
+  { name: 'FAA — Three Forks (South)', lat: 45.8849, lon: -111.5632, bearing: 165, type: 'faa', src: '12385', link: 'https://weathercams.faa.gov/map/676', group: 'FAA WeatherCams' },
+  { name: 'FAA — Three Forks (NorthWest)', lat: 45.8849, lon: -111.5632, bearing: 295, type: 'faa', src: '12383', link: 'https://weathercams.faa.gov/map/676', group: 'FAA WeatherCams' },
+  { name: 'FAA — Bozeman Airport (North)', lat: 45.78, lon: -111.1446, bearing:   5, type: 'faa', src: '12052', link: 'https://weathercams.faa.gov/map/563', group: 'FAA WeatherCams' },
+  { name: 'FAA — Bozeman Airport (SouthEast)', lat: 45.78, lon: -111.1446, bearing: 135, type: 'faa', src: '12053', link: 'https://weathercams.faa.gov/map/563', group: 'FAA WeatherCams' },
+  { name: 'FAA — Bozeman Airport (SouthWest)', lat: 45.78, lon: -111.1446, bearing: 210, type: 'faa', src: '12054', link: 'https://weathercams.faa.gov/map/563', group: 'FAA WeatherCams' },
+  { name: 'FAA — Bozeman Airport (West)', lat: 45.78, lon: -111.1446, bearing: 270, type: 'faa', src: '12055', link: 'https://weathercams.faa.gov/map/563', group: 'FAA WeatherCams' },
+  { name: 'FAA — Livingston/Mission Field (NorthEast)', lat: 45.6969, lon: -110.4539, bearing:  25, type: 'faa', src: '13653', link: 'https://weathercams.faa.gov/map/987', group: 'FAA WeatherCams' },
+  { name: 'FAA — Livingston/Mission Field (SouthEast)', lat: 45.6969, lon: -110.4539, bearing: 120, type: 'faa', src: '13654', link: 'https://weathercams.faa.gov/map/987', group: 'FAA WeatherCams' },
+  { name: 'FAA — Livingston/Mission Field (SouthWest)', lat: 45.6969, lon: -110.4539, bearing: 210, type: 'faa', src: '13655', link: 'https://weathercams.faa.gov/map/987', group: 'FAA WeatherCams' },
+  { name: 'FAA — Livingston/Mission Field (NorthWest)', lat: 45.6969, lon: -110.4539, bearing: 300, type: 'faa', src: '13656', link: 'https://weathercams.faa.gov/map/987', group: 'FAA WeatherCams' },
+  { name: 'FAA — Bozeman Pass (North)', lat: 45.6671, lon: -110.8042, bearing:  12, type: 'faa', src: '11999', link: 'https://weathercams.faa.gov/map/549', group: 'FAA WeatherCams' },
+  { name: 'FAA — Bozeman Pass (East)', lat: 45.6671, lon: -110.8042, bearing: 100, type: 'faa', src: '12000', link: 'https://weathercams.faa.gov/map/549', group: 'FAA WeatherCams' },
+  { name: 'FAA — Bozeman Pass (SouthEast)', lat: 45.6671, lon: -110.8042, bearing: 145, type: 'faa', src: '12001', link: 'https://weathercams.faa.gov/map/549', group: 'FAA WeatherCams' },
+  { name: 'FAA — Bozeman Pass (West)', lat: 45.6671, lon: -110.8042, bearing: 286, type: 'faa', src: '11998', link: 'https://weathercams.faa.gov/map/549', group: 'FAA WeatherCams' },
+  { name: 'FAA — Columbus Airport (SouthEast)', lat: 45.6306, lon: -109.2363, bearing: 130, type: 'faa', src: '12183', link: 'https://weathercams.faa.gov/map/596', group: 'FAA WeatherCams' },
+  { name: 'FAA — Columbus Airport (SouthWest)', lat: 45.6306, lon: -109.2363, bearing: 210, type: 'faa', src: '13003', link: 'https://weathercams.faa.gov/map/596', group: 'FAA WeatherCams' },
+  { name: 'FAA — Columbus Airport (West)', lat: 45.6306, lon: -109.2363, bearing: 270, type: 'faa', src: '12182', link: 'https://weathercams.faa.gov/map/596', group: 'FAA WeatherCams' },
+  { name: 'FAA — Madison Hill (North)', lat: 45.4909, lon: -111.6448, bearing:   0, type: 'faa', src: '13364', link: 'https://weathercams.faa.gov/map/918', group: 'FAA WeatherCams' },
+  { name: 'FAA — Madison Hill (South)', lat: 45.4909, lon: -111.6448, bearing: 200, type: 'faa', src: '13365', link: 'https://weathercams.faa.gov/map/918', group: 'FAA WeatherCams' },
+  { name: 'FAA — Madison Hill (West)', lat: 45.4909, lon: -111.6448, bearing: 255, type: 'faa', src: '13366', link: 'https://weathercams.faa.gov/map/918', group: 'FAA WeatherCams' },
+  { name: 'FAA — Madison Hill (NorthWest)', lat: 45.4909, lon: -111.6448, bearing: 315, type: 'faa', src: '13367', link: 'https://weathercams.faa.gov/map/918', group: 'FAA WeatherCams' },
+  { name: 'FAA — Red Lodge Airport (East)', lat: 45.1863, lon: -109.2537, bearing:  80, type: 'faa', src: '13081', link: 'https://weathercams.faa.gov/map/843', group: 'FAA WeatherCams' },
+  { name: 'FAA — Red Lodge Airport (South)', lat: 45.1863, lon: -109.2537, bearing: 170, type: 'faa', src: '13082', link: 'https://weathercams.faa.gov/map/843', group: 'FAA WeatherCams' },
+  { name: 'FAA — Red Lodge Airport (West)', lat: 45.1863, lon: -109.2537, bearing: 265, type: 'faa', src: '13083', link: 'https://weathercams.faa.gov/map/843', group: 'FAA WeatherCams' },
+  { name: 'FAA — Red Lodge Airport (North)', lat: 45.1863, lon: -109.2537, bearing: 340, type: 'faa', src: '13080', link: 'https://weathercams.faa.gov/map/843', group: 'FAA WeatherCams' },
 ];
 
 function camSrc(cam, ts) {
   if (cam.type === 'img')   return cam.src + '?t=' + ts;
   if (cam.type === 'proxy') return '/snow/api/camproxy?url=' + encodeURIComponent(cam.src) + '&t=' + ts;
+  if (cam.type === 'faa')   return '/snow/api/faacam?id=' + cam.src + '&t=' + ts;
   return '';
 }
 

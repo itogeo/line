@@ -1923,16 +1923,25 @@ let webcamPopup = null;
 let webcamHandlers = false;
 function showWebcamPopup(e, pin) {
   const f = e.features[0];
-  const cam = WEBCAMS[f.properties.idx];
+  const here = WEBCAMS[f.properties.idx];
+  // Every camera at this spot (road stations and airports have 2-4 views).
+  const cams = WEBCAMS.filter(c => c.lat === here.lat && c.lon === here.lon);
   if (webcamPopup) webcamPopup.remove();
   // Same URL for two minutes so hovering again uses the browser cache.
   const ts = Math.floor(Date.now() / 120000);
-  const body = cam.type === 'iframe'
-    ? `<a href="${cam.link}" target="_blank" style="display:block;text-align:center;padding:12px;margin:6px 0;background:rgba(255,112,67,0.15);color:#FF7043;border-radius:6px;text-decoration:none;font-family:var(--mono);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px">&#9654; Live video</a>`
-    : `<img src="${camSrc(cam, ts)}" alt="${cam.name}" style="width:100%;border-radius:6px;margin:6px 0;min-height:60px;background:rgba(255,255,255,0.04)" onerror="this.replaceWith(Object.assign(document.createElement('div'),{textContent:'Image unavailable right now',style:'font-size:10px;color:var(--text-dim);padding:10px 0'}))">`;
-  webcamPopup = new mapboxgl.Popup({ offset: 10, maxWidth: '320px', closeButton: pin, closeOnClick: true })
+  const one = (cam, small) => cam.type === 'iframe'
+    ? `<a href="${cam.link}" target="_blank" style="display:block;text-align:center;padding:12px;margin:4px 0;background:rgba(255,112,67,0.15);color:#FF7043;border-radius:6px;text-decoration:none;font-family:var(--mono);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px">&#9654; Live video</a>`
+    : `<img src="${camSrc(cam, ts)}" alt="${cam.name}" title="${cam.name}" style="width:100%;border-radius:5px;margin:3px 0 0;min-height:${small ? 40 : 60}px;background:rgba(255,255,255,0.04)" onerror="this.replaceWith(Object.assign(document.createElement('div'),{textContent:'Image unavailable right now',style:'font-size:10px;color:var(--text-dim);padding:10px 0'}))">`;
+  // "MDT — Bozeman Pass (East)" -> station "MDT — Bozeman Pass", view "East"
+  const view = c => (c.name.match(/\(([^)]+)\)$/) || [, ''])[1];
+  const station = cams.length > 1 ? here.name.replace(/\s*\([^)]+\)$/, '') : here.name;
+  const body = cams.length > 1
+    ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">${cams.map(c =>
+        `<div><div style="font-size:8px;font-family:var(--mono);color:var(--text-dim);text-transform:uppercase">${view(c) || c.name}</div>${one(c, true)}</div>`).join('')}</div>`
+    : one(here, false);
+  webcamPopup = new mapboxgl.Popup({ offset: 10, maxWidth: cams.length > 1 ? '420px' : '320px', closeButton: pin, closeOnClick: true })
     .setLngLat(f.geometry.coordinates)
-    .setHTML(`<div class="webcam-popup"><div class="cam-name">${cam.name}</div>${body}<div class="cam-src"><a href="${cam.link}" target="_blank">Source &rarr;</a></div></div>`)
+    .setHTML(`<div class="webcam-popup"><div class="cam-name">${station}</div>${body}<div class="cam-src" style="margin-top:4px"><a href="${here.link}" target="_blank">Source &rarr;</a></div></div>`)
     .addTo(map);
   webcamPopup._pinned = pin;
 }

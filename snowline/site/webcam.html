@@ -178,6 +178,7 @@
   }
   .b-resort { background: rgba(79,195,247,0.12); color: #4FC3F7; }
   .b-nps    { background: rgba(129,199,132,0.15); color: #81C784; }
+  .b-mdt    { background: rgba(255,112,67,0.15);  color: #FF7043; }
   .b-town   { background: rgba(255,183,77,0.12);  color: #FFB74D; }
 
   .cam-src-link { font-family: var(--mono); font-size: 8px; color: var(--text-dim); text-decoration: none; }
@@ -251,6 +252,7 @@ const BADGE = {
   'Big Sky':         ['b-resort', 'Resort'],
   'Cooke City':      ['b-town',   'Town'],
   'Yellowstone NPS': ['b-nps',    'NPS'],
+  'Montana DOT':     ['b-mdt',    'MDT'],
 };
 
 
@@ -285,7 +287,7 @@ function buildGrid() {
            frameborder="0" scrolling="no" allowfullscreen
            title="${cam.name}"></iframe>`;
     } else {
-      imgOrLive = `<img class="cam-img" data-idx="${i}" src="${camSrc(cam, ts)}" alt="${cam.name}"
+      imgOrLive = `<img class="cam-img" data-idx="${i}" src="${camSrc(cam, ts)}" alt="${cam.name}" loading="lazy"
              onload="stampLoad(${i})"
              onerror="this.style.display='none';this.nextElementSibling.style.display='flex';stampErr(${i})">
          <div class="cam-placeholder">unavailable</div>`;

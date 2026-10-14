@@ -153,36 +153,20 @@ export default {
         }
       }
 
-      // MDT camera API proxy
-      if (effectivePath === '/api/mdtcam' && url.searchParams.get('id')) {
-        const posId = url.searchParams.get('id');
+      // FAA WeatherCams: newest image for one camera. The API needs a
+      // weathercams.faa.gov Referer (browsers can't set it); the image host
+      // doesn't, so redirect the <img> straight to the image.
+      if (effectivePath === '/api/faacam' && /^\d+$/.test(url.searchParams.get('id') || '')) {
         try {
-          const r = await fetch(`https://app.mdt.mt.gov/atms/public/camera/lastFiveImages/${posId}`, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (compatible; SnowlineCam/1.0)',
-              'Accept': 'application/json, */*',
-              'Referer': 'https://app.mdt.mt.gov/',
-            },
-            redirect: 'follow',
+          const r = await fetch('https://weathercams.faa.gov/api/cameras/' + url.searchParams.get('id') + '/images/last/1', {
+            headers: { 'Referer': 'https://weathercams.faa.gov/', 'User-Agent': 'Mozilla/5.0 (compatible; SnowlineCam/1.0)' },
           });
-          if (!r.ok) return new Response('MDT API ' + r.status, { status: 502 });
-          const data = await r.json();
-          const imgUrl = data?.data?.lastFivePolledImages?.[0]?.publicSharePath;
-          if (imgUrl) {
-            const imgResp = await fetch(imgUrl, { redirect: 'follow' });
-            if (!imgResp.ok) return new Response('Image ' + imgResp.status, { status: 502 });
-            const body = await imgResp.arrayBuffer();
-            return new Response(body, {
-              headers: {
-                'Content-Type': 'image/jpeg',
-                'Access-Control-Allow-Origin': '*',
-                'Cache-Control': 'public, max-age=300',
-              },
-            });
-          }
-          return new Response('No image', { status: 404 });
+          if (!r.ok) return new Response('FAA API ' + r.status, { status: 502 });
+          const img = (await r.json())?.payload?.[0]?.imageUri;
+          if (!img || !img.startsWith('https://images.wcams-static.faa.gov/')) return new Response('No image', { status: 404 });
+          return new Response(null, { status: 302, headers: { 'Location': img, 'Cache-Control': 'public, max-age=120' } });
         } catch (e) {
-          return new Response('MDT error: ' + e.message, { status: 502 });
+          return new Response('FAA error', { status: 502 });
         }
       }
 
