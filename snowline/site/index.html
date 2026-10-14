@@ -122,12 +122,14 @@
   .timeline.archive-mode { border-top-color: rgba(255,152,0,0.15); }
   .timeline.archive-mode .tl-date { color: #FFB74D; }
   .scene-meta { font-family: var(--mono); font-size: 9px; color: var(--text-dim); margin: 3px 0 10px; line-height: 1.5; }
-  .view-toggle { display: inline-flex; margin: 2px 0 8px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .view-toggle { display: flex; flex-wrap: wrap; margin: 8px 0 8px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
   .view-toggle button { font-family: var(--mono); font-size: 9px; letter-spacing: 0.5px; text-transform: uppercase; padding: 4px 9px;
     background: transparent; color: var(--text-muted); border: 0; cursor: pointer; }
   .view-toggle button.active { background: rgba(139,189,217,0.18); color: var(--accent); }
   .view-toggle button:disabled { opacity: 0.35; cursor: not-allowed; }
   .layer-btns { display: flex; gap: 8px; margin-top: 10px; }
+  #next-pass .pass-link { color: inherit; text-decoration: underline dotted; text-underline-offset: 2px; }
+  #next-pass .pass-link.on { color: #FFD54F; }
   .layer-btn { flex: 1; padding: 10px 8px; border-radius: var(--radius); font-family: var(--mono); font-size: 10px; font-weight: 700;
     text-transform: uppercase; letter-spacing: 1px; cursor: pointer; transition: background 0.15s, color 0.15s;
     background: transparent; color: var(--accent); border: 1.5px solid rgba(139,189,217,0.5); }
@@ -380,7 +382,7 @@
   .depth-loading { font-size: 9px; color: var(--text-dim); font-family: var(--mono); padding: 6px 0; }
 
   /* ── Webcam popup ── */
-  .webcam-popup { max-width: 320px; }
+  .webcam-popup { max-width: 100%; }
   .webcam-popup .cam-name { font-family: var(--mono); font-weight: 600; font-size: 11px; color: var(--accent); margin-bottom: 6px; }
   .webcam-popup img { width: 100%; border-radius: 6px; margin-bottom: 4px; }
   .webcam-popup .cam-src { font-size: 8px; color: var(--text-dim); font-family: var(--mono); }
@@ -585,10 +587,6 @@
 <div class="panel collapsed" id="panel">
   <div class="brand"><span class="wordmark">itogeospatial</span><h1>Snow Cover</h1><span class="region">SW Montana</span><span class="data-freshness" id="data-freshness"></span></div>
   <div class="scene-date-badge" id="date-badge"></div>
-  <div class="view-toggle" id="view-toggle" role="group" aria-label="What the snow layer shows">
-    <button type="button" data-view="latest" title="Newest pass on top, earlier passes from the last 10 days fill what it missed">Most recent composite</button>
-    <button type="button" data-view="pass" title="Only what this one satellite pass saw">This pass only</button>
-  </div>
   <div class="scene-meta" id="meta"></div>
   <div class="scene-source" id="scene-source"></div>
   <div class="next-pass" id="next-pass" style="display:none"></div>
@@ -621,6 +619,11 @@
   <div class="layer-btns">
     <button id="big-s2-btn" type="button" class="layer-btn"></button>
     <button id="big-snow-btn" type="button" class="layer-btn"></button>
+  </div>
+  <div class="view-toggle" id="view-toggle" role="group" aria-label="Which imagery the map shows">
+    <button type="button" data-view="latest" title="Newest pass on top, earlier passes from the last 10 days fill what it missed">Most recent composite</button>
+    <button type="button" data-view="pass" title="Only what this one satellite pass saw">This pass only</button>
+    <button type="button" data-jump="full" title="The newest single pass that imaged (almost) the whole area">Last full day</button>
   </div>
 
   <!-- SNOTEL depth section -->
@@ -666,6 +669,7 @@
     <div class="opacity-wrap" id="opacity-snow"><label>Opacity</label><input type="range" min="0" max="100" value="70" id="slider-snow"></div>
     <label class="layer-row"><input type="checkbox" id="tog-s2" checked><div class="sw"></div><span class="layer-label">S2 Imagery</span></label>
     <div class="opacity-wrap" id="opacity-s2"><label>Opacity</label><input type="range" min="0" max="100" value="90" id="slider-s2"></div>
+    <label class="layer-row" title="Outline of the strip the satellite imaged on this date"><input type="checkbox" id="tog-pass" checked><div class="sw"></div><span class="layer-label">Satellite pass</span></label>
     <label class="layer-row"><input type="checkbox" id="tog-historical"><div class="sw"></div><span class="layer-label">Historical</span></label>
     <div class="opacity-wrap hidden" id="opacity-historical"><label>Opacity</label><input type="range" min="0" max="100" value="50" id="slider-historical"></div>
     <label class="layer-row" title="Terrain shading from USGS 1 m lidar"><input type="checkbox" id="tog-lidar" checked><div class="sw"></div><span class="layer-label">Lidar terrain</span></label>
@@ -873,6 +877,7 @@ function snotelForDate(dateStr) {
 }
 let CURRENT_DATE = null;
 let CURRENT_DATA = null;
+let SAT_META = null;
 let SAT_ROWS = [];          // every Sentinel-2 pass (data/sat_availability.json)
 // 'latest': every pixel shows its newest clear look from the last ~10 days
 // of passes (build_composite.py), so the map isn't half-hatched by one
@@ -942,6 +947,25 @@ function findComparisonDate(fromDate, minDaysAgo) {
 // snow_cover_pct, coverage_pct, and the average SNOTEL depth across stations
 // against the comparison date. Renders into #change-callout (or hides it
 // if there's nothing to compare against).
+// The three SNOTEL stations whose snow depth rose most over `days` days,
+// ending at the newest reading on or before the date on screen (today when
+// viewing the newest map). Depth, not new-snow board: settling hides some.
+function biggestSnowGains(days) {
+  const newestMap = DATES.filter(d => d !== TODAY_VIRTUAL).pop();
+  const end = CURRENT_DATE >= newestMap ? todayStr() : CURRENT_DATE;
+  const out = [];
+  for (const st of SNOTEL_SEASON?.stations || []) {
+    const h = (st.history || []).filter(r => r.date <= end && r.depth_in != null);
+    if (!h.length) continue;
+    const last = h[h.length - 1];
+    if ((Date.parse(end) - Date.parse(last.date)) / 86400000 > 1) continue;
+    const start = new Date(Date.parse(last.date) - days * 86400000).toISOString().slice(0, 10);
+    const before = [...h].reverse().find(r => r.date <= start);
+    if (before && last.depth_in - before.depth_in >= 1) out.push({ name: st.name, gain: last.depth_in - before.depth_in });
+  }
+  return out.sort((a, b) => b.gain - a.gain).slice(0, 3);
+}
+
 async function renderChangeCallout() {
   const el = document.getElementById('change-callout');
   if (!el) return;
@@ -1017,6 +1041,10 @@ async function renderChangeCallout() {
   if (snotelMsg) {
     html += `<div>SNOTEL avg depth today: ${snotelNowAvg != null ? Math.round(snotelNowAvg) + '″' : '—'} ${snotelMsg}</div>`;
   }
+  const gains = biggestSnowGains(3);
+  if (gains.length) {
+    html += `<div style="margin-top:4px">Most new snow, 3 days: ${gains.map(g => `${g.name} <span style="color:#69f0ae;font-weight:600">+${g.gain}″</span>`).join(', ')}</div>`;
+  }
 
   el.innerHTML = html;
   el.style.display = 'block';
@@ -1061,9 +1089,11 @@ async function init() {
   // "next pass" chip. Not needed to draw the map, so it loads alongside.
   fetch('data/sat_availability.json').then(r => r.ok ? r.json() : null).then(d => {
     SAT_ROWS = (d && d.rows) || [];
+    SAT_META = d;
     buildTimeline();
     updateTimelineUI();
     renderNextPass();
+    renderLastFullDay();
   }).catch(() => {});
 
   fetch('data/snotel_agreement.json').then(r => r.ok ? r.json() : null).then(d => {
@@ -1725,6 +1755,7 @@ function addOverlayLayers() {
 
   // ── Webcams ──
   addWebcamLayer();
+  updatePassFootprint();
   updateWebcamVisibility();
 
   // Apply basemap-aware styling (snow color shift, SNOTEL stroke contrast)
@@ -1775,25 +1806,47 @@ async function addHistoricalLayer() {
 }
 
 // ── Webcams (list and icons in cams.js, shared with the Webcams page) ──
+// Cameras within 3 km of each other (a ski area, a road station plus an FAA
+// site at the same pass) are one spot: every fan starts at the spot's centre
+// and hovering anywhere on it shows all of its cameras.
+const CAM_SPOTS = (() => {
+  const km = (a, b) => Math.hypot((a.lat - b.lat) * 111, (a.lon - b.lon) * 111 * Math.cos(a.lat * Math.PI / 180));
+  const spots = [];
+  WEBCAMS.forEach((c, i) => {
+    const s = spots.find(s => s.cams.some(j => km(WEBCAMS[j], c) <= 3));
+    if (s) s.cams.push(i); else spots.push({ cams: [i] });
+  });
+  for (const s of spots) {
+    const cs = s.cams.map(i => WEBCAMS[i]);
+    s.lat = cs.reduce((a, c) => a + c.lat, 0) / cs.length;
+    s.lon = cs.reduce((a, c) => a + c.lon, 0) / cs.length;
+    // "MDT — Bozeman Pass (East)" -> "Bozeman Pass"; "Bridger Bowl — Apron" -> "Bridger Bowl"
+    const place = c => { const [a, b] = c.name.split(' — '); return (/^(MDT|FAA|KBZK)$/.test(a) ? b : a || '').replace(/\s*\([^)]*\)$/, ''); };
+    s.title = [...new Set(cs.map(place))].join(' / ');
+  }
+  return spots;
+})();
+
 function addWebcamLayer() {
   if (!map.hasImage('cam-viewshed')) addCamIcons(map);
-  const features = WEBCAMS.map((c, i) => ({
-    type: 'Feature',
-    geometry: { type: 'Point', coordinates: [c.lon, c.lat] },
-    properties: { idx: i, name: c.name, hasBearing: c.bearing != null, bearing: c.bearing ?? 0 },
+  const features = [];
+  CAM_SPOTS.forEach((s, gid) => s.cams.forEach(i => {
+    const c = WEBCAMS[i];
+    features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [s.lon, s.lat] },
+      properties: { gid, title: s.title, hasBearing: c.bearing != null, bearing: c.bearing ?? 0 } });
   }));
   if (!map.getSource('webcams')) {
     map.addSource('webcams', { type: 'geojson', data: { type: 'FeatureCollection', features } });
   }
   const vis = document.getElementById('tog-webcams').checked ? 'visible' : 'none';
 
-  // Fan points the way the camera looks; smaller than on the Webcams page.
+  // Fan points the way each camera looks; small, so they don't hide the snow.
   if (!map.getLayer('webcam-icons')) {
     map.addLayer({ id: 'webcam-icons', type: 'symbol', source: 'webcams', layout: {
       visibility: vis,
       'icon-image': ['case', ['get', 'hasBearing'], 'cam-viewshed', 'cam-dot'],
       'icon-anchor': ['case', ['get', 'hasBearing'], 'bottom', 'center'],
-      'icon-size': ['interpolate', ['linear'], ['zoom'], 6, 0.35, 9, 0.55, 13, 0.85],
+      'icon-size': ['interpolate', ['linear'], ['zoom'], 6, 0.25, 9, 0.4, 13, 0.65],
       'icon-rotate': ['get', 'bearing'],
       'icon-rotation-alignment': 'map',
       'icon-pitch-alignment': 'map',
@@ -1804,22 +1857,25 @@ function addWebcamLayer() {
   if (!map.getLayer('webcam-labels')) {
     map.addLayer({ id: 'webcam-labels', type: 'symbol', source: 'webcams', minzoom: 10, layout: {
       visibility: vis,
-      'text-field': ['get', 'name'],
+      'text-field': ['get', 'title'],
       'text-size': 9, 'text-offset': [0, 0.8], 'text-anchor': 'top',
       'text-font': ['DIN Pro Medium', 'Arial Unicode MS Regular'], 'text-max-width': 8,
-    }, paint: { 'text-color': '#FF7043', 'text-halo-color': 'rgba(0,0,0,0.7)', 'text-halo-width': 1.5 }});
+    }, paint: { 'text-color': '#66BB6A', 'text-halo-color': 'rgba(0,0,0,0.7)', 'text-halo-width': 1.5 }});
   }
 
-  // Hover shows what the camera sees; click (or tap) keeps it open.
+  // Hover shows the spot's cameras and stays open while the pointer is on
+  // the popup (so its links work); click/tap pins it.
   // Layer handlers survive basemap switches, so register them once.
   if (webcamHandlers) return;
   webcamHandlers = true;
-  map.on('mouseenter', 'webcam-icons', e => { map.getCanvas().style.cursor = 'pointer'; showWebcamPopup(e, false); });
-  map.on('mouseleave', 'webcam-icons', () => {
-    map.getCanvas().style.cursor = '';
-    if (webcamPopup && !webcamPopup._pinned) { webcamPopup.remove(); webcamPopup = null; }
+  map.on('mouseenter', 'webcam-icons', e => {
+    map.getCanvas().style.cursor = 'pointer';
+    clearTimeout(webcamCloseTimer);
+    const gid = e.features[0].properties.gid;
+    if (!webcamPopup || webcamPopup._gid !== gid) showWebcamPopup(gid, false);
   });
-  map.on('click', 'webcam-icons', e => showWebcamPopup(e, true));
+  map.on('mouseleave', 'webcam-icons', () => { map.getCanvas().style.cursor = ''; scheduleWebcamClose(); });
+  map.on('click', 'webcam-icons', e => showWebcamPopup(e.features[0].properties.gid, true));
 }
 
 // ── Click a spot: was there snow there on each pass this season? ──
@@ -1921,29 +1977,43 @@ async function onSpotClick(e) {
 
 let webcamPopup = null;
 let webcamHandlers = false;
-function showWebcamPopup(e, pin) {
-  const f = e.features[0];
-  const here = WEBCAMS[f.properties.idx];
-  // Every camera at this spot (road stations and airports have 2-4 views).
-  const cams = WEBCAMS.filter(c => c.lat === here.lat && c.lon === here.lon);
+let webcamCloseTimer = null;
+function scheduleWebcamClose() {
+  clearTimeout(webcamCloseTimer);
+  webcamCloseTimer = setTimeout(() => {
+    if (webcamPopup && !webcamPopup._pinned && !webcamPopup._hover) { webcamPopup.remove(); webcamPopup = null; }
+  }, 300);
+}
+function showWebcamPopup(gid, pin) {
+  const spot = CAM_SPOTS[gid];
+  const cams = spot.cams.map(i => WEBCAMS[i]);
   if (webcamPopup) webcamPopup.remove();
   // Same URL for two minutes so hovering again uses the browser cache.
   const ts = Math.floor(Date.now() / 120000);
-  const one = (cam, small) => cam.type === 'iframe'
-    ? `<a href="${cam.link}" target="_blank" style="display:block;text-align:center;padding:12px;margin:4px 0;background:rgba(255,112,67,0.15);color:#FF7043;border-radius:6px;text-decoration:none;font-family:var(--mono);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px">&#9654; Live video</a>`
-    : `<img src="${camSrc(cam, ts)}" alt="${cam.name}" title="${cam.name}" style="width:100%;border-radius:5px;margin:3px 0 0;min-height:${small ? 40 : 60}px;background:rgba(255,255,255,0.04)" onerror="this.replaceWith(Object.assign(document.createElement('div'),{textContent:'Image unavailable right now',style:'font-size:10px;color:var(--text-dim);padding:10px 0'}))">`;
-  // "MDT — Bozeman Pass (East)" -> station "MDT — Bozeman Pass", view "East"
-  const view = c => (c.name.match(/\(([^)]+)\)$/) || [, ''])[1];
-  const station = cams.length > 1 ? here.name.replace(/\s*\([^)]+\)$/, '') : here.name;
-  const body = cams.length > 1
-    ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">${cams.map(c =>
-        `<div><div style="font-size:8px;font-family:var(--mono);color:var(--text-dim);text-transform:uppercase">${view(c) || c.name}</div>${one(c, true)}</div>`).join('')}</div>`
-    : one(here, false);
-  webcamPopup = new mapboxgl.Popup({ offset: 10, maxWidth: cams.length > 1 ? '420px' : '320px', closeButton: pin, closeOnClick: true })
-    .setLngLat(f.geometry.coordinates)
-    .setHTML(`<div class="webcam-popup"><div class="cam-name">${station}</div>${body}<div class="cam-src" style="margin-top:4px"><a href="${here.link}" target="_blank">Source &rarr;</a></div></div>`)
+  // Short label per camera: "MDT · East", "FAA · North", "Apron"
+  const label = c => {
+    const [a, b = ''] = c.name.split(' — ');
+    const view = (b.match(/\(([^)]+)\)$/) || [, ''])[1];
+    return /^(MDT|FAA)$/.test(a) ? `${a} · ${view || b}` : (b || a);
+  };
+  const cell = c => {
+    const media = c.type === 'iframe'
+      ? `<a href="${c.link}" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;height:78px;margin-top:3px;background:rgba(102,187,106,0.15);color:#66BB6A;border-radius:5px;text-decoration:none;font-family:var(--mono);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px">&#9654; Live video</a>`
+      : `<a href="${c.link}" target="_blank" rel="noopener" title="${c.name}"><img src="${camSrc(c, ts)}" alt="${c.name}" style="width:100%;border-radius:5px;margin-top:3px;${cams.length > 1 ? 'height:78px;object-fit:cover;' : 'min-height:40px;'}background:rgba(255,255,255,0.04);display:block" onerror="this.replaceWith(Object.assign(document.createElement('div'),{textContent:'Image unavailable right now',style:'font-size:10px;color:var(--text-dim);padding:10px 0'}))"></a>`;
+    return `<div><a href="${c.link}" target="_blank" rel="noopener" style="font-size:8px;font-family:var(--mono);color:var(--text-dim);text-transform:uppercase;text-decoration:none">${label(c)} &rarr;</a>${media}</div>`;
+  };
+  const cols = cams.length === 1 ? 1 : cams.length <= 4 ? 2 : 3;
+  webcamPopup = new mapboxgl.Popup({ offset: 10, maxWidth: cols === 1 ? '320px' : cols === 2 ? '420px' : '520px', closeButton: pin, closeOnClick: true })
+    .setLngLat([spot.lon, spot.lat])
+    .setHTML(`<div class="webcam-popup"><div class="cam-name">${spot.title}</div>
+      <div style="display:grid;grid-template-columns:repeat(${cols},1fr);gap:6px">${cams.map(cell).join('')}</div>
+      <div class="cam-src" style="margin-top:4px">Click an image or label for its source</div></div>`)
     .addTo(map);
   webcamPopup._pinned = pin;
+  webcamPopup._gid = gid;
+  const el = webcamPopup.getElement();
+  el.addEventListener('mouseenter', () => { webcamPopup && (webcamPopup._hover = true); clearTimeout(webcamCloseTimer); });
+  el.addEventListener('mouseleave', () => { if (webcamPopup) { webcamPopup._hover = false; scheduleWebcamClose(); } });
 }
 
 // Webcams only show when viewing the most recent date (live conditions)
@@ -2163,6 +2233,7 @@ function renderSource() {
   // View toggle state (latest view needs a composite for this date).
   document.querySelectorAll('#view-toggle button').forEach(b => {
     b.classList.toggle('active', b.dataset.view === d.view);
+    if (b.dataset.jump) return;
     b.disabled = b.dataset.view === 'latest' && !d.latest;
     b.onclick = () => setViewMode(b.dataset.view);
     if (b.dataset.view === 'pass') {
@@ -2181,24 +2252,90 @@ function renderSource() {
   }
   const agAll = AGREEMENT && AGREEMENT[d.scene_date];
   const ag = agAll && (d.view === 'latest' && agAll.latest ? agAll.latest : agAll);
-  const check = ag && ag.evaluated
-    ? `<br>Ground check: <a href="/snow/methods.html#check" title="Map vs. SNOTEL snow depth at each station (cloudy stations not counted)">${ag.agree} of ${ag.evaluated} SNOTEL stations agree</a>`
-    : '';
+  // Plain words: of the snow stations the satellite saw clearly, how many
+  // match (snow on both, or bare on both), and what the rest were.
+  let check = '';
+  if (ag && ag.evaluated) {
+    const off = [];
+    if (ag.miss) off.push(`${ag.miss} had snow the satellite missed`);
+    if (ag.false_snow) off.push(`${ag.false_snow} showed snow the station didn't measure`);
+    check = `<br>Ground check: <a href="/snow/methods.html#check" title="At each SNOTEL station not under cloud, does the map's pixel (snow / no snow) match the station's measured depth? Misses are usually thin snow or snow under trees, which the satellite can't see.">`
+      + `map matches ${ag.agree} of ${ag.evaluated} snow stations it could see</a>${off.length ? ` (${off.join('; ')})` : ''}`;
+  }
   el.innerHTML =
     `Source: ${what} &middot; <a href="/snow/metadata.html#tab=scenes&date=${d.scene_date}">see scenes &amp; reproduce</a>` +
     ` &middot; <a href="/snow/methods.html">how it's made</a>` + check;
+  updatePassFootprint();
+  renderLastFullDay();
 }
 
-// ── Next expected pass ──
-// Each Sentinel-2 satellite repeats its ground track every 10 days, so a
-// pass seen on day d recurs on d+10. From the last 10 days of passes over
-// the AOI we can say when the next ones are due. Whether it's clear is up
-// to the weather.
+// "Last full day": the newest mapped pass whose strip covered the whole area
+// (clouds or not), i.e. the last day one pass imaged everything. Uses the
+// footprint share from the pass list; older rows without it fall back to
+// "touched every tile". Clicking it opens that pass alone.
+function renderLastFullDay() {
+  const b = document.querySelector('#view-toggle button[data-jump="full"]');
+  if (!b) return;
+  const total = (SAT_META && SAT_META.aoi && SAT_META.aoi.tiles || []).length || 12;
+  const full = r => r.aoi_cover_pct != null ? r.aoi_cover_pct >= 95 : r.s2n >= total;
+  const mapped = new Set(DATES);
+  const row = SAT_ROWS.find(r => r.dt <= CURRENT_DATE && mapped.has(r.dt) && full(r));
+  const found = row && row.dt;
+  const fmt = d => new Date(d + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  b.disabled = !found;
+  b.textContent = found ? `Last full day \u00b7 ${fmt(found)}` : 'Last full day';
+  b.title = 'The newest pass whose strip covered the whole area (clouds can still hide parts of it)';
+  b.classList.toggle('active', !!found && found === CURRENT_DATE && VIEW_MODE === 'pass');
+  b.onclick = () => {
+    if (!found) return;
+    if (VIEW_MODE !== 'pass') { VIEW_MODE = 'pass'; for (const k of Object.keys(SNOWLINE_CACHE)) delete SNOWLINE_CACHE[k]; writeHash({ view: 'pass' }); }
+    loadDate(found);
+  };
+}
+
+// ── Satellite pass strip ──
+// Outline of what the satellite imaged on the date on screen (footprints
+// come from the S2 index, data/sat_availability.json), or of a predicted
+// upcoming pass when one is picked in the "Next satellite pass" box.
+let PREDICTED_PASS = null;   // { due, src } while a future pass is shown
+function updatePassFootprint() {
+  // Called on date changes and again once the map's layers are added.
+  if (!map.getLayer('webcam-icons')) return;   // map layers not set up yet
+  const show = document.getElementById('tog-pass').checked;
+  const row = PREDICTED_PASS
+    ? SAT_ROWS.find(r => r.dt === PREDICTED_PASS.src)
+    : CURRENT_DATA && SAT_ROWS.find(r => r.dt === CURRENT_DATA.scene_date);
+  const fmt = d => new Date(d + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+  const label = PREDICTED_PASS ? `Predicted pass ${fmt(PREDICTED_PASS.due)}` : row ? `Sentinel-2 pass ${fmt(row.dt)}` : '';
+  const data = { type: 'FeatureCollection', features: show && row && row.footprint
+    ? [{ type: 'Feature', geometry: row.footprint, properties: { label, predicted: !!PREDICTED_PASS } }] : [] };
+  if (map.getSource('pass')) map.getSource('pass').setData(data);
+  else map.addSource('pass', { type: 'geojson', data });
+  if (!map.getLayer('pass-fill')) {
+    map.addLayer({ id: 'pass-fill', type: 'fill', source: 'pass', filter: ['get', 'predicted'],
+      paint: { 'fill-color': '#FFD54F', 'fill-opacity': 0.10 } });
+  }
+  if (!map.getLayer('pass-line')) {
+    map.addLayer({ id: 'pass-line', type: 'line', source: 'pass', paint: {
+      'line-color': ['case', ['get', 'predicted'], '#FFD54F', '#ffffff'],
+      'line-width': 1.6, 'line-opacity': 0.85, 'line-dasharray': [3, 2],
+    }});
+    map.addLayer({ id: 'pass-label', type: 'symbol', source: 'pass', layout: {
+      'symbol-placement': 'line', 'text-field': ['get', 'label'], 'text-size': 11,
+      'text-font': ['DIN Pro Bold', 'Arial Unicode MS Bold'], 'symbol-spacing': 400,
+    }, paint: { 'text-color': ['case', ['get', 'predicted'], '#FFD54F', '#ffffff'], 'text-halo-color': 'rgba(0,0,0,0.75)', 'text-halo-width': 1.5 }});
+  }
+  document.querySelectorAll('#next-pass .pass-link').forEach(a =>
+    a.classList.toggle('on', !!PREDICTED_PASS && a.dataset.due === PREDICTED_PASS.due));
+}
+
 function renderNextPass() {
   const el = document.getElementById('next-pass');
   if (!el || !SAT_ROWS.length) return;
   const today = todayStr();
-  const recent = SAT_ROWS.map(r => r.dt).filter(dt => dt <= today && (Date.parse(today) - Date.parse(dt)) / 86400000 < 10);
+  // Passes that barely touch the area (strip mostly outside it) aren't worth announcing.
+  const recent = SAT_ROWS.filter(r => r.aoi_cover_pct == null || r.aoi_cover_pct >= 5)
+    .map(r => r.dt).filter(dt => dt <= today && (Date.parse(today) - Date.parse(dt)) / 86400000 < 10);
   const due = new Set();
   for (const dt of recent) {
     for (let k = 1; k <= 2; k++) {
@@ -2209,9 +2346,34 @@ function renderNextPass() {
   const upcoming = [...due].sort().slice(0, 3);
   if (!upcoming.length) { el.style.display = 'none'; return; }
   const fmt = dt => new Date(dt + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
-  el.innerHTML = `Next satellite pass <b>${fmt(upcoming[0])}</b>` +
-    (upcoming.length > 1 ? ` &middot; then ${upcoming.slice(1).map(fmt).join(', ')}` : '');
-  el.title = 'Predicted from the 10-day Sentinel-2 orbit repeat. A clear map also needs a clear sky.';
+  // Each upcoming pass repeats the track of the pass 10 (or 20) days earlier;
+  // clicking a date draws that earlier pass's strip as the prediction.
+  const sourceOf = d => [10, 20].map(k => new Date(Date.parse(d) - k * 86400000).toISOString().slice(0, 10))
+    .map(dt => SAT_ROWS.find(r => r.dt === dt && r.footprint)).find(Boolean);
+  const link = (d, label) => {
+    const src = sourceOf(d);
+    // Share of the area inside the strip (footprint), else share of tiles touched.
+    const pct = src && Math.round(src.aoi_cover_pct != null ? src.aoi_cover_pct : src.s2aoi);
+    return src ? `<a href="#" class="pass-link" data-due="${d}" data-src="${src.dt}" title="Show where this pass will image">${label}</a> <span style="color:var(--text-dim)">(~${pct}% of area)</span>` : label;
+  };
+  el.innerHTML = `Next satellite pass ${link(upcoming[0], `<b>${fmt(upcoming[0])}</b>`)}` +
+    (upcoming.length > 1 ? ` &middot; then ${upcoming.slice(1).map(d => link(d, fmt(d))).join(', ')}` : '');
+  el.title = 'Predicted from the 10-day Sentinel-2 orbit repeat. A clear map also needs a clear sky. Click a date to see its strip.';
+  el.querySelectorAll('.pass-link').forEach(a => a.onclick = ev => {
+    ev.preventDefault();
+    PREDICTED_PASS = PREDICTED_PASS && PREDICTED_PASS.due === a.dataset.due ? null : { due: a.dataset.due, src: a.dataset.src };
+    if (PREDICTED_PASS) document.getElementById('tog-pass').checked = true;
+    updatePassFootprint();
+    // Zoom to where the predicted strip meets the map area, so a sliver at
+    // the edge is still visible.
+    const fp = PREDICTED_PASS && (SAT_ROWS.find(r => r.dt === PREDICTED_PASS.src) || {}).footprint;
+    if (fp) {
+      const pts = (fp.type === 'Polygon' ? fp.coordinates : fp.coordinates.flat()).flat();
+      const [W, S, E, N] = [-112.2, 44.9, -109.0, 46.5];
+      const xs = pts.map(p => Math.min(E, Math.max(W, p[0]))), ys = pts.map(p => Math.min(N, Math.max(S, p[1])));
+      map.fitBounds([[Math.min(...xs), Math.min(...ys)], [Math.max(...xs), Math.max(...ys)]], { padding: 60, maxZoom: 9 });
+    }
+  });
   el.style.display = '';
 }
 
@@ -2365,12 +2527,15 @@ function syncLayerButtons() {
   b2.classList.toggle('on', snow);
   b2.setAttribute('aria-pressed', snow);
 }
-for (const [btn, box] of [['big-s2-btn', 'tog-s2'], ['big-snow-btn', 'tog-snow']]) {
+// The two work as a pair: turning one on turns the other off, so it's always
+// clear which one you're looking at. (The layer panel still allows both.)
+for (const [btn, box, other] of [['big-s2-btn', 'tog-s2', 'tog-snow'], ['big-snow-btn', 'tog-snow', 'tog-s2']]) {
   document.getElementById(btn).addEventListener('click', function () {
     if (this.disabled) return;
-    const cb = document.getElementById(box);
+    const cb = document.getElementById(box), ob = document.getElementById(other);
     cb.checked = !cb.checked;
     cb.dispatchEvent(new Event('change'));
+    if (ob.checked === cb.checked) { ob.checked = !cb.checked; ob.dispatchEvent(new Event('change')); }
   });
 }
 syncLayerButtons();
@@ -2384,6 +2549,7 @@ document.getElementById('slider-s2').addEventListener('input', function () {
   }
 });
 
+document.getElementById('tog-pass').addEventListener('change', updatePassFootprint);
 document.getElementById('tog-snotel').addEventListener('change', function () {
   const vis = this.checked ? 'visible' : 'none';
   ['snotel-circles', 'snotel-depth', 'snotel-labels'].forEach(id => {

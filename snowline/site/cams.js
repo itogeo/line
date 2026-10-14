@@ -152,7 +152,7 @@ function addCamIcons(map) {
   const a2 = -Math.PI / 2 + fov / 2;
   ctx.arc(tipX, tipY, len, a1, a2);
   ctx.closePath();
-  ctx.fillStyle = 'rgba(255, 112, 67, 0.28)';
+  ctx.fillStyle = 'rgba(102, 187, 106, 0.30)';
   ctx.fill();
 
   // Fan outline edges only (no arc stroke — cleaner)
@@ -160,14 +160,14 @@ function addCamIcons(map) {
   ctx.moveTo(tipX + Math.cos(a1) * len, tipY + Math.sin(a1) * len);
   ctx.lineTo(tipX, tipY);
   ctx.lineTo(tipX + Math.cos(a2) * len, tipY + Math.sin(a2) * len);
-  ctx.strokeStyle = 'rgba(255, 112, 67, 0.75)';
+  ctx.strokeStyle = 'rgba(102, 187, 106, 0.85)';
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
   // Solid dot at tip (camera position)
   ctx.beginPath();
   ctx.arc(tipX, tipY, 4.5, 0, Math.PI * 2);
-  ctx.fillStyle = '#FF7043';
+  ctx.fillStyle = '#43A047';
   ctx.fill();
   ctx.strokeStyle = 'rgba(0,0,0,0.45)';
   ctx.lineWidth = 1;
@@ -182,7 +182,7 @@ function addCamIcons(map) {
   const dctx = dc.getContext('2d');
   dctx.beginPath();
   dctx.arc(dW / 2, dH / 2, 5.5, 0, Math.PI * 2);
-  dctx.fillStyle = '#FF7043';
+  dctx.fillStyle = '#43A047';
   dctx.fill();
   dctx.strokeStyle = 'rgba(0,0,0,0.4)';
   dctx.lineWidth = 1;
