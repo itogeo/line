@@ -10,3 +10,4 @@ One line per pass of `docs/release-loop.md`: date · item · result · release_c
 2026-10-14 04:33 · item 7 (part) · Feedback button moved under the legend on phones, no longer covers the sheet text; live · 16/17
 2026-10-14 04:38 · item 7 (part) · timeline shows every other month on phones (labels no longer collide); live · 16/17
 2026-10-14 04:45 · item 7 (part) · desktop: sliders fit, compass lower right, layers panel clear of zoom/fullscreen; live · 16/17
+2026-10-14 04:57 · item 7 (part) · Webcams and Data pages no longer scroll sideways on phones; all 4 pages 375 px live. Loop idle: items 2/4 wait for tonight's Process Imagery run (~19:48 UTC), 7 needs Ian's sign-off, 9 is Ian's · 16/17
