@@ -121,6 +121,13 @@
     display:block !important;
     margin-bottom:0 !important;
   }
+  /* Phone nav, after the base nav rules so it wins (same as the map page) */
+  @media (max-width:640px) {
+    .top-nav { margin:-16px -16px 16px; padding:0 8px; gap:4px; overflow-x:auto; }
+    .nav-brand, .nav-sep { display:none; }
+    .nav-links { margin-left:0; }
+    .nav-links a { padding:4px 6px; white-space:nowrap; letter-spacing:0.4px; }
+  }
 </style>
 </head>
 <body>
