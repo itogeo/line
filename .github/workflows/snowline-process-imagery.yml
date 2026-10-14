@@ -90,7 +90,8 @@ jobs:
             echo "Nothing to process."
             exit 0
           fi
-          while IFS= read -r dt; do
+          # "|| [[ -n ... ]]" keeps the last line, which has no trailing newline
+          while IFS= read -r dt || [[ -n "$dt" ]]; do
             [[ -z "$dt" ]] && continue
             echo ""
             echo "=========================================="
