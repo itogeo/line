@@ -1329,7 +1329,7 @@ function renderPanel() {
     const older = (d.latest.sources || []).filter(x => x.date !== d.scene_date && x.pct_of_seen >= 0.5).map(x => x.date).sort();
     const span = older.length ? (older.length > 1 ? `${fmt(older[0])}–${fmt(older[older.length - 1])}` : fmt(older[0])) : 'earlier passes';
     note.innerHTML = `The map fills the other ${Math.round(d.coverage_pct - d.pass_coverage_pct)}% from ${span}, `
-      + `<span style="color:#FFB74D">which may be older than recent snow</span>.`;
+      + `<span style="color:#FFB74D">which may be older than recent snow</span>. Click a spot to see when it was last seen.`;
     note.style.display = '';
   } else {
     note.style.display = 'none';
@@ -1707,6 +1707,8 @@ function addOverlayLayers() {
   // SNOTEL click handler
   map.off('click', 'snotel-circles', onSnotelClick);
   map.on('click', 'snotel-circles', onSnotelClick);
+  map.off('click', onSpotClick);
+  map.on('click', onSpotClick);
   map.on('mouseenter', 'snotel-circles', () => map.getCanvas().style.cursor = 'pointer');
   map.on('mouseleave', 'snotel-circles', () => map.getCanvas().style.cursor = '');
 
@@ -1813,6 +1815,77 @@ function addWebcamLayer() {
     if (webcamPopup && !webcamPopup._pinned) { webcamPopup.remove(); webcamPopup = null; }
   });
   map.on('click', 'webcam-icons', e => showWebcamPopup(e, true));
+}
+
+// ── Click a spot: was there snow there on each pass this season? ──
+// Reads the clicked pixel straight from each pass's snow tile (same files the
+// map draws). Tiles are EPSG:4326, so the pixel is linear in lon/lat. The
+// class is stored in alpha (see build_composite.py ALPHA_TO_CLASS).
+const SPOT_CLASS = { 0: 'snow-free', 200: 'snow', 160: 'cloud', 100: 'cloud', 120: 'not imaged', 60: 'not imaged' };
+const SPOT_COLOR = { 'snow': '#64d2ff', 'snow-free': '#a1887f', 'cloud': '#78828c', 'not imaged': 'transparent' };
+const RAW_META = {};
+async function rawMeta(date) {
+  if (!(date in RAW_META)) {
+    RAW_META[date] = fetch(`data_10m/${date}/snowline.json`).then(r => r.ok ? r.json() : null).catch(() => null);
+  }
+  return RAW_META[date];
+}
+async function spotClass(date, lng, lat) {
+  const m = await rawMeta(date);
+  const ch = m && m.chunks && m.chunks.find(c => lng >= c.bounds.west && lng < c.bounds.east && lat > c.bounds.south && lat <= c.bounds.north);
+  if (!ch) return 'not imaged';
+  try {
+    const img = new Image();
+    img.src = `/snow/api/tile/${date}/${ch.snow_file}`;
+    await img.decode();
+    const b = ch.bounds;
+    const x = Math.min(img.naturalWidth - 1, Math.floor((lng - b.west) / (b.east - b.west) * img.naturalWidth));
+    const y = Math.min(img.naturalHeight - 1, Math.floor((b.north - lat) / (b.north - b.south) * img.naturalHeight));
+    const c = document.createElement('canvas');
+    c.width = c.height = 1;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(img, x, y, 1, 1, 0, 0, 1, 1);
+    return SPOT_CLASS[ctx.getImageData(0, 0, 1, 1).data[3]] || 'not imaged';
+  } catch (e) {
+    return 'not imaged';
+  }
+}
+let spotPopup = null;
+async function onSpotClick(e) {
+  if (map.queryRenderedFeatures(e.point, { layers: ['snotel-circles', 'webcam-icons'].filter(id => map.getLayer(id)) }).length) return;
+  const { lng, lat } = e.lngLat;
+  const dates = DATES.filter(d => d !== TODAY_VIRTUAL && d >= SEASON.start && d <= SEASON.end);
+  if (!dates.length) return;
+  const fmt = d => new Date(d + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  if (spotPopup) spotPopup.remove();
+  const id = 'spot-' + Date.now();
+  spotPopup = new mapboxgl.Popup({ maxWidth: '300px' })
+    .setLngLat(e.lngLat)
+    .setHTML(`<div class="webcam-popup" id="${id}"><div class="cam-name">Snow at this spot &middot; ${SEASON.label}</div>
+      <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono)">Reading ${dates.length} passes&hellip;</div></div>`)
+    .addTo(map);
+  // A few at a time; each read is one ~60 KB tile the browser may already have.
+  const out = new Array(dates.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: 4 }, async () => {
+    while (next < dates.length) { const i = next++; out[i] = await spotClass(dates[i], lng, lat); }
+  }));
+  const el = document.getElementById(id);
+  if (!el) return;
+  // Up to the date on screen, so an archive date answers "what did it look like then".
+  const seen = dates.map((d, i) => [d, out[i]]).filter(([d, c]) => d <= CURRENT_DATE && (c === 'snow' || c === 'snow-free'));
+  const last = seen[seen.length - 1];
+  const cells = dates.map((d, i) =>
+    `<span title="${fmt(d)}: ${out[i]}" style="display:inline-block;width:${Math.max(3, Math.min(10, Math.floor(240 / dates.length)))}px;height:14px;margin-right:1px;border-radius:1px;background:${SPOT_COLOR[out[i]]};${out[i] === 'not imaged' ? 'box-shadow:inset 0 0 0 1px rgba(255,255,255,0.15);' : ''}"></span>`).join('');
+  const recent = seen.slice(-5).reverse().map(([d, c]) =>
+    `<div><span style="color:var(--text-muted)">${fmt(d)}</span> &nbsp;<span style="color:${SPOT_COLOR[c]}">${c}</span></div>`).join('');
+  el.innerHTML = `<div class="cam-name">Snow at this spot &middot; ${SEASON.label}</div>
+    <div style="font-size:11px;margin:4px 0 8px">${last ? `Last clear look by ${fmt(CURRENT_DATE)}: <strong>${fmt(last[0])}</strong>, <span style="color:${SPOT_COLOR[last[1]]}">${last[1]}</span>` : 'No clear look this season yet.'}</div>
+    <div style="white-space:nowrap;overflow:hidden">${cells}</div>
+    <div style="font-size:8px;color:var(--text-dim);font-family:var(--mono);margin:3px 0 8px">${fmt(dates[0])} &rarr; ${fmt(dates[dates.length - 1])} &middot; one bar per pass &middot;
+      <span style="color:${SPOT_COLOR.snow}">snow</span> <span style="color:${SPOT_COLOR['snow-free']}">snow-free</span> <span style="color:${SPOT_COLOR.cloud}">cloud</span> &middot; blank = not imaged</div>
+    ${recent ? `<div style="font-size:10px;font-family:var(--mono);line-height:1.6">${recent}</div>` : ''}
+    <div class="cam-src" style="margin-top:6px">${lat.toFixed(4)}, ${lng.toFixed(4)} &middot; Sentinel-2, 10 m &middot; satellite sees snow cover, not depth</div>`;
 }
 
 let webcamPopup = null;
