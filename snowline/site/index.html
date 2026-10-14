@@ -733,7 +733,8 @@
   <h4>Help us improve Snowline</h4>
   <p>Snowline is an open-source project by <a href="https://itogeospatial.com" target="_blank">Ito Geospatial</a>. Tell us what features, data, or improvements would be most useful to you.</p>
   <textarea id="fb-text" placeholder="What would make this tool more useful? Feature requests, bug reports, data suggestions — anything helps."></textarea>
-  <p style="font-size:10px;opacity:0.75;margin-top:4px">Feedback is posted as a public issue on <a href="https://github.com/itogeo/line/issues" target="_blank" rel="noopener">GitHub</a>. Please don't include personal details.</p>
+  <p style="font-size:10px;opacity:0.75;margin-top:4px">Feedback is filed as an issue on the project's <a href="https://github.com/itogeo/line/issues" target="_blank" rel="noopener">GitHub</a>. Please don't include personal details.</p>
+  <div class="fb-status" id="fb-status" style="display:none"></div>
   <div class="feedback-actions">
     <button class="fb-cancel" id="fb-cancel">Cancel</button>
     <button class="fb-send" id="fb-send">Send Feedback</button>
@@ -3624,19 +3625,22 @@ document.getElementById('fb-send').addEventListener('click', async () => {
       body: JSON.stringify({ text, date: CURRENT_DATE }),
     });
 
-    const actions = document.querySelector('.feedback-actions');
-    if (resp.ok) {
-      actions.innerHTML = '<div class="fb-status success">Thanks for your feedback!</div>';
-    } else {
-      throw new Error('api');
-    }
+    if (!resp.ok) throw new Error('api');
+    const st = document.getElementById('fb-status');
+    st.className = 'fb-status success';
+    st.textContent = 'Sent. Thanks for your feedback!';
+    st.style.display = '';
+    document.querySelector('.feedback-actions').style.display = 'none';
   } catch (e) {
-    // Fallback: save locally
-    const stored = JSON.parse(localStorage.getItem('snowline_feedback') || '[]');
-    stored.push({ text, date: CURRENT_DATE, ts: new Date().toISOString() });
-    localStorage.setItem('snowline_feedback', JSON.stringify(stored));
-    const actions = document.querySelector('.feedback-actions');
-    actions.innerHTML = '<div class="fb-status success">Feedback saved. Thanks!</div>';
+    // Not sent: say so, and offer email with the message filled in.
+    const mail = 'mailto:itogeospatial@gmail.com?subject=' + encodeURIComponent('Snowline feedback') + '&body=' + encodeURIComponent(text);
+    const st = document.getElementById('fb-status');
+    st.className = 'fb-status';
+    st.innerHTML = `Couldn't send just now. <a href="${mail}">Email it instead</a>.`;
+    st.style.display = '';
+    btn.disabled = false;
+    btn.textContent = 'Send Feedback';
+    return;
   }
 
   setTimeout(closeFeedback, 2500);
@@ -3648,10 +3652,11 @@ function closeFeedback() {
   // Reset form
   const ta = document.getElementById('fb-text');
   if (ta) ta.value = '';
-  const actions = document.querySelector('.feedback-actions');
-  if (actions && !actions.querySelector('button')) {
-    actions.innerHTML = '<button class="fb-cancel" onclick="closeFeedback()">Cancel</button><button class="fb-send" id="fb-send">Send Feedback</button>';
-  }
+  document.getElementById('fb-status').style.display = 'none';
+  document.querySelector('.feedback-actions').style.display = '';
+  const btn = document.getElementById('fb-send');
+  btn.disabled = false;
+  btn.textContent = 'Send Feedback';
 }
 
 

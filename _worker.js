@@ -191,39 +191,45 @@ export default {
         }
       }
 
-      // Feedback POST → creates issue in itogeo/line
+      // Feedback POST: saved to R2 first (feedback/{id}.json) so nothing is
+      // lost, then filed as an issue in itogeo/line. If GitHub can't be
+      // reached here (no GH_FEEDBACK_TOKEN, GitHub down), the nightly
+      // snowline-daily run files it (snowline/pipeline/file_feedback.py).
       if (effectivePath === '/api/feedback' && request.method === 'POST') {
-        try {
-          const { text, date } = await request.json();
-          if (!text || text.trim().length === 0) {
-            return new Response(JSON.stringify({ error: 'Empty feedback' }), { status: 400 });
-          }
-          const title = 'Feedback: ' + text.substring(0, 60) + (text.length > 60 ? '...' : '');
-          const body =
-            text +
-            '\n\n---\n*Submitted from line.itogeospatial.com/snow*\n*Date viewed: ' +
-            (date || 'unknown') +
-            '*\n*' +
-            new Date().toISOString() +
-            '*';
-          const ghResp = await fetch('https://api.github.com/repos/itogeo/line/issues', {
-            method: 'POST',
-            headers: {
-              Authorization: 'Bearer ' + env.GH_FEEDBACK_TOKEN,
-              'Content-Type': 'application/json',
-              'User-Agent': 'snowline-feedback',
-            },
-            body: JSON.stringify({ title, body, labels: ['feedback', 'snowline'] }),
-          });
-          if (ghResp.ok) {
-            return new Response(JSON.stringify({ ok: true }), {
-              headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-            });
-          }
-          return new Response(JSON.stringify({ error: 'GitHub API error' }), { status: 502 });
-        } catch (e) {
-          return new Response(JSON.stringify({ error: 'Server error' }), { status: 500 });
+        const json = (obj, status = 200) => new Response(JSON.stringify(obj), {
+          status, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        });
+        let text, date;
+        try { ({ text, date } = await request.json()); } catch (e) { return json({ error: 'Bad request' }, 400); }
+        if (!text || !String(text).trim()) return json({ error: 'Empty feedback' }, 400);
+        text = String(text).slice(0, 5000);
+        const at = new Date().toISOString();
+        const id = at.replace(/[:.]/g, '-') + '-' + crypto.randomUUID().slice(0, 8) + '.json';
+        const rec = { text, date: date || null, at };
+        let saved = false, issue = null;
+        if (env.SNOWLINE_BUCKET) {
+          try {
+            await env.SNOWLINE_BUCKET.put('feedback/' + id, JSON.stringify(rec), { httpMetadata: { contentType: 'application/json' } });
+            saved = true;
+          } catch (e) { /* try GitHub anyway */ }
         }
+        if (env.GH_FEEDBACK_TOKEN) {
+          try {
+            const title = 'Feedback: ' + text.substring(0, 60) + (text.length > 60 ? '...' : '');
+            const body = text + '\n\n---\n*Submitted from line.itogeospatial.com/snow*\n*Date viewed: ' + (date || 'unknown') + '*\n*' + at + '*';
+            const gh = await fetch('https://api.github.com/repos/itogeo/line/issues', {
+              method: 'POST',
+              headers: { Authorization: 'Bearer ' + env.GH_FEEDBACK_TOKEN, 'Content-Type': 'application/json', 'User-Agent': 'snowline-feedback' },
+              body: JSON.stringify({ title, body, labels: ['feedback', 'snowline'] }),
+            });
+            if (gh.ok) {
+              issue = (await gh.json()).html_url;
+              if (saved) await env.SNOWLINE_BUCKET.put('feedback/filed/' + id, JSON.stringify({ issue }));
+            }
+          } catch (e) { /* saved copy gets filed tonight */ }
+        }
+        if (saved || issue) return json({ ok: true, issue });
+        return json({ error: 'Could not save feedback' }, 503);
       }
 
       // CORS preflight
