@@ -52,15 +52,18 @@ def list_r2_objects(account_id, token):
     keys = []
     cursor = None
     while True:
-        path = "objects?limit=1000"
+        path = "objects?per_page=1000"
         if cursor:
             path += f"&cursor={cursor}"
         data = r2_request("GET", path, account_id, token)
-        objects = data.get("result", {}).get("objects", [])
+        # The API returns result as a list, with paging in result_info.
+        res = data.get("result") or []
+        objects = res if isinstance(res, list) else res.get("objects", [])
         keys.extend(o["key"] for o in objects)
-        if not data.get("result", {}).get("truncated"):
+        info = data.get("result_info") or {}
+        cursor = info.get("cursor")
+        if not cursor or not info.get("is_truncated", bool(cursor)):
             break
-        cursor = data["result"].get("cursor")
     return keys
 
 
