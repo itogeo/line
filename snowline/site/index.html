@@ -132,10 +132,10 @@
   .view-toggle button.active { background: rgba(139,189,217,0.18); color: var(--accent); }
   .view-toggle button:disabled { opacity: 0.35; cursor: not-allowed; }
   .layer-btns { display: flex; gap: 8px; margin-top: 10px; }
-  #next-pass .pass-chip { display: inline-block; margin: 0 4px 4px 0; padding: 2px 7px; border-radius: 5px; border: 1px solid var(--c);
-    color: var(--c); text-decoration: none; white-space: nowrap; }
-  #next-pass .pass-chip span { opacity: 0.7; }
-  #next-pass .pass-chip.on { background: var(--c); color: #0a121e; }
+  #next-pass .pass-chip { display: inline-block; margin: 0 4px 4px 0; padding: 2px 7px; border-radius: 5px; border: 1px solid var(--border);
+    color: var(--text); text-decoration: none; white-space: nowrap; }
+  #next-pass .pass-chip span { opacity: 0.6; }
+  #next-pass .pass-chip.on { background: rgba(255,255,255,0.9); color: #0a121e; }
   #next-pass .pass-globe { display: inline-block; margin-top: 2px; color: var(--text-muted); }
   .layer-btn { flex: 1; padding: 10px 8px; border-radius: var(--radius); font-family: var(--mono); font-size: 10px; font-weight: 700;
     text-transform: uppercase; letter-spacing: 1px; cursor: pointer; transition: background 0.15s, color 0.15s;
@@ -421,14 +421,18 @@
   .feedback-toggle {
     position: absolute; bottom: 60px; right: 12px;
     background: var(--panel);
-    border: 1px solid var(--border); border-radius: 8px;
-    padding: 8px 14px; z-index: 10; cursor: pointer;
-    font-family: var(--mono); font-size: 10px; color: var(--text-muted);
+    border: 1px solid rgba(139,189,217,0.35); border-radius: 10px;
+    padding: 12px 20px; z-index: 10; cursor: pointer;
+    font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--text);
     transition: all 0.15s;
     box-shadow: 0 4px 16px rgba(0,0,0,0.3);
   }
   .feedback-toggle:hover { color: var(--accent); border-color: rgba(139,189,217,0.2); }
-  .feedback-toggle .ft-sub { display: block; font-size: 8px; color: var(--text-dim); margin-top: 2px; }
+  .feedback-toggle .ft-sub { display: block; font-size: 10px; font-weight: 400; color: var(--text-muted); margin-top: 3px; }
+  .coffee-btn { position: absolute; bottom: 64px; right: 250px; z-index: 10; display: flex; align-items: center; gap: 7px;
+    padding: 9px 14px; border-radius: 10px; background: #FFDD00; color: #0a121e; text-decoration: none;
+    font-family: var(--mono); font-size: 12px; font-weight: 700; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
+  .coffee-btn:hover { filter: brightness(1.05); }
 
   .feedback-box {
     position: absolute; bottom: 60px; right: 12px;
@@ -541,6 +545,7 @@
     /* Feedback sits under the legend, clear of the bottom sheet */
     .feedback-toggle { top: 86px; left: 8px; right: auto; bottom: auto; padding: 5px 10px; }
     .feedback-toggle .ft-sub { display: none; }
+    .coffee-btn { top: 86px; right: 8px; bottom: auto; padding: 5px 10px; font-size: 11px; }
     .feedback-box { top: 86px; left: 8px; right: 8px; bottom: auto; width: auto; }
     /* Every other month on the timeline; all eight collide at phone width */
     .tl-mon-odd { display: none; }
@@ -735,6 +740,12 @@
 </div>
 
 
+<a class="coffee-btn" id="coffee-btn" target="_blank" rel="noopener" style="display:none">&#9749; Buy me a coffee</a>
+<script>
+  // Set to the Buy Me a Coffee page; the button stays hidden until it is.
+  const COFFEE_URL = '';
+  if (COFFEE_URL) { const c = document.getElementById('coffee-btn'); c.href = COFFEE_URL; c.style.display = ''; }
+</script>
 <div class="feedback-toggle" id="fb-toggle">
   Feedback
   <span class="ft-sub">Open source &middot; Help us improve</span>
@@ -2416,7 +2427,10 @@ let PREDICTED_PASS = null;   // { due, src } while a future pass is shown
 // Strips are drawn only inside the mapped area (the footprint runs on past
 // it, which read as a box bigger than the data).
 const AOI_BBOX = [-112.2, 44.9, -109.0, 46.5];
-const NEXT_COLOR = '#FFD54F';   // predicted passes
+const NEXT_COLOR = '#FFD54F';   // predicted-pass chips
+const NEXT_COLORS = ['#66BB6A', '#FFEE58', '#FFA726', '#EF5350'];  // their paths on the map, soonest → furthest
+const MONTANA_BOX = [-116.1, 44.3, -104.0, 49.0];
+let NEXT_ANIM = null;           // requestAnimationFrame id while satellites fly
 let LAYERS_BEFORE_NEXT = null;  // Imagery/Snow state to restore when the next-pass view closes
 // Is [lon, lat] inside a (Multi)Polygon? Ray casting, holes respected.
 function pointInGeom(pt, g) {
@@ -2468,6 +2482,37 @@ function edgesInAoi(geom, bbox = AOI_BBOX) {
   }
   return lines.length ? { type: 'MultiLineString', coordinates: lines } : null;
 }
+// Satellites flying their predicted paths (north to south, as Sentinel-2
+// does over Montana in the late morning), looping every few seconds.
+function startNextAnimation(tracks) {
+  if (NEXT_ANIM) cancelAnimationFrame(NEXT_ANIM);
+  NEXT_ANIM = null;
+  const set = fc => { if (map.getSource('pass-anim')) map.getSource('pass-anim').setData(fc); };
+  if (!map.getSource('pass-anim')) {
+    map.addSource('pass-anim', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    const add = () => {
+      if (map.getLayer('pass-anim')) return;
+      map.addLayer({ id: 'pass-anim', type: 'symbol', source: 'pass-anim', layout: {
+        'icon-image': 'pass-sat', 'icon-size': ['case', ['get', 'sel'], 0.8, 0.6], 'icon-allow-overlap': true, 'icon-ignore-placement': true,
+        'text-field': ['get', 'label'], 'text-size': 12, 'text-offset': [0, 1.8], 'text-anchor': 'top', 'text-allow-overlap': true,
+        'text-font': ['DIN Pro Bold', 'Arial Unicode MS Bold'] },
+        paint: { 'text-color': ['get', 'color'], 'text-halo-color': 'rgba(10,18,30,0.9)', 'text-halo-width': 1.8 } });
+    };
+    if (map.hasImage('pass-sat')) add();
+    else map.loadImage('/snow/img/ito-sat.png', (err, img) => { if (!err && !map.hasImage('pass-sat')) map.addImage('pass-sat', img); add(); });
+  }
+  if (!tracks || !tracks.length) { set({ type: 'FeatureCollection', features: [] }); return; }
+  const t0 = performance.now(), dur = 5000;
+  const frame = now => {
+    const f = ((now - t0) % dur) / dur;
+    set({ type: 'FeatureCollection', features: tracks.filter(t => t.pts.length > 1).map(t => {
+      const x = f * (t.pts.length - 1), k = Math.floor(x), r = x - k, a = t.pts[k], b = t.pts[Math.min(k + 1, t.pts.length - 1)];
+      return { type: 'Feature', geometry: { type: 'Point', coordinates: [a[0] + (b[0] - a[0]) * r, a[1] + (b[1] - a[1]) * r] }, properties: t.props };
+    }) });
+    NEXT_ANIM = requestAnimationFrame(frame);
+  };
+  NEXT_ANIM = requestAnimationFrame(frame);
+}
 function updatePassFootprint() {
   // Called on date changes and again once the map's layers are added.
   if (!map.getLayer('webcam-icons')) return;   // map layers not set up yet
@@ -2475,6 +2520,7 @@ function updatePassFootprint() {
   const show = document.getElementById('tog-pass').checked;
   const fmt = d => new Date(d + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
   const features = [];
+  if (!(show && PREDICTED_PASS)) startNextAnimation(null);
   const add = (fp, props) => {
     if (!fp) return;
     const area = props.sel && clipToAoi(fp), edges = edgesInAoi(fp);
@@ -2482,19 +2528,29 @@ function updatePassFootprint() {
     if (edges) features.push({ type: 'Feature', geometry: edges, properties: props });
   };
   if (show && PREDICTED_PASS) {
-    // The next passes in full (past the area too), each with its date and a
-    // satellite marker; the area outline stays for reference.
+    // Each next pass's path across Montana in its colour (green soonest, red
+    // furthest), dashed edges labelled with the date; a satellite flies each one.
+    // The two Sentinel-2 satellites fly the same path five days apart, so
+    // passes sharing a path are drawn once with both dates.
     const [w, s, e, n] = AOI_BBOX;
-    const near = [w - 1.5, s - 1.5, e + 1.5, n + 1.5];
-    UPCOMING.forEach(u => {
-      const fp = u.src.footprint, props = { label: fmt(u.due), color: NEXT_COLOR, sel: u.due === PREDICTED_PASS.due };
-      if (props.sel) features.push({ type: 'Feature', geometry: fp, properties: props });
-      const edges = edgesInAoi(fp, near);
-      if (edges) features.push({ type: 'Feature', geometry: edges, properties: props });
-      const ring = (fp.type === 'Polygon' ? [fp.coordinates] : fp.coordinates).map(p => p[0]).sort((a, b) => b.length - a.length)[0];
-      const c = [ring.reduce((a, p) => a + p[0], 0) / ring.length, ring.reduce((a, p) => a + p[1], 0) / ring.length];
-      features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: c }, properties: props });
+    const tracks = [], groups = [];
+    for (const u of UPCOMING) {
+      const c = swathCentre(u.src.footprint);
+      const g = groups.find(x => Math.abs(x.c[0] - c[0]) < 0.1 && Math.abs(x.c[1] - c[1]) < 0.1);
+      if (g) g.dues.push(u.due); else groups.push({ c, u, dues: [u.due] });
+    }
+    const short = d => new Date(d + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+    const inMt = p => p[1] >= MONTANA_BOX[1] - 1 && p[1] <= MONTANA_BOX[3] + 1 && p[0] >= MONTANA_BOX[0] - 6 && p[0] <= MONTANA_BOX[2] + 6;
+    groups.forEach((gr, i) => {
+      const color = NEXT_COLORS[i % NEXT_COLORS.length];
+      const props = { label: gr.dues.map(short).join(' + '), color, sel: gr.dues.includes(PREDICTED_PASS.due) };
+      const g = orbitGeo(gr.u.src.footprint);
+      const swath = g.features.find(f => f.properties.kind === 'swath'), edge = g.features.find(f => f.properties.kind === 'edge');
+      features.push({ type: 'Feature', geometry: swath.geometry, properties: { ...props, fill: true } });
+      features.push({ type: 'Feature', geometry: { type: 'MultiLineString', coordinates: edge.geometry.coordinates.map(l => l.filter(inMt)) }, properties: props });
+      tracks.push({ pts: g.day.filter(inMt), props });
     });
+    startNextAnimation(tracks);
     // The mapped area, for reference.
     features.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: [[w, s], [e, s], [e, n], [w, n], [w, s]] },
       properties: { label: 'Snowline area', color: '#ffffff', sel: false } });
@@ -2507,7 +2563,7 @@ function updatePassFootprint() {
   else map.addSource('pass', { type: 'geojson', data });
   if (!map.getLayer('pass-fill')) {
     map.addLayer({ id: 'pass-fill', type: 'fill', source: 'pass', filter: ['==', ['geometry-type'], 'Polygon'],
-      paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.16 } });
+      paint: { 'fill-color': ['get', 'color'], 'fill-opacity': ['case', ['get', 'sel'], 0.22, 0.08] } });
   }
   if (!map.getLayer('pass-line')) {
     // Dark casing under a bright dashed line so the strip edge reads on snow.
@@ -2593,17 +2649,30 @@ async function updateCompositeRegions() {
   set({ type: 'FeatureCollection', features });
 }
 
-// Approximate Sentinel-2 ground track for the globe view: a circular,
-// sun-synchronous orbit (98.62° inclination, 14.3 orbits a day, ESA's
-// published values) passing southbound through the centre of the observed
-// strip. It is a sketch for orientation, accurate near Montana and drifting
-// by tens of km far from it; the strip itself is the real footprint.
+// Approximate Sentinel-2 ground track: a circular, sun-synchronous orbit
+// (98.62° inclination, 14.3 orbits a day, ESA's published values) passing
+// southbound through the centre of the swath. The centre is found from the
+// strip's real edge (from the footprint), 145 km (half the 290 km swath)
+// toward the strip's inside. A sketch for orientation: close near Montana,
+// drifting by tens of km far from it.
+function swathCentre(fp) {
+  const [w, s, e, n] = AOI_BBOX;
+  const edges = edgesInAoi(fp, [w - 1.5, s - 1.5, e + 1.5, n + 1.5]);
+  const ring = (fp.type === 'Polygon' ? [fp.coordinates] : fp.coordinates).map(p => p[0]).sort((a, b) => b.length - a.length)[0];
+  const cen = [ring.reduce((a, p) => a + p[0], 0) / ring.length, ring.reduce((a, p) => a + p[1], 0) / ring.length];
+  if (!edges) return cen;
+  const line = edges.coordinates.sort((a, b) => b.length - a.length)[0];
+  const a = line[0], b = line[line.length - 1], m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  const kx = 111.32 * Math.cos(m[1] * Math.PI / 180), ky = 110.57;      // km per degree
+  const dx = (b[0] - a[0]) * kx, dy = (b[1] - a[1]) * ky, len = Math.hypot(dx, dy) || 1;
+  const nx = -dy / len, ny = dx / len;
+  const side = Math.sign((cen[0] - m[0]) * kx * nx + (cen[1] - m[1]) * ky * ny) || 1;
+  return [m[0] + side * nx * 145 / kx, m[1] + side * ny * 145 / ky];
+}
 function orbitGeo(fp) {
   const D = Math.PI / 180, inc = 98.62 * D, T = 86400 / 14.3, n = 2 * Math.PI / T, we = 2 * Math.PI / 86164;
-  const poly = (fp.type === 'Polygon' ? [fp.coordinates] : fp.coordinates)
-    .map(pl => pl[0]).sort((a, b) => b.length - a.length)[0];
-  const lon0 = poly.reduce((a, p) => a + p[0], 0) / poly.length * D;
-  const lat0 = poly.reduce((a, p) => a + p[1], 0) / poly.length * D;
+  const c0 = swathCentre(fp);
+  const lon0 = c0[0] * D, lat0 = c0[1] * D;
   const L = u => Math.atan2(Math.cos(inc) * Math.sin(u), Math.cos(u));
   const u0 = Math.PI - Math.asin(Math.sin(lat0) / Math.sin(inc));   // southbound
   const om = lon0 - L(u0);
@@ -2624,14 +2693,15 @@ function orbitGeo(fp) {
     right.push([p[0] - px * half / Math.cos(p[1] * D), p[1] - py * half]);
   });
   return { type: 'FeatureCollection', features: [
-    { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[...left, ...right.reverse(), left[0]]] }, properties: { kind: 'swath' } },
+    { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[...left, ...[...right].reverse(), left[0]]] }, properties: { kind: 'swath' } },
     { type: 'Feature', geometry: { type: 'LineString', coordinates: track }, properties: { kind: 'track', label: 'Sentinel-2 orbit (approximate)' } },
-  ] };
+    { type: 'Feature', geometry: { type: 'MultiLineString', coordinates: [left, right] }, properties: { kind: 'edge' } },
+  ], day };
 }
 function updateOrbit(list) {
   // list: [{ fp, color, label, sel }] — one approximate orbit per upcoming pass.
   const data = { type: 'FeatureCollection', features: (list || []).flatMap(o => orbitGeo(o.fp).features
-    .filter(f => f.properties.kind === 'track' || o.sel)
+    .filter(f => f.properties.kind === 'track' || (o.sel && f.properties.kind === 'swath'))
     .map(f => ({ ...f, properties: { ...f.properties, color: o.color, sel: o.sel, label: o.label } }))) };
   if (map.getSource('orbit')) { map.getSource('orbit').setData(data); return; }
   map.addSource('orbit', { type: 'geojson', data });
@@ -2693,9 +2763,9 @@ function renderNextPass() {
     updateOrbit(null);
     globe.style.display = PREDICTED_PASS ? '' : 'none';
     globe.innerHTML = 'See on the globe &rarr;';
-    // Zoomed out a little so the strips show past the area.
-    const pad = PREDICTED_PASS ? 1.2 : 0;
-    map.fitBounds([[AOI_BBOX[0] - pad, AOI_BBOX[1] - pad], [AOI_BBOX[2] + pad, AOI_BBOX[3] + pad]], { padding: 40, duration: 1500 });
+    // Out to Montana so the paths show where they go; back to the area after.
+    const box = PREDICTED_PASS ? MONTANA_BOX : AOI_BBOX;
+    map.fitBounds([[box[0], box[1]], [box[2], box[3]]], { padding: 40, duration: 1500 });
   });
   // The globe view: each upcoming pass's orbit (approximate), the picked one with its swath.
   globe.onclick = ev => {
