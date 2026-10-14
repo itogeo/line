@@ -91,3 +91,12 @@ jobs:
           else
             echo "No new clear passes — skipping imagery trigger"
           fi
+
+      # Last, so a failure here never blocks the imagery trigger. The commit
+      # above redeploys the site in 1-3 min, so one retry after a wait.
+      - name: 5. Check the live site
+        run: |
+          python tools/release_check.py && exit 0
+          echo "Retrying after Cloudflare redeploys..."
+          sleep 180
+          python tools/release_check.py
