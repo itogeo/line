@@ -621,8 +621,8 @@
     <button id="big-snow-btn" type="button" class="layer-btn"></button>
   </div>
   <div class="view-toggle" id="view-toggle" role="group" aria-label="Which imagery the map shows">
-    <button type="button" data-view="latest" title="Newest pass on top, earlier passes from the last 10 days fill what it missed">Most recent composite</button>
     <button type="button" data-view="pass" title="Only what this one satellite pass saw">This pass only</button>
+    <button type="button" data-view="latest" title="Newest pass on top, earlier passes from the last 10 days fill what it missed">Most recent composite</button>
     <button type="button" data-jump="full" title="The newest single pass that imaged (almost) the whole area">Last full day</button>
   </div>
 
@@ -882,7 +882,8 @@ let SAT_ROWS = [];          // every Sentinel-2 pass (data/sat_availability.json
 // 'latest': every pixel shows its newest clear look from the last ~10 days
 // of passes (build_composite.py), so the map isn't half-hatched by one
 // orbit's swath. 'pass': just this one satellite pass.
-let VIEW_MODE = new URLSearchParams(location.hash.replace(/^#/, '')).get('view') === 'pass' ? 'pass' : 'latest';
+// Opens on the newest single pass; the composite is one click away.
+let VIEW_MODE = new URLSearchParams(location.hash.replace(/^#/, '')).get('view') === 'latest' ? 'latest' : 'pass';
 function applyView(raw) {
   if (!raw || raw.no_imagery || !raw.latest || VIEW_MODE !== 'latest') return raw ? { ...raw, view: 'pass' } : raw;
   const tc = Object.fromEntries((raw.chunks || []).map(c => [c.chunk_id, c.truecolor_file]));
@@ -900,7 +901,7 @@ function setViewMode(mode) {
   if (mode === VIEW_MODE) return;
   VIEW_MODE = mode;
   for (const k of Object.keys(SNOWLINE_CACHE)) delete SNOWLINE_CACHE[k];
-  writeHash({ view: mode === 'pass' ? 'pass' : null });
+  writeHash({ view: mode === 'latest' ? 'latest' : null });
   loadDate(CURRENT_DATE);
 }
 let AGREEMENT = null;       // satellite vs SNOTEL per date (data/snotel_agreement.json)
@@ -2242,7 +2243,7 @@ function renderSource() {
         FULL_DAY_RETURN = null;
         VIEW_MODE = 'latest';
         for (const k of Object.keys(SNOWLINE_CACHE)) delete SNOWLINE_CACHE[k];
-        writeHash({ view: null });
+        writeHash({ view: 'latest' });
         loadDate(back);
         return;
       }
@@ -2301,7 +2302,7 @@ function renderLastFullDay() {
   b.onclick = () => {
     if (!found) return;
     if (CURRENT_DATE !== found) FULL_DAY_RETURN = { from: CURRENT_DATE, at: found };
-    if (VIEW_MODE !== 'pass') { VIEW_MODE = 'pass'; for (const k of Object.keys(SNOWLINE_CACHE)) delete SNOWLINE_CACHE[k]; writeHash({ view: 'pass' }); }
+    if (VIEW_MODE !== 'pass') { VIEW_MODE = 'pass'; for (const k of Object.keys(SNOWLINE_CACHE)) delete SNOWLINE_CACHE[k]; writeHash({ view: null }); }
     loadDate(found);
   };
 }
@@ -2916,11 +2917,13 @@ function addTruecolorLayers() {
       map.addSource(tcSrcId, { type: 'image', url: e.url || `${basePath}/${e.file}`, coordinates: eCoords });
     }
     if (!map.getLayer(tcLayerId)) {
+      // Imagery goes under the snow layer so the Snow button stays visible.
+      const under = map.getStyle().layers.find(l => l.id.startsWith('layer-snow-') || l.id === 'snow-overlay');
       map.addLayer({
         id: tcLayerId, type: 'raster', source: tcSrcId,
         paint: { 'raster-opacity': opacity },
         layout: { visibility: s2Vis },
-      });
+      }, under && under.id);
     }
     currentTileLayerIds.push(tcLayerId);
   }
