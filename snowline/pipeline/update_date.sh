@@ -13,12 +13,13 @@
 #   bash snowline/pipeline/update_date.sh 2026-04-04
 #   bash snowline/pipeline/update_date.sh 2026-04-04 --keep-cache  # don't delete cache
 #   bash snowline/pipeline/update_date.sh 2026-04-04 --quality=88  # lower quality
+#   bash snowline/pipeline/update_date.sh 2026-04-04 --max-cloud=100  # keep all-cloud tiles too
 #
 # Run from the repository root, with the requirements installed (CONTRIBUTING.md).
 
 set -euo pipefail
 
-usage() { echo "usage: bash snowline/pipeline/update_date.sh YYYY-MM-DD [--keep-cache] [--quality=N]"; }
+usage() { echo "usage: bash snowline/pipeline/update_date.sh YYYY-MM-DD [--keep-cache] [--quality=N] [--max-cloud=N]"; }
 if [[ $# -lt 1 || "$1" == "-h" || "$1" == "--help" ]]; then
     usage; [[ $# -lt 1 ]] && exit 1 || exit 0
 fi
@@ -31,10 +32,12 @@ shift || true
 
 KEEP_CACHE=0
 QUALITY=92
+MAX_CLOUD=90
 for arg in "$@"; do
     case "$arg" in
         --keep-cache) KEEP_CACHE=1 ;;
         --quality=*) QUALITY="${arg#--quality=}" ;;
+        --max-cloud=*) MAX_CLOUD="${arg#--max-cloud=}" ;;
         *) echo "Unknown arg: $arg"; exit 1 ;;
     esac
 done
@@ -68,7 +71,7 @@ echo "  SNOWLINE PIPELINE — $DATE"
 echo "═══════════════════════════════════════════════"
 echo ""
 echo "── Phase 1: fetch bands ──"
-$PYTHON pipeline/fetch_bands.py --date="$DATE"
+$PYTHON pipeline/fetch_bands.py --date="$DATE" --max-cloud="$MAX_CLOUD"
 
 echo ""
 echo "── Phase 2: process tiles ──"

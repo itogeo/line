@@ -38,7 +38,7 @@ SCL_SNOW = 11          # Sentinel-2 scene classification: snow / ice
 METHOD = "NDSI >= 0.4 or SCL = 11, excluding SCL 0/3/8/9/10"
 PIXEL_SIZE = 0.0003   # degrees/pixel — ~24 m horizontal, ~33 m vertical at 45°N
 DST_CRS = CRS.from_epsg(4326)
-MIN_LIST_COVERAGE = 10.0  # % of the AOI a map must cover to appear on the timeline
+MIN_LIST_COVERAGE = 10.0  # % of the AOI a pass must image (clouds included) to appear on the timeline
 MAX_WEBP_BYTES = 24 * 1024 * 1024  # warn if over 24 MiB (Cloudflare Pages cap is 25 MiB)
 
 # Fixed 3-column × 2-row grid over the AOI. Pure lat/lon rectangles so
@@ -184,6 +184,7 @@ def process_chunk(chunk, tile_dirs, output_dir, quality):
         'bounds': {'west': w, 'south': s, 'east': e, 'north': n},
         'snow_pixels': snow_px,
         'valid_pixels': valid_px,
+        'imaged_pixels': int(np.sum(has_data)),
     }
 
 
@@ -227,6 +228,8 @@ def main():
     total_valid_px = sum(m['valid_pixels'] for m in chunks_meta)
     total_snow_px  = sum(m['snow_pixels']  for m in chunks_meta)
     coverage_pct = round(total_valid_px / max(1, total_aoi_px)   * 100, 1)
+    # Share of the area the pass imaged at all, clouds included.
+    imaged_pct   = round(sum(m.get('imaged_pixels', 0) for m in chunks_meta) / max(1, total_aoi_px) * 100, 1)
     snow_pct     = round(total_snow_px  / max(1, total_valid_px) * 100, 1)
 
     # Provenance: which Sentinel-2 scenes went into this map. Written by
@@ -261,6 +264,7 @@ def main():
         'bounds': {'west': BBOX[0], 'south': BBOX[1], 'east': BBOX[2], 'north': BBOX[3]},
         'snow_cover_pct': snow_pct,
         'coverage_pct': coverage_pct,
+        'imaged_pct': imaged_pct,
         'chunks': chunks_meta,
     }
     with open(output_dir / 'snowline.json', 'w') as f:
@@ -273,10 +277,11 @@ def main():
             existing_dates = json.load(open(dates_path)).get("dates", [])
         except Exception:
             pass
-    # A map that covers almost none of the area (an orbit edge) clutters the
+    # A pass that imaged almost none of the area (an orbit edge) clutters the
     # timeline without telling anyone anything; keep the files, don't list it.
-    if coverage_pct < MIN_LIST_COVERAGE:
-        log(f"Only {coverage_pct}% of the area imaged (< {MIN_LIST_COVERAGE}%) — not listing {args.date} in dates.json")
+    # Cloudy passes are listed: their imagery shows what the sky was doing.
+    if imaged_pct < MIN_LIST_COVERAGE:
+        log(f"Only {imaged_pct}% of the area imaged (< {MIN_LIST_COVERAGE}%) — not listing {args.date} in dates.json")
         existing_dates = [d for d in existing_dates if d != args.date]
     elif args.date not in existing_dates:
         existing_dates.append(args.date)

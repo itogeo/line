@@ -14,7 +14,7 @@ Requires env vars:
     CF_API_TOKEN    — Cloudflare API token with R2 object read + delete on snowline-tiles
 
 Usage (called by process_imagery.yml after each pipeline run):
-    python snowline/pipeline/prune_r2.py --keep-snow 30 --keep-truecolor 10
+    python snowline/pipeline/prune_r2.py --keep-snow 0 --keep-truecolor 10 --keep-truecolor-since 2026-10-01
 """
 import argparse
 import json
@@ -98,6 +98,8 @@ def main():
                         help="Most-recent dates to keep snow tiles for (0 = keep all)")
     parser.add_argument("--keep-truecolor", type=int, default=10,
                         help="Number of most-recent dates to keep truecolor tiles for")
+    parser.add_argument("--keep-truecolor-since", default="",
+                        help="Also keep truecolor for every date on or after this YYYY-MM-DD (e.g. the season start)")
     args = parser.parse_args()
 
     account_id = os.environ.get("CF_ACCOUNT_ID", "").strip()
@@ -143,7 +145,8 @@ def main():
         log(f"  {date}: deleted {len(keys)} snow tiles")
 
     # Prune truecolor tiles beyond keep window
-    tc_prune_dates = sorted_dates[args.keep_truecolor:]
+    tc_prune_dates = [d for d in sorted_dates[args.keep_truecolor:]
+                      if not args.keep_truecolor_since or d < args.keep_truecolor_since]
     for date in tc_prune_dates:
         keys = by_date[date]["truecolor"]
         if not keys:
