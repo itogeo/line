@@ -165,9 +165,9 @@
 </div>
 
 <div class="tabs" role="tablist">
-  <div class="tab active" data-tab="scenes" role="tab" tabindex="0">Scenes</div>
+  <div class="tab active" data-tab="snotel" role="tab" tabindex="0">SNOTEL stations</div>
+  <div class="tab" data-tab="scenes" role="tab" tabindex="0">Scenes</div>
   <div class="tab" data-tab="history" role="tab" tabindex="0">Snow history</div>
-  <div class="tab" data-tab="snotel" role="tab" tabindex="0">SNOTEL stations</div>
 </div>
 
 <div class="tab-content active" id="tab-scenes">
@@ -1271,7 +1271,7 @@ if (EMBED_MODE === 'basin') {
   loadSnotelData();
   const tab = new URLSearchParams(location.hash.replace(/^#/, '')).get('tab');
   initScenes(readHash());
-  showTab(['scenes', 'history', 'snotel'].includes(tab) ? tab : 'scenes');
+  showTab(['scenes', 'history', 'snotel'].includes(tab) ? tab : 'snotel');
 }
 </script>
 </body>

@@ -1095,6 +1095,7 @@ async function init() {
     updateTimelineUI();
     renderNextPass();
     renderLastFullDay();
+    updateCompositeRegions();
   }).catch(() => {});
 
   fetch('data/snotel_agreement.json').then(r => r.ok ? r.json() : null).then(d => {
@@ -1757,6 +1758,7 @@ function addOverlayLayers() {
   // ── Webcams ──
   addWebcamLayer();
   updatePassFootprint();
+  updateCompositeRegions();
   updateWebcamVisibility();
 
   // Apply basemap-aware styling (snow color shift, SNOTEL stroke contrast)
@@ -2279,6 +2281,7 @@ function renderSource() {
     `Source: ${what} &middot; <a href="/snow/metadata.html#tab=scenes&date=${d.scene_date}">see scenes &amp; reproduce</a>` +
     ` &middot; <a href="/snow/methods.html">how it's made</a>` + check;
   updatePassFootprint();
+  updateCompositeRegions();
   renderLastFullDay();
 }
 
@@ -2342,6 +2345,63 @@ function updatePassFootprint() {
   }
   document.querySelectorAll('#next-pass .pass-link').forEach(a =>
     a.classList.toggle('on', !!PREDICTED_PASS && a.dataset.due === PREDICTED_PASS.due));
+}
+
+// Most recent composite: shade the part of the area each pass supplies
+// (its strip minus newer strips, newest on top, as the imagery is stacked)
+// and label it with that pass's date. polygon-clipping loads on first use.
+const COMP_COLORS = ['#4FC3F7', '#FFB74D', '#BA68C8', '#81C784', '#F06292', '#FFF176'];
+let polyClipLoading = null;
+function loadPolyClip() {
+  if (window.polygonClipping) return Promise.resolve();
+  return polyClipLoading = polyClipLoading || new Promise((ok, fail) => {
+    const sc = document.createElement('script');
+    sc.src = 'https://cdn.jsdelivr.net/npm/polygon-clipping@0.15.7/dist/polygon-clipping.umd.min.js';
+    sc.onload = ok; sc.onerror = fail; document.head.appendChild(sc);
+  });
+}
+async function updateCompositeRegions() {
+  if (!map.getLayer('webcam-icons')) return;
+  const d = CURRENT_DATA;
+  const empty = { type: 'FeatureCollection', features: [] };
+  const set = data => {
+    if (map.getSource('comp-regions')) { map.getSource('comp-regions').setData(data); return; }
+    map.addSource('comp-regions', { type: 'geojson', data });
+    map.addLayer({ id: 'comp-fill', type: 'fill', source: 'comp-regions', filter: ['==', ['geometry-type'], 'Polygon'],
+      paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.14 } }, map.getLayer('pass-fill') ? 'pass-fill' : undefined);
+    map.addLayer({ id: 'comp-line', type: 'line', source: 'comp-regions', filter: ['==', ['geometry-type'], 'Polygon'],
+      paint: { 'line-color': ['get', 'color'], 'line-width': 1.5, 'line-opacity': 0.9 } }, map.getLayer('pass-fill') ? 'pass-fill' : undefined);
+    map.addLayer({ id: 'comp-label', type: 'symbol', source: 'comp-regions', filter: ['==', ['geometry-type'], 'Point'], layout: {
+      'text-field': ['get', 'label'], 'text-size': 13, 'text-font': ['DIN Pro Bold', 'Arial Unicode MS Bold'],
+      'text-allow-overlap': true }, paint: { 'text-color': ['get', 'color'], 'text-halo-color': 'rgba(0,0,0,0.8)', 'text-halo-width': 1.6 } });
+  };
+  const srcs = d && d.view === 'latest' && d.latest
+    ? (d.latest.sources || []).filter(x => x.pct_of_seen > 0).map(x => x.date).sort().reverse() : [];
+  const rows = srcs.map(dt => SAT_ROWS.find(r => r.dt === dt && r.footprint)).filter(Boolean);
+  if (rows.length < 2) { if (map.getLayer('pass-fill')) set(empty); return; }
+  try { await loadPolyClip(); } catch (e) { return; }
+  if (CURRENT_DATA !== d) return;
+  const pc = window.polygonClipping;
+  const asMulti = g => g.type === 'Polygon' ? [g.coordinates] : g.coordinates;
+  const aoi = [[[[-112.2, 44.9], [-109.0, 44.9], [-109.0, 46.5], [-112.2, 46.5], [-112.2, 44.9]]]];
+  const fmt = s => new Date(s + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  let newer = null;
+  const features = [];
+  rows.forEach((r, i) => {
+    const strip = pc.intersection(asMulti(r.footprint), aoi);
+    const part = newer ? pc.difference(strip, newer) : strip;
+    newer = newer ? pc.union(newer, strip) : strip;
+    if (!part.length) return;
+    const props = { label: fmt(r.dt), color: COMP_COLORS[i % COMP_COLORS.length] };
+    features.push({ type: 'Feature', geometry: { type: 'MultiPolygon', coordinates: part }, properties: props });
+    // One label, at the centre of the biggest piece if it's big enough to read.
+    const ringArea = ring => Math.abs(ring.reduce((a, p, k) => { const q = ring[(k + 1) % ring.length]; return a + p[0] * q[1] - q[0] * p[1]; }, 0)) / 2;
+    const big = part.map(poly => ({ ring: poly[0], area: ringArea(poly[0]) })).sort((a, b) => b.area - a.area)[0];
+    if (big.area < 0.05) return;   // deg², about 1% of the area
+    const cx = big.ring.reduce((a, p) => a + p[0], 0) / big.ring.length, cy = big.ring.reduce((a, p) => a + p[1], 0) / big.ring.length;
+    features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [cx, cy] }, properties: props });
+  });
+  set({ type: 'FeatureCollection', features });
 }
 
 function renderNextPass() {
