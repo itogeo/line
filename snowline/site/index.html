@@ -514,6 +514,8 @@
     .feedback-toggle { top: 86px; left: 8px; right: auto; bottom: auto; padding: 5px 10px; }
     .feedback-toggle .ft-sub { display: none; }
     .feedback-box { top: 86px; left: 8px; right: 8px; bottom: auto; width: auto; }
+    /* Every other month on the timeline; all eight collide at phone width */
+    .tl-mon-odd { display: none; }
     .opacity-wrap { margin-left: 0; }
     .opacity-wrap input { min-width: 0; width: 100%; }
 
@@ -1988,8 +1990,8 @@ function buildTimeline() {
   // Month labels at correct positions
   const months = seasonMonthKeys(SEASON).map(k =>
     [new Date(k + '-01T00:00:00').toLocaleDateString('en-US', { month: 'short' }), k + '-01']);
-  months.forEach(([label, d]) => {
-    html += `<span style="position:absolute;left:${dateToPct(d)}%;top:12px;font-size:7px;color:var(--text-dim);transform:translateX(-50%)">${label}</span>`;
+  months.forEach(([label, d], i) => {
+    html += `<span class="tl-mon${i % 2 ? ' tl-mon-odd' : ''}" style="position:absolute;left:${dateToPct(d)}%;top:12px;font-size:7px;color:var(--text-dim);transform:translateX(-50%)">${label}</span>`;
     html += `<div style="position:absolute;left:${dateToPct(d)}%;top:0;width:1px;height:10px;background:rgba(255,255,255,0.08)"></div>`;
   });
 
