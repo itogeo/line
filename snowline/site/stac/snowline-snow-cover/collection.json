@@ -437,6 +437,21 @@
   },
   {
    "rel": "item",
+   "href": "./2026-10-09/2026-10-09.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2026-10-10/2026-10-10.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2026-10-11/2026-10-11.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
    "href": "./2026-10-13/2026-10-13.json",
    "type": "application/geo+json"
   }
