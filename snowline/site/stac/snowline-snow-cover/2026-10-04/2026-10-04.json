@@ -1,0 +1,299 @@
+{
+ "type": "Feature",
+ "stac_version": "1.1.0",
+ "stac_extensions": [
+  "https://stac-extensions.github.io/classification/v2.0.0/schema.json",
+  "https://stac-extensions.github.io/projection/v2.0.0/schema.json"
+ ],
+ "id": "snowline-2026-10-04",
+ "collection": "snowline-snow-cover",
+ "geometry": {
+  "type": "Polygon",
+  "coordinates": [
+   [
+    [
+     -112.6,
+     44.55
+    ],
+    [
+     -109.6,
+     44.55
+    ],
+    [
+     -109.6,
+     46.35
+    ],
+    [
+     -112.6,
+     46.35
+    ],
+    [
+     -112.6,
+     44.55
+    ]
+   ]
+  ]
+ },
+ "bbox": [
+  -112.6,
+  44.55,
+  -109.6,
+  46.35
+ ],
+ "properties": {
+  "datetime": null,
+  "start_datetime": "2026-10-04T18:41:20.019000+00:00",
+  "end_datetime": "2026-10-04T18:41:52.866000+00:00",
+  "title": "Snowline snow cover 2026-10-04",
+  "snowline:snow_cover_pct": 0.1,
+  "snowline:coverage_pct": 12.7,
+  "snowline:ndsi_threshold": 0.4
+ },
+ "links": [
+  {
+   "rel": "collection",
+   "href": "../collection.json",
+   "type": "application/json"
+  },
+  {
+   "rel": "parent",
+   "href": "../collection.json",
+   "type": "application/json"
+  },
+  {
+   "rel": "root",
+   "href": "../../catalog.json",
+   "type": "application/json"
+  },
+  {
+   "rel": "alternate",
+   "href": "https://line.itogeospatial.com/snow/#date=2026-10-04",
+   "type": "text/html",
+   "title": "Open on the map"
+  },
+  {
+   "rel": "derived_from",
+   "type": "application/json",
+   "title": "S2C_T12TUQ_20261004T183525_L2A",
+   "href": "https://earth-search.aws.element84.com/v1/collections/sentinel-2-c1-l2a/items/S2C_T12TUQ_20261004T183525_L2A"
+  },
+  {
+   "rel": "derived_from",
+   "type": "application/json",
+   "title": "S2C_T12TUR_20261004T183525_L2A",
+   "href": "https://earth-search.aws.element84.com/v1/collections/sentinel-2-c1-l2a/items/S2C_T12TUR_20261004T183525_L2A"
+  },
+  {
+   "rel": "derived_from",
+   "type": "application/json",
+   "title": "S2C_T12TUS_20261004T183525_L2A",
+   "href": "https://earth-search.aws.element84.com/v1/collections/sentinel-2-c1-l2a/items/S2C_T12TUS_20261004T183525_L2A"
+  },
+  {
+   "rel": "derived_from",
+   "type": "application/json",
+   "title": "S2C_T12TVR_20261004T183525_L2A",
+   "href": "https://earth-search.aws.element84.com/v1/collections/sentinel-2-c1-l2a/items/S2C_T12TVR_20261004T183525_L2A"
+  },
+  {
+   "rel": "derived_from",
+   "type": "application/json",
+   "title": "S2C_T12TVS_20261004T183525_L2A",
+   "href": "https://earth-search.aws.element84.com/v1/collections/sentinel-2-c1-l2a/items/S2C_T12TVS_20261004T183525_L2A"
+  }
+ ],
+ "assets": {
+  "metadata": {
+   "href": "https://line.itogeospatial.com/snow/data_10m/2026-10-04/snowline.json",
+   "type": "application/json",
+   "title": "Snowline map metadata (scenes, coverage)",
+   "roles": [
+    "metadata"
+   ]
+  },
+  "class_r0c0": {
+   "href": "https://line.itogeospatial.com/snow/api/tile/2026-10-04/snow_r0c0.tif",
+   "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+   "title": "Snow class raster, chunk r0c0",
+   "roles": [
+    "data"
+   ],
+   "proj:code": "EPSG:4326",
+   "proj:bbox": [
+    -112.6,
+    44.55,
+    -111.6,
+    45.45
+   ],
+   "classification:classes": [
+    {
+     "value": 0,
+     "name": "ground",
+     "description": "Imaged, not snow"
+    },
+    {
+     "value": 1,
+     "name": "snow",
+     "description": "NDSI >= 0.4 or SCL snow (11), and not masked"
+    },
+    {
+     "value": 2,
+     "name": "cloud",
+     "description": "SCL cloud, cloud shadow or cirrus"
+    },
+    {
+     "value": 3,
+     "name": "nodata",
+     "description": "Not imaged that day"
+    }
+   ],
+   "nodata": 255
+  },
+  "preview_r0c0": {
+   "href": "https://line.itogeospatial.com/snow/api/tile/2026-10-04/snow_r0c0.webp",
+   "type": "image/webp",
+   "title": "Map tile (RGBA), chunk r0c0",
+   "roles": [
+    "overview"
+   ]
+  },
+  "class_r0c1": {
+   "href": "https://line.itogeospatial.com/snow/api/tile/2026-10-04/snow_r0c1.tif",
+   "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+   "title": "Snow class raster, chunk r0c1",
+   "roles": [
+    "data"
+   ],
+   "proj:code": "EPSG:4326",
+   "proj:bbox": [
+    -111.6,
+    44.55,
+    -110.6,
+    45.45
+   ],
+   "classification:classes": [
+    {
+     "value": 0,
+     "name": "ground",
+     "description": "Imaged, not snow"
+    },
+    {
+     "value": 1,
+     "name": "snow",
+     "description": "NDSI >= 0.4 or SCL snow (11), and not masked"
+    },
+    {
+     "value": 2,
+     "name": "cloud",
+     "description": "SCL cloud, cloud shadow or cirrus"
+    },
+    {
+     "value": 3,
+     "name": "nodata",
+     "description": "Not imaged that day"
+    }
+   ],
+   "nodata": 255
+  },
+  "preview_r0c1": {
+   "href": "https://line.itogeospatial.com/snow/api/tile/2026-10-04/snow_r0c1.webp",
+   "type": "image/webp",
+   "title": "Map tile (RGBA), chunk r0c1",
+   "roles": [
+    "overview"
+   ]
+  },
+  "class_r1c0": {
+   "href": "https://line.itogeospatial.com/snow/api/tile/2026-10-04/snow_r1c0.tif",
+   "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+   "title": "Snow class raster, chunk r1c0",
+   "roles": [
+    "data"
+   ],
+   "proj:code": "EPSG:4326",
+   "proj:bbox": [
+    -112.6,
+    45.45,
+    -111.6,
+    46.35
+   ],
+   "classification:classes": [
+    {
+     "value": 0,
+     "name": "ground",
+     "description": "Imaged, not snow"
+    },
+    {
+     "value": 1,
+     "name": "snow",
+     "description": "NDSI >= 0.4 or SCL snow (11), and not masked"
+    },
+    {
+     "value": 2,
+     "name": "cloud",
+     "description": "SCL cloud, cloud shadow or cirrus"
+    },
+    {
+     "value": 3,
+     "name": "nodata",
+     "description": "Not imaged that day"
+    }
+   ],
+   "nodata": 255
+  },
+  "preview_r1c0": {
+   "href": "https://line.itogeospatial.com/snow/api/tile/2026-10-04/snow_r1c0.webp",
+   "type": "image/webp",
+   "title": "Map tile (RGBA), chunk r1c0",
+   "roles": [
+    "overview"
+   ]
+  },
+  "class_r1c1": {
+   "href": "https://line.itogeospatial.com/snow/api/tile/2026-10-04/snow_r1c1.tif",
+   "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+   "title": "Snow class raster, chunk r1c1",
+   "roles": [
+    "data"
+   ],
+   "proj:code": "EPSG:4326",
+   "proj:bbox": [
+    -111.6,
+    45.45,
+    -110.6,
+    46.35
+   ],
+   "classification:classes": [
+    {
+     "value": 0,
+     "name": "ground",
+     "description": "Imaged, not snow"
+    },
+    {
+     "value": 1,
+     "name": "snow",
+     "description": "NDSI >= 0.4 or SCL snow (11), and not masked"
+    },
+    {
+     "value": 2,
+     "name": "cloud",
+     "description": "SCL cloud, cloud shadow or cirrus"
+    },
+    {
+     "value": 3,
+     "name": "nodata",
+     "description": "Not imaged that day"
+    }
+   ],
+   "nodata": 255
+  },
+  "preview_r1c1": {
+   "href": "https://line.itogeospatial.com/snow/api/tile/2026-10-04/snow_r1c1.webp",
+   "type": "image/webp",
+   "title": "Map tile (RGBA), chunk r1c1",
+   "roles": [
+    "overview"
+   ]
+  }
+ }
+}
