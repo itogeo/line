@@ -97,7 +97,24 @@ no progress (log what blocks it and who has to act).
 | 16 | **Most recent imagery easier to reach** (Sam). Done 2026-10-14: map opens on 'Most recent pass'; three fixed jump buttons. Revisit after item 11. | loop | done |
 | 17 | **New AOI** (Ian 2026-10-14): Bozeman, Tobacco Roots, Rubies, all of the Madisons, the Gallatins and Absarokas south toward Yellowstone, the Crazies, Cooke City; drop the Columbus/Nye edge. Proposal [-112.6, 44.55, -109.6, 46.35] with 12 tiles: 9 is not enough, the X column stays (2026-10-14 check, see lib/aoi.py). Touches lib/aoi.py, 6 hard-coded copies in index.html, lidar terrain (rebuild, Ian runs), historical + forest mask (rebuild), SNOTEL bboxes, this season's maps (reprocess so the composite lines up). | Ian decides box, then loop | waits for Ian |
 
-## SNOTEL status (2026-10-13)
+## UX pass: make the map make sense to a first-time visitor (2026-10-14)
+
+Audit of the live site as a stranger would see it. Worked top to bottom, one
+item per commit, each checked on desktop and a 390 px phone.
+
+| # | Problem a visitor hits | Fix | Status |
+|---|---|---|---|
+| U1 | No answer to "how much snow is there?" until you read bars and charts. | One plain headline under the date: "Snow on 58% of what the satellite saw · stations average 3″, up 3″ this week". | open |
+| U2 | Jargon: LIVE (the imagery is a day old), AOI, S2 Imagery, Satellite pass, Lidar terrain, Historical, SNOTEL unexplained. | Plain names: "Newest" / "N days ago", "of the area seen", "Satellite photo", "Strip edge", "Terrain shading", "How often it's snowy (2000–25)", "Snow stations (SNOTEL)". | open |
+| U3 | On "Most recent pass" half the map is bare basemap; it reads as "no snow" instead of "not photographed that day". | Shade and label the part the pass missed: "Not photographed Oct 13 · try Most recent composite". | open |
+| U4 | Legend misses what the map shows: hatching (no data), station dot colours (red = least snow, blue = most today), webcams. | Complete legend, one line each. | open |
+| U5 | Desktop layers panel is open over the map with 10 toggles + a draw button; Sam: "too much". | Collapsed to a "Layers" button by default (as on phones); everyday layers first, the rest under "More". | open |
+| U6 | Nothing tells a new visitor they can click a spot or a station. | One-time dismissible tip: what blue/grey mean, "click anywhere for that spot's snow history", "click a dot for a station". | open |
+| U7 | Header takes 4 lines (wordmark, title, region, updated) before the date. | One line: "Snow Cover · SW Montana", updated time beside the date. | open |
+| U8 | Timeline: tiny dots, "2026-27" unexplained, no hint it's clickable. | Label "Season 2026–27 · click a dot for that day's map"; bigger dots; legend for dot colours. | open |
+| U9 | View buttons are four cramped uppercase mono labels. | Two clear tabs (Most recent pass / Most recent composite) + two text links (Same week last year · Last full day), sentence case. | open |
+| U10 | Data and Webcams pages: same audit (headers, jargon, phone). | Pass after U1–U9. | open |
+
 
 Ready in code, **not yet live**. Checked against NRCS on 2026-10-06:
 station depths match (Lick Creek 16″, Albro Lake 41″, Shower Falls 54″ on
