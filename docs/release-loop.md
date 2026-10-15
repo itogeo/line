@@ -106,7 +106,7 @@ item per commit, each checked on desktop and a 390 px phone.
 |---|---|---|---|
 | U1 | No answer to "how much snow is there?" until you read bars and charts. | One plain headline under the date: "Snow on 58% of what the satellite saw · stations average 3″, up 3″ this week". | done |
 | U2 | Jargon: LIVE (the imagery is a day old), AOI, S2 Imagery, Satellite pass, Lidar terrain, Historical, SNOTEL unexplained. | Plain names: "Newest" / "N days ago", "of the area seen", "Satellite photo", "Strip edge", "Terrain shading", "How often it's snowy (2000–25)", "Snow stations (SNOTEL)". | done |
-| U3 | On "Most recent pass" half the map is bare basemap; it reads as "no snow" instead of "not photographed that day". | Shade and label the part the pass missed: "Not photographed Oct 13 · try Most recent composite". | open |
+| U3 | On "Most recent pass" half the map is bare basemap; it reads as "no snow" instead of "not photographed that day". | Shade and label the part the pass missed: "Not photographed Oct 13 · try Most recent composite". | done |
 | U4 | Legend misses what the map shows: hatching (no data), station dot colours (red = least snow, blue = most today), webcams. | Complete legend, one line each. | open |
 | U5 | Desktop layers panel is open over the map with 10 toggles + a draw button; Sam: "too much". | Collapsed to a "Layers" button by default (as on phones); everyday layers first, the rest under "More". | open |
 | U6 | Nothing tells a new visitor they can click a spot or a station. | One-time dismissible tip: what blue/grey mean, "click anywhere for that spot's snow history", "click a dot for a station". | open |
@@ -114,6 +114,7 @@ item per commit, each checked on desktop and a 390 px phone.
 | U8 | Timeline: tiny dots, "2026-27" unexplained, no hint it's clickable. | Label "Season 2026–27 · click a dot for that day's map"; bigger dots; legend for dot colours. | open |
 | U9 | View buttons are four cramped uppercase mono labels. | Two clear tabs (Most recent pass / Most recent composite) + two text links (Same week last year · Last full day), sentence case. | open |
 | U10 | Data and Webcams pages: same audit (headers, jargon, phone). | Pass after U1–U9. | open |
+| U11 | Most recent composite still draws the pink single-pass edge over the dated regions; two competing outlines. | Hide the strip edge in composite view (the regions already show each pass). | open |
 
 
 Ready in code, **not yet live**. Checked against NRCS on 2026-10-06:

@@ -2501,6 +2501,17 @@ function setAoi(bbox) {
     geometry: { type: 'Polygon', coordinates: [[[w, n], [e, n], [e, s], [w, s], [w, n]]] } });
   updatePassFootprint(); updateCompositeRegions(); updateAreaLayer();
 }
+// Fit the whole area into the map space beside the panel, the layers box and
+// the timeline (on phones the panel is a bottom sheet, so plain padding).
+function fitAoi(duration = 0) {
+  const r = map.getContainer().getBoundingClientRect(), wide = innerWidth > 700;
+  const panel = document.getElementById('panel');
+  const left = wide && panel ? panel.getBoundingClientRect().right - r.left + 16 : 16;
+  const pad = wide ? { left, right: 200, top: 30, bottom: 100 } : { left: 16, right: 16, top: 60, bottom: 120 };
+  if (r.width - pad.left - pad.right < 200) { pad.left = pad.right = 16; }
+  map.fitBounds([[AOI_BBOX[0], AOI_BBOX[1]], [AOI_BBOX[2], AOI_BBOX[3]]], { padding: pad, duration });
+}
+if (!HASH0.map) fitAoi();
 const NEXT_COLOR = '#FFD54F';   // predicted-pass chips
 const NEXT_COLORS = ['#66BB6A', '#FFEE58', '#FFA726', '#EF5350'];  // their paths on the map, soonest → furthest
 const MONTANA_BOX = [-116.1, 44.3, -104.0, 49.0];
@@ -2596,6 +2607,7 @@ function updatePassFootprint() {
   const show = document.getElementById('tog-pass').checked;
   const fmt = d => new Date(d + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
   const features = [];
+  let missed = null;
   if (!(show && PREDICTED_PASS)) startNextAnimation(null);
   const add = (fp, props) => {
     if (!fp) return;
@@ -2633,7 +2645,9 @@ function updatePassFootprint() {
   } else if (show && CURRENT_DATA) {
     const row = SAT_ROWS.find(r => r.dt === CURRENT_DATA.scene_date);
     if (row) add(row.footprint, { label: `Edge of the ${fmt(row.dt)} pass`, color: '#FF4FD8', sel: false });
+    if (row && CURRENT_DATA.view !== 'latest') missed = missedByPass(row);
   }
+  updateMissed(missed);
   const data = { type: 'FeatureCollection', features };
   if (map.getSource('pass')) map.getSource('pass').setData(data);
   else map.addSource('pass', { type: 'geojson', data });
@@ -2666,6 +2680,63 @@ function updatePassFootprint() {
   }
   document.querySelectorAll('#next-pass .pass-chip').forEach(a =>
     a.classList.toggle('on', !!PREDICTED_PASS && a.dataset.due === PREDICTED_PASS.due));
+}
+
+// The part of the area a single pass didn't photograph: shaded and labelled,
+// so bare basemap there doesn't read as "no snow".
+function missedByPass(row) {
+  const [w, s, e, n] = AOI_BBOX;
+  const box = [[[[w, s], [e, s], [e, n], [w, n], [w, s]]]];
+  const part = window.polygonClipping.difference(box, row.footprint.type === 'Polygon' ? [row.footprint.coordinates] : row.footprint.coordinates);
+  const ringArea = r => Math.abs(r.reduce((a, p, k) => { const q = r[(k + 1) % r.length]; return a + p[0] * q[1] - q[0] * p[1]; }, 0)) / 2;
+  const pieces = part.map(poly => ({ poly, area: ringArea(poly[0]) })).filter(x => x.area > 0.02).sort((a, b) => b.area - a.area);
+  if (!pieces.length) return null;
+  const day = new Date(row.dt + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  MISSED = { polys: pieces.map(x => x.poly), label: `Not photographed ${day}\nsee Most recent composite` };
+  return missedData();
+}
+// The label goes at the centre of the missed part that's on screen and not
+// behind the panel; recomputed when the map moves.
+let MISSED = null;
+function missedData() {
+  if (!MISSED) return null;
+  const features = [{ type: 'Feature', geometry: { type: 'MultiPolygon', coordinates: MISSED.polys }, properties: {} }];
+  const panel = document.getElementById('panel'), r = map.getContainer().getBoundingClientRect();
+  const pr = panel && !panel.classList.contains('collapsed') && innerWidth > 700 ? panel.getBoundingClientRect().right - r.left : 0;
+  const a = map.unproject([pr + 20, 20]), b = map.unproject([r.width - 200, r.height - 40]);
+  const view = [[[[a.lng, b.lat], [b.lng, b.lat], [b.lng, a.lat], [a.lng, a.lat], [a.lng, b.lat]]]];
+  const vis = b.lng > a.lng ? window.polygonClipping.intersection(MISSED.polys, view) : [];
+  // Roomiest on-screen spot: grid points inside the visible part, farthest (in
+  // pixels) from any of its edges.
+  const rings = vis.map(poly => poly[0].map(c => { const q = map.project(c); return [q.x, q.y]; }));
+  const inside = (x, y) => rings.some(r => { let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++)
+    if ((r[i][1] > y) !== (r[j][1] > y) && x < (r[j][0] - r[i][0]) * (y - r[i][1]) / (r[j][1] - r[i][1]) + r[i][0]) c = !c; return c; });
+  const segDist = (x, y, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / (dx * dx + dy * dy || 1)));
+    return Math.hypot(x - a[0] - t * dx, y - a[1] - t * dy); };
+  let best = null;
+  for (let gx = 0; gx <= 24; gx++) for (let gy = 0; gy <= 24; gy++) {
+    const x = pr + 20 + (r.width - 220 - pr) * gx / 24, y = 20 + (r.height - 60) * gy / 24;
+    if (!inside(x, y)) continue;
+    let d = Infinity;
+    for (const ring of rings) for (let k = 1; k < ring.length; k++) d = Math.min(d, segDist(x, y, ring[k - 1], ring[k]));
+    if (!best || d > best.d) best = { x, y, d };
+  }
+  if (best && best.d > 40) { const c = map.unproject([best.x, best.y]);
+    features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [c.lng, c.lat] }, properties: { label: MISSED.label } }); }
+  return { type: 'FeatureCollection', features };
+}
+function updateMissed(data) {
+  if (!data) MISSED = null;
+  data = data || { type: 'FeatureCollection', features: [] };
+  if (map.getSource('pass-missed')) { map.getSource('pass-missed').setData(data); return; }
+  map.addSource('pass-missed', { type: 'geojson', data });
+  map.on('moveend', () => { if (MISSED) map.getSource('pass-missed').setData(missedData()); });
+  const before = map.getLayer('pass-fill') ? 'pass-fill' : undefined;
+  map.addLayer({ id: 'missed-fill', type: 'fill', source: 'pass-missed', filter: ['==', ['geometry-type'], 'Polygon'],
+    paint: { 'fill-color': '#0a121e', 'fill-opacity': 0.4 } }, before);
+  map.addLayer({ id: 'missed-label', type: 'symbol', source: 'pass-missed', filter: ['==', ['geometry-type'], 'Point'], layout: {
+    'text-field': ['get', 'label'], 'text-size': 13, 'text-font': ['DIN Pro Bold', 'Arial Unicode MS Bold'], 'text-max-width': 14, 'text-allow-overlap': true,
+  }, paint: { 'text-color': '#ffffff', 'text-halo-color': 'rgba(10,18,30,0.9)', 'text-halo-width': 1.8 } });
 }
 
 // Most recent composite: shade the part of the area each pass supplies
@@ -2839,7 +2910,7 @@ function renderNextPass() {
     updateOrbit(null);
     // Out to the globe to follow each path all the way round; back to the area after.
     if (PREDICTED_PASS) map.flyTo({ center: [-111, 30], zoom: 1.6, pitch: 0, bearing: 0, duration: 2500 });
-    else map.fitBounds([[AOI_BBOX[0], AOI_BBOX[1]], [AOI_BBOX[2], AOI_BBOX[3]]], { padding: 40, duration: 2000 });
+    else fitAoi(2000);
   });
   el.style.display = '';
 }
