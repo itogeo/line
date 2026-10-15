@@ -108,7 +108,7 @@ item per commit, each checked on desktop and a 390 px phone.
 | U2 | Jargon: LIVE (the imagery is a day old), AOI, S2 Imagery, Satellite pass, Lidar terrain, Historical, SNOTEL unexplained. | Plain names: "Newest" / "N days ago", "of the area seen", "Satellite photo", "Strip edge", "Terrain shading", "How often it's snowy (2000–25)", "Snow stations (SNOTEL)". | done |
 | U3 | On "Most recent pass" half the map is bare basemap; it reads as "no snow" instead of "not photographed that day". | Shade and label the part the pass missed: "Not photographed Oct 13 · try Most recent composite". | done |
 | U4 | Legend misses what the map shows: hatching (no data), station dot colours (red = least snow, blue = most today), webcams. | Complete legend, one line each. | done |
-| U5 | Desktop layers panel is open over the map with 10 toggles + a draw button; Sam: "too much". | Collapsed to a "Layers" button by default (as on phones); everyday layers first, the rest under "More". | open |
+| U5 | Desktop layers panel is open over the map with 10 toggles + a draw button; Sam: "too much". | Collapsed to a "Layers" button by default (as on phones); everyday layers first, the rest under "More". | done |
 | U6 | Nothing tells a new visitor they can click a spot or a station. | One-time dismissible tip: what blue/grey mean, "click anywhere for that spot's snow history", "click a dot for a station". | open |
 | U7 | Header takes 4 lines (wordmark, title, region, updated) before the date. | One line: "Snow Cover · SW Montana", updated time beside the date. | done |
 | U8 | Timeline: tiny dots, "2026-27" unexplained, no hint it's clickable. | Label "Season 2026–27 · click a dot for that day's map"; bigger dots; legend for dot colours. | open |

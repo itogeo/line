@@ -418,6 +418,19 @@
   }
   .compass svg { width: 100%; height: 100%; filter: drop-shadow(0 2px 6px rgba(0,0,0,0.5)); }
   .compass:hover { transform: scale(1.1); }
+  /* Layers box: starts closed so the map shows; click "Layers" to open */
+  .layers-wrap.closed { width: auto !important; }
+  .layers-wrap.closed .layers { display: none; }
+  .layers-wrap.closed .layers-title { margin-bottom: 0 !important; }
+  .layers-title { cursor: pointer; }
+  .layers-title::after { content: ' \25BE'; }
+  .layers-wrap.closed .layers-title::after { content: ' \25B8'; }
+  .layers-wrap.closed .layers-title { font-size: 10px !important; color: var(--text) !important; }
+  details.layers-more summary { cursor: pointer; font-family: var(--mono); font-size: 9px; color: var(--text-dim);
+    text-transform: uppercase; letter-spacing: 1px; padding: 6px 0 2px; list-style: none; }
+  details.layers-more summary::-webkit-details-marker { display: none; }
+  details.layers-more summary::after { content: ' \25B8'; }
+  details.layers-more[open] summary::after { content: ' \25BE'; }
   /* Desktop: below the layers panel, above Feedback */
   @media (min-width: 769px) {
     .compass { top: auto; bottom: 120px; }
@@ -543,13 +556,7 @@
       width: 140px !important;
       font-size: 10px !important;
     }
-    /* Starts closed on phones so the map shows; tap "Layers" to open */
-    .layers-wrap.closed { width: auto !important; }
-    .layers-wrap.closed .layers { display: none; }
-    .layers-wrap.closed .layers-title { margin-bottom: 0 !important; }
-    .layers-title { cursor: pointer; font-size: 10px !important; }
-    .layers-title::after { content: ' \25BE'; }
-    .layers-wrap.closed .layers-title::after { content: ' \25B8'; }
+    .layers-title { font-size: 10px !important; }
     /* Feedback sits under the legend, clear of the bottom sheet */
     .feedback-toggle { top: 86px; left: 8px; right: auto; bottom: auto; padding: 5px 10px; }
     .feedback-toggle .ft-sub { display: none; }
@@ -717,16 +724,18 @@
     <div class="opacity-wrap" id="opacity-snow"><label>Opacity</label><input type="range" min="0" max="100" value="70" id="slider-snow"></div>
     <label class="layer-row"><input type="checkbox" id="tog-s2" checked><div class="sw"></div><span class="layer-label" title="Sentinel-2 true-colour photo from this pass">Satellite photo</span></label>
     <div class="opacity-wrap" id="opacity-s2"><label>Opacity</label><input type="range" min="0" max="100" value="90" id="slider-s2"></div>
-    <label class="layer-row" title="Outline of the strip the satellite imaged on this date"><input type="checkbox" id="tog-pass" checked><div class="sw"></div><span class="layer-label">Strip edge</span></label>
-    <label class="layer-row"><input type="checkbox" id="tog-historical"><div class="sw"></div><span class="layer-label" title="Share of years 2000–2025 with snow here at this time of year (MODIS, 500 m)">Usual snow</span></label>
-    <div class="opacity-wrap hidden" id="opacity-historical"><label>Opacity</label><input type="range" min="0" max="100" value="50" id="slider-historical"></div>
-    <label class="layer-row" title="Terrain shading from USGS 1 m lidar"><input type="checkbox" id="tog-lidar" checked><div class="sw"></div><span class="layer-label">Terrain shading</span></label>
-    <label class="layer-row"><input type="checkbox" id="tog-forest"><div class="sw"></div><span class="layer-label">Forest</span></label>
     <label class="layer-row"><input type="checkbox" id="tog-snotel" checked><div class="sw"></div><span class="layer-label" title="NRCS SNOTEL ground stations: measured snow depth">Snow stations</span></label>
     <label class="layer-row"><input type="checkbox" id="tog-webcams" checked><div class="sw"></div><span class="layer-label">Webcams</span></label>
-    <label class="layer-row"><input type="checkbox" id="tog-terrain"><div class="sw"></div><span class="layer-label">3D mountains</span></label>
-    <label class="layer-row" title="The area Snowline maps now, and the larger area proposed"><input type="checkbox" id="tog-aoi"><div class="sw"></div><span class="layer-label">Map area</span></label>
-    <button type="button" id="draw-area-btn" class="draw-area-btn" title="Drag a box on the map to ask for that area to be mapped">Draw an area to request</button>
+    <label class="layer-row" title="Outline of the strip the satellite imaged on this date"><input type="checkbox" id="tog-pass" checked><div class="sw"></div><span class="layer-label">Strip edge</span></label>
+    <details class="layers-more" id="layers-more"><summary>More</summary>
+      <label class="layer-row"><input type="checkbox" id="tog-historical"><div class="sw"></div><span class="layer-label" title="Share of years 2000–2025 with snow here at this time of year (MODIS, 500 m)">Usual snow</span></label>
+      <div class="opacity-wrap hidden" id="opacity-historical"><label>Opacity</label><input type="range" min="0" max="100" value="50" id="slider-historical"></div>
+      <label class="layer-row" title="Terrain shading from USGS 1 m lidar"><input type="checkbox" id="tog-lidar" checked><div class="sw"></div><span class="layer-label">Terrain shading</span></label>
+      <label class="layer-row"><input type="checkbox" id="tog-forest"><div class="sw"></div><span class="layer-label">Forest</span></label>
+      <label class="layer-row"><input type="checkbox" id="tog-terrain"><div class="sw"></div><span class="layer-label">3D mountains</span></label>
+      <label class="layer-row" title="The area Snowline maps now, and the larger area proposed"><input type="checkbox" id="tog-aoi"><div class="sw"></div><span class="layer-label">Map area</span></label>
+      <button type="button" id="draw-area-btn" class="draw-area-btn" title="Drag a box on the map to ask for that area to be mapped">Draw an area to request</button>
+    </details>
   </div>
 </div>
 
@@ -3179,11 +3188,19 @@ panelToggle.addEventListener('click', () => {
 let dragStartY = null;
 function isMobile() { return window.innerWidth < 768; }
 
-// Layers panel: closed by default on phones, the title toggles it.
+// Layers box: closed by default so the map shows (remembered per browser on
+// desktop); the title toggles it. The rarer layers sit under "More".
 (function () {
-  const wrap = document.querySelector('.layers-wrap');
-  if (isMobile()) wrap.classList.add('closed');
-  wrap.querySelector('.layers-title').addEventListener('click', () => wrap.classList.toggle('closed'));
+  const wrap = document.querySelector('.layers-wrap'), more = document.getElementById('layers-more');
+  const get = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+  const put = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+  if (isMobile() || get('snowline_layers_open') !== '1') wrap.classList.add('closed');
+  if (get('snowline_layers_more') === '1') more.open = true;
+  wrap.querySelector('.layers-title').addEventListener('click', () => {
+    wrap.classList.toggle('closed');
+    if (!isMobile()) put('snowline_layers_open', wrap.classList.contains('closed') ? '0' : '1');
+  });
+  more.addEventListener('toggle', () => put('snowline_layers_more', more.open ? '1' : '0'));
 })();
 function panelTopRegion(e) {
   if (!isMobile()) return false;
