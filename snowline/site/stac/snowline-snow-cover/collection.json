@@ -43,8 +43,8 @@
   "spatial": {
    "bbox": [
     [
-     -112.2,
-     44.9,
+     -112.6,
+     44.55,
      -109.0,
      46.5
     ]
@@ -383,6 +383,11 @@
   {
    "rel": "item",
    "href": "./2026-05-29/2026-05-29.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2026-09-16/2026-09-16.json",
    "type": "application/geo+json"
   },
   {
