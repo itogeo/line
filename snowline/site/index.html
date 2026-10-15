@@ -88,7 +88,7 @@
     position: absolute; top: 12px; left: 12px;
     background: var(--panel);
     border: 1px solid var(--border); border-radius: var(--radius);
-    padding: 16px 20px 14px; z-index: 10; width: 360px; font-size: 13px;
+    padding: 16px 20px 14px; z-index: 10; width: 400px; font-size: 13px;
     max-height: calc(100vh - 80px); overflow-y: auto;
     transition: opacity 0.3s, transform 0.3s;
     box-shadow: 0 8px 32px rgba(0,0,0,0.35);
@@ -165,6 +165,12 @@
   .snow-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), #81d4fa); border-radius: 2px; transition: width 0.6s ease; }
 
   /* ── Layer toggles ── */
+  details.more { margin: 8px 0 0; border-top: 1px solid var(--border); padding-top: 6px; }
+  details.more > summary { cursor: pointer; list-style: none; font-family: var(--mono); font-size: 10px; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 1px; padding: 4px 0; }
+  details.more > summary::-webkit-details-marker { display: none; }
+  details.more > summary::before { content: '▸ '; color: var(--accent); }
+  details.more[open] > summary::before { content: '▾ '; }
   .section-label { font-family: var(--mono); font-size: 9px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1.2px; margin: 10px 0 5px; }
   .layers { display: flex; flex-direction: column; gap: 1px; }
   .layer-row { display: flex; align-items: center; gap: 7px; padding: 4px 5px; border-radius: 4px; cursor: pointer; user-select: none; }
@@ -544,7 +550,7 @@
     /* Feedback sits under the legend, clear of the bottom sheet */
     .feedback-toggle { top: 86px; left: 8px; right: auto; bottom: auto; padding: 5px 10px; }
     .feedback-toggle .ft-sub { display: none; }
-    .coffee-btn { top: 86px; right: 8px; bottom: auto; padding: 5px 10px; font-size: 11px; }
+    .coffee-btn { top: 128px; left: 8px; right: auto; bottom: auto; padding: 5px 10px; font-size: 11px; }
     .feedback-box { top: 86px; left: 8px; right: 8px; bottom: auto; width: auto; }
     /* Every other month on the timeline; all eight collide at phone width */
     .tl-mon-odd { display: none; }
@@ -608,9 +614,37 @@
   <div class="brand"><span class="wordmark">itogeospatial</span><h1>Snow Cover</h1><span class="region">SW Montana</span><span class="data-freshness" id="data-freshness"></span></div>
   <div class="scene-date-badge" id="date-badge"></div>
   <div class="scene-meta" id="meta"></div>
-  <div class="scene-source" id="scene-source"></div>
+  <!-- Big button to toggle the satellite (truecolor) imagery overlay.
+       This is a prominent CTA because the raw S2 imagery is the most loved
+       feature of the product and the small layer toggle was hard to find. -->
+  <div class="layer-btns">
+    <button id="big-s2-btn" type="button" class="layer-btn"></button>
+    <button id="big-snow-btn" type="button" class="layer-btn"></button>
+  </div>
+  <div class="view-toggle" id="view-toggle" role="group" aria-label="Which imagery the map shows">
+    <button type="button" data-view="pass" title="The newest satellite pass, on its own">Most recent pass</button>
+    <button type="button" data-view="latest" title="Newest pass on top; passes from the last 10 days fill what it missed">Most recent composite</button>
+    <button type="button" data-jump="lastyear" title="Last season's snow map for this week: what to expect 2–4 weeks out">Same week last year</button>
+    <button type="button" data-jump="full" title="The newest single pass that imaged (almost) the whole area">Last full day</button>
+  </div>
   <div class="next-pass" id="next-pass" style="display:none"></div>
 
+  <!-- SNOTEL depth section -->
+  <div class="section-label">SNOTEL Ground Measurements</div>
+  <div style="font-size:8px;color:var(--text-dim);margin:-2px 0 6px;line-height:1.4;font-family:var(--mono)">
+    Actual snow depth from ground stations. <span style="color:#FFB74D">Dashed line = 20yr median</span>.
+  </div>
+
+  <div class="card">
+    <h3>Snow Depth by Range</h3>
+    <div style="font-size:8px;color:var(--text-dim);margin:-4px 0 6px;font-family:var(--mono)">
+      Sparkline + <span style="color:#4CAF50">↑</span>/<span style="color:#FF5252">↓</span> delta = last 7 days.
+    </div>
+    <div id="range-depths"></div>
+  </div>
+
+  <!-- Details: one click away, closed by default (Sam's "dial it in", issue #1) -->
+  <details class="more" data-key="coverage"><summary>Snow cover &amp; recent change</summary>
   <!-- Surface coverage section -->
   <div class="section-label">Satellite Surface Coverage</div>
   <div style="font-size:8px;color:var(--text-dim);margin:-2px 0 6px;line-height:1.4;font-family:var(--mono)">
@@ -633,44 +667,33 @@
        Hidden when there's nothing to compare against. -->
   <div id="change-callout" style="display:none;margin:10px 0;padding:8px 10px;border-radius:6px;background:rgba(139,189,217,0.06);border-left:2px solid #8bbdd9;font-family:var(--mono);font-size:10px;line-height:1.5;color:var(--text-muted)"></div>
 
-  <!-- Big button to toggle the satellite (truecolor) imagery overlay.
-       This is a prominent CTA because the raw S2 imagery is the most loved
-       feature of the product and the small layer toggle was hard to find. -->
-  <div class="layer-btns">
-    <button id="big-s2-btn" type="button" class="layer-btn"></button>
-    <button id="big-snow-btn" type="button" class="layer-btn"></button>
-  </div>
-  <div class="view-toggle" id="view-toggle" role="group" aria-label="Which imagery the map shows">
-    <button type="button" data-view="pass" title="The newest satellite pass, on its own">Most recent pass</button>
-    <button type="button" data-view="latest" title="Newest pass on top; passes from the last 10 days fill what it missed">Most recent composite</button>
-    <button type="button" data-jump="full" title="The newest single pass that imaged (almost) the whole area">Last full day</button>
-  </div>
-
-  <!-- SNOTEL depth section -->
-  <div class="section-label">SNOTEL Ground Measurements</div>
-  <div style="font-size:8px;color:var(--text-dim);margin:-2px 0 6px;line-height:1.4;font-family:var(--mono)">
-    Actual snow depth from ground stations. <span style="color:#FFB74D">Dashed line = 20yr median</span>.
-  </div>
-
+  </details>
+  <details class="more" data-key="season"><summary>Season snow depth (region avg)</summary>
   <div class="card">
-    <h3>Season Snow Depth (region avg)</h3>
+    
     <div class="trend-wrap">
       <svg class="trend-svg" id="trend-svg" viewBox="0 0 320 70"></svg>
       <div class="trend-label-row" id="trend-labels"></div>
     </div>
   </div>
+  </details>
+  <details class="more" data-key="source"><summary>Source &amp; ground check</summary>
+  <div class="scene-source" id="scene-source"></div>
+  </details>
 
-  <div class="card">
-    <h3>Snow Depth by Range</h3>
-    <div style="font-size:8px;color:var(--text-dim);margin:-4px 0 6px;font-family:var(--mono)">
-      Sparkline + <span style="color:#4CAF50">↑</span>/<span style="color:#FF5252">↓</span> delta = last 7 days.
-    </div>
-    <div id="range-depths"></div>
-  </div>
+
 
 
 </div>
 
+<script>
+  // Remember which panel sections each visitor opens (per browser).
+  document.querySelectorAll('details.more').forEach(d => {
+    const k = 'snowline_more_' + d.dataset.key;
+    try { if (localStorage.getItem(k) === '1') d.open = true; } catch (e) {}
+    d.addEventListener('toggle', () => { try { localStorage.setItem(k, d.open ? '1' : '0'); } catch (e) {} });
+  });
+</script>
 <button class="panel-toggle" id="panel-toggle" title="Show panel">&#9776;</button>
 
 <!-- Right side: basemap + layers -->
@@ -2396,6 +2419,22 @@ function renderSource() {
   updatePassFootprint();
   updateCompositeRegions();
   renderLastFullDay();
+  renderLastYear();
+}
+
+// "Same week last year": last season's map nearest this date (within 5 days),
+// for planning a trip a few weeks out.
+function renderLastYear() {
+  const b = document.querySelector('#view-toggle button[data-jump="lastyear"]');
+  if (!b || !CURRENT_DATE) return;
+  const t = Date.parse(CURRENT_DATE) - 365 * 86400000;
+  const best = DATES.filter(d => d !== TODAY_VIRTUAL)
+    .map(d => [d, Math.abs(Date.parse(d) - t) / 86400000]).filter(([, k]) => k <= 5).sort((a, b) => a[1] - b[1])[0];
+  const fmt = d => new Date(d + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+  b.disabled = !best;
+  b.textContent = best ? `Same week last year · ${fmt(best[0])}` : 'Same week last year';
+  b.title = best ? "Last season's snow map for this week" : 'No map from last season within 5 days of this date';
+  b.onclick = () => { if (best) jumpTo('pass', best[0]); };
 }
 
 // "Last full day": the newest mapped pass whose strip covered the whole area
@@ -3083,6 +3122,12 @@ function bringSnotelToTop() {
   try {
     const style = map.getStyle();
     if (style && style.layers) {
+      // Roads, rivers and boundaries too, so you can tell where you are when
+      // zoomed in on snow or imagery (Sam, issue #1); then our own lines.
+      style.layers.filter(l => l.type === 'line' && /^(road|bridge|tunnel|waterway|admin)/.test(l.id))
+        .forEach(l => { try { map.moveLayer(l.id); } catch (e) {} });
+      ['comp-fill', 'comp-line', 'pass-fill', 'pass-casing', 'pass-line', 'areas-casing', 'areas-line']
+        .forEach(id => { if (map.getLayer(id)) try { map.moveLayer(id); } catch (e) {} });
       const symbolLayers = style.layers.filter(l =>
         l.type === 'symbol' && !l.id.startsWith('snotel') && !l.id.startsWith('webcam'));
       symbolLayers.forEach(l => {
