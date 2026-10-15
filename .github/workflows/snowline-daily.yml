@@ -53,6 +53,11 @@ jobs:
         env:
           GDAL_HTTP_UNSAFESSL: 'YES'
 
+      - name: 2a. Valley snow depth (Montana Mesonet)
+        # A Mesonet outage keeps yesterday's file and shows as an error
+        # annotation, without blocking the SNOTEL commit below.
+        run: python snowline/pipeline/fetch_mesonet_snow.py || echo "::error::Mesonet snow depth fetch failed; kept the previous mesonet_snow.json"
+
       - name: 2b. Rebuild snow timeline (Mondays or manual)
         run: |
           if [ "$(date -u +%u)" = "1" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then

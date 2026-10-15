@@ -686,6 +686,10 @@
       <div id="terrain-profile"></div>
     </div>
     <div class="terrain-note" id="terrain-note"></div>
+    <div class="section-label" style="margin-top:6px">Snow depth by elevation</div>
+    <div class="terrain-line" id="depth-line" style="font-size:12px"></div>
+    <div class="terrain-charts" id="depth-chart"></div>
+    <div class="terrain-note" id="depth-note"></div>
   </div>
 
   <!-- SNOTEL depth section -->
@@ -1026,6 +1030,7 @@ function jumpTo(mode, date) {
 }
 let AGREEMENT = null;       // satellite vs SNOTEL per date (data/snotel_agreement.json)
 let TERRAIN = null;         // snow by elevation band x slope direction per date (data/terrain_stats.json)
+let MESONET = null;         // valley snow depth, Montana Mesonet (data/mesonet_snow.json)
 let layersAdded = false;
 let playInterval = null;
 
@@ -1222,6 +1227,10 @@ async function init() {
 
   fetch('data/terrain_stats.json').then(r => r.ok ? r.json() : null).then(d => {
     TERRAIN = d && d.dates;
+    renderTerrain();
+  }).catch(() => {});
+  fetch('data/mesonet_snow.json').then(r => r.ok ? r.json() : null).then(d => {
+    MESONET = d && d.stations;
     renderTerrain();
   }).catch(() => {});
 
@@ -2654,6 +2663,63 @@ function renderTerrain() {
     `From the ${day} pass, clear open ground only (cloud left out). `
     + `<span style="color:rgba(160,180,170,0.9)">Dashed: forest</span>, where the satellite sees treetops, not the snow under them. `
     + `Snow line: the height above which most ground is snow-covered.`;
+  renderDepthByElevation(t);
+}
+
+// Snow depth measured at stations, by elevation: SNOTEL (mountains) and the
+// Montana Mesonet (valley floors), with the satellite's snow line as the
+// height where depth reaches zero. Optical satellites see whether there is
+// snow, not how deep it is, so depth here comes only from the stations; the
+// trend line is a rough least-squares fit, shown as an estimate.
+function renderDepthByElevation(t) {
+  const day = snotelDateFor(CURRENT_DATE);
+  // Mesonet daily summaries arrive about two days late, so they get 3 days.
+  const near = (h, days = 2) => { const x = (h || []).filter(r => r.date <= day && r.depth_in != null).pop();
+    return x && (Date.parse(day) - Date.parse(x.date)) / 86400000 <= days ? x.depth_in : null; };
+  const [w, so, e, n] = AOI_BBOX;
+  const inArea = x => x.lon >= w && x.lon <= e && x.lat >= so && x.lat <= n;
+  const sn = (SNOTEL_SEASON?.stations || []).filter(x => x.id && x.id.endsWith(':SNTL') && x.elevation_ft && inArea(x))
+    .map(x => ({ z: x.elevation_ft, d: near(x.history), name: x.name, kind: 'SNOTEL' })).filter(p => p.d != null);
+  const me = (MESONET || []).filter(inArea).map(x => ({ z: x.elevation_ft, d: near(x.history, 3), name: x.name, kind: 'Mesonet' })).filter(p => p.d != null);
+  const lineEl = document.getElementById('depth-line'), chartEl = document.getElementById('depth-chart'), noteEl = document.getElementById('depth-note');
+  if (sn.length + me.length < 3) { lineEl.textContent = 'Not enough station readings for this date.'; chartEl.innerHTML = ''; noteEl.innerHTML = ''; return; }
+  const pts = [...sn, ...me];
+  const snowFt = t.snowline_m ? t.snowline_m * 3.28084 : null;
+  // Rough trend: depth vs elevation through the stations at or above the snow line.
+  const fitPts = pts.filter(p => snowFt == null || p.z >= snowFt);
+  if (snowFt != null) fitPts.push({ z: snowFt, d: 0 });
+  let fit = null;
+  if (fitPts.length >= 6) {
+    const mz = fitPts.reduce((a, p) => a + p.z, 0) / fitPts.length, md = fitPts.reduce((a, p) => a + p.d, 0) / fitPts.length;
+    const sxx = fitPts.reduce((a, p) => a + (p.z - mz) ** 2, 0), sxy = fitPts.reduce((a, p) => a + (p.z - mz) * (p.d - md), 0);
+    const slope = sxx ? sxy / sxx : 0;
+    if (slope > 0) fit = { slope, at: z => md + slope * (z - mz) };
+  }
+  const avg = a => a.length ? a.reduce((x, p) => x + p.d, 0) / a.length : null;
+  const range = a => a.length ? `${Math.min(...a.map(p => p.z)).toLocaleString('en-US')}–${Math.max(...a.map(p => p.z)).toLocaleString('en-US')} ft` : '';
+  const bits = [];
+  if (me.length) bits.push(`Valleys (${range(me)}): <b>${Math.round(avg(me) * 10) / 10}″</b> average`);
+  if (sn.length) bits.push(`mountains (${range(sn)}): <b>${Math.round(avg(sn))}″</b>`);
+  if (fit) bits.push(`roughly ${Math.max(0.1, Math.round(fit.slope * 1000 * 10) / 10)}″ more per 1,000 ft`);
+  lineEl.innerHTML = bits.join(' · ');
+
+  const W = 360, H = 170, pl = 34, pr = 8, pt = 8, pb = 22, zLo = 3500, zHi = 12500;
+  const dMax = Math.max(6, Math.ceil(Math.max(...pts.map(p => p.d)) / 5) * 5);
+  const X = d => pl + d / dMax * (W - pl - pr), Y = ft => pt + (1 - (ft - zLo) / (zHi - zLo)) * (H - pt - pb);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Snow depth by elevation">`;
+  for (let ft = 4000; ft <= 12000; ft += 2000) svg += `<line x1="${pl}" x2="${W - pr}" y1="${Y(ft)}" y2="${Y(ft)}" stroke="rgba(255,255,255,0.06)"/><text x="${pl - 3}" y="${Y(ft) + 3}" font-size="7.5" text-anchor="end">${ft / 1000}k ft</text>`;
+  for (let k = 0; k <= 4; k++) { const d = dMax * k / 4; svg += `<text x="${X(d)}" y="${H - 8}" font-size="7.5" text-anchor="${k === 4 ? 'end' : k ? 'middle' : 'start'}">${Math.round(d)}″</text>`; }
+  if (snowFt != null) svg += `<line x1="${pl}" x2="${W - pr}" y1="${Y(snowFt)}" y2="${Y(snowFt)}" stroke="#fff" stroke-dasharray="4,2" opacity="0.8"/><text x="${W - pr}" y="${Y(snowFt) - 3}" font-size="7.5" text-anchor="end" style="fill:#fff">satellite snow line (0″)</text>`;
+  if (fit) {
+    const z0 = snowFt ?? Math.min(...fitPts.map(p => p.z)), z1 = Math.max(...fitPts.map(p => p.z));
+    svg += `<line x1="${X(Math.max(0, fit.at(z0)))}" y1="${Y(z0)}" x2="${X(Math.min(dMax, fit.at(z1)))}" y2="${Y(z1)}" stroke="#FFB74D" stroke-width="1.4" stroke-dasharray="5,3"><title>Rough trend (estimate)</title></line>`;
+  }
+  sn.forEach(p => { svg += `<circle cx="${X(p.d)}" cy="${Y(p.z)}" r="3" fill="#4FC3F7" stroke="#0a121e" stroke-width="0.8"><title>${p.name} (SNOTEL), ${p.z.toLocaleString('en-US')} ft: ${p.d}″</title></circle>`; });
+  me.forEach(p => { svg += `<rect x="${X(p.d) - 3}" y="${Y(p.z) - 3}" width="6" height="6" fill="#81C784" stroke="#0a121e" stroke-width="0.8"><title>${p.name} (Mesonet), ${p.z.toLocaleString('en-US')} ft: ${p.d}″</title></rect>`; });
+  svg += `<text x="${(pl + W - pr) / 2}" y="${H}" font-size="7.5" text-anchor="middle">snow depth</text></svg>`;
+  chartEl.innerHTML = `<div>${svg}</div>`;
+  noteEl.innerHTML = `<span style="color:#4FC3F7">●</span> SNOTEL (NRCS) &nbsp;<span style="color:#81C784">■</span> valley stations (<a href="https://climate.umt.edu/mesonet/" target="_blank" rel="noopener" style="color:inherit">Montana Mesonet</a>) &nbsp;<span style="color:#FFB74D">- -</span> rough trend, an estimate. `
+    + `Readings within 2 days (valley stations 3) of ${new Date(day + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}. The satellite shows where snow is, not how deep; depth comes from the stations.`;
 }
 
 // ── Satellite pass strip ──
