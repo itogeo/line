@@ -1145,6 +1145,7 @@ async function init() {
   fetch('data/sat_availability.json').then(r => r.ok ? r.json() : null).then(d => {
     SAT_ROWS = (d && d.rows) || [];
     SAT_META = d;
+    if (d && d.aoi) setAoi(d.aoi.bbox);
     buildTimeline();
     updateTimelineUI();
     renderNextPass();
@@ -1249,7 +1250,7 @@ async function loadDate(dateStr) {
       snow_cover_pct: 0,
       cloud_cover_pct: 0,
       scene_ids: [],
-      bounds: { west: -112.2, south: 44.9, east: -109.0, north: 46.5 },
+      bounds: { west: AOI_BBOX[0], south: AOI_BBOX[1], east: AOI_BBOX[2], north: AOI_BBOX[3] },
       tiles: [],
     };
   } else {
@@ -1313,7 +1314,7 @@ async function loadDate(dateStr) {
 
     // Update nodata polygon for this date's image bounds (skip in TODAY mode)
     if (!data.no_imagery && data.bounds) {
-      const aoi3 = [-112.2, 45.0, -110.5, 46.2];
+      const aoi3 = AOI_BBOX;
       const aoiR3 = [[aoi3[0],aoi3[3]], [aoi3[2],aoi3[3]], [aoi3[2],aoi3[1]], [aoi3[0],aoi3[1]], [aoi3[0],aoi3[3]]];
       const bb = data.bounds;
       const imgR3 = [[bb.west,bb.north], [bb.east,bb.north], [bb.east,bb.south], [bb.west,bb.south], [bb.west,bb.north]];
@@ -1698,7 +1699,7 @@ function addOverlayLayers() {
   }
 
   // AOI source
-  const aoi = [-112.2, 44.9, -109.0, 46.5];
+  const aoi = AOI_BBOX;
   const aoiRing = [[aoi[0],aoi[3]], [aoi[2],aoi[3]], [aoi[2],aoi[1]], [aoi[0],aoi[1]], [aoi[0],aoi[3]]];
   if (!map.getSource('aoi')) {
     map.addSource('aoi', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'Polygon', coordinates: [aoiRing] }, properties: {} }});
@@ -2006,7 +2007,9 @@ function updateAreaLayer() {
   const show = document.getElementById('tog-aoi').checked;
   const f = (b, kind, label) => ({ type: 'Feature', geometry: { type: 'LineString', coordinates: boxRing(b) }, properties: { kind, label } });
   const feats = [];
-  if (show) feats.push(f(AOI_BBOX, 'current', 'Current area'), f(AOI_PROPOSED, 'proposed', 'Proposed area'));
+  if (show) feats.push(...(AOI_BBOX.join() === AOI_OLD.join()
+    ? [f(AOI_BBOX, 'current', 'Current area'), f(AOI_PROPOSED, 'proposed', 'New area (coming)')]
+    : [f(AOI_BBOX, 'current', 'Current area'), f(AOI_OLD, 'proposed', 'Previous area')]));
   if (drawnBox) feats.push(f(drawnBox, 'drawn', 'Your area'));
   const data = { type: 'FeatureCollection', features: feats };
   if (map.getSource('areas')) { map.getSource('areas').setData(data); return; }
@@ -2464,7 +2467,18 @@ function renderLastFullDay() {
 let PREDICTED_PASS = null;   // { due, src } while a future pass is shown
 // Strips are drawn only inside the mapped area (the footprint runs on past
 // it, which read as a box bigger than the data).
-const AOI_BBOX = [-112.2, 44.9, -109.0, 46.5];
+// The mapped area. Read from the pass list (aoi.bbox, written by the
+// pipeline from lib/aoi.py) so the site follows an area change by itself.
+const AOI_OLD = [-112.2, 44.9, -109.0, 46.5];   // until 2026-10
+let AOI_BBOX = AOI_OLD;
+function setAoi(bbox) {
+  if (!Array.isArray(bbox) || bbox.length !== 4 || bbox.join() === AOI_BBOX.join()) return;
+  AOI_BBOX = bbox;
+  const [w, s, e, n] = bbox;
+  if (map.getSource('aoi')) map.getSource('aoi').setData({ type: 'Feature', properties: {},
+    geometry: { type: 'Polygon', coordinates: [[[w, n], [e, n], [e, s], [w, s], [w, n]]] } });
+  updatePassFootprint(); updateCompositeRegions(); updateAreaLayer();
+}
 const NEXT_COLOR = '#FFD54F';   // predicted-pass chips
 const NEXT_COLORS = ['#66BB6A', '#FFEE58', '#FFA726', '#EF5350'];  // their paths on the map, soonest → furthest
 const MONTANA_BOX = [-116.1, 44.3, -104.0, 49.0];
@@ -2668,7 +2682,8 @@ async function updateCompositeRegions() {
   if (CURRENT_DATA !== d) return;
   const pc = window.polygonClipping;
   const asMulti = g => g.type === 'Polygon' ? [g.coordinates] : g.coordinates;
-  const aoi = [[[[-112.2, 44.9], [-109.0, 44.9], [-109.0, 46.5], [-112.2, 46.5], [-112.2, 44.9]]]];
+  const [aw, as, ae, an] = AOI_BBOX;
+  const aoi = [[[[aw, as], [ae, as], [ae, an], [aw, an], [aw, as]]]];
   const fmt = s => new Date(s + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
   let newer = null;
   const features = [];
@@ -3738,7 +3753,7 @@ function addLidarShade() {
       type: 'raster',
       tiles: [location.origin + '/snow/api/terrain/shade/{z}/{x}/{y}.webp'],
       tileSize: 512, minzoom: 8, maxzoom: 13,
-      bounds: [-112.2, 44.9, -109.0, 46.5],
+      bounds: [-112.6, 44.55, -109.0, 46.5],   // old and new area; tiles missing outside the built area just don't draw
       attribution: 'Terrain: USGS 3DEP lidar',
     });
   }
