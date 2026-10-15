@@ -70,7 +70,7 @@ date, a 5x5 window of 20 m pixels (blue, green, red, NIR, B11, SCL, Sen2Cor
 cloud and snow probability) at each SNOTEL and Mesonet station, from the
 same L2A scenes the map used, with that day's measured depth. Windowed
 reads only, nothing saved but the result (~10 KB per date). About 50 s per
-date; 68 dates with 4 workers is roughly 15-20 min.
+date; this season by default (8 dates on 2026-10-15, about 2 min).
 
 `snowline/pipeline/classifier_eval.py` scores each candidate rule against
 the stations in seconds, split by tree cover and elevation. Rules live in

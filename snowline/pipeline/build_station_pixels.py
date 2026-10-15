@@ -23,9 +23,10 @@ Writes snowline/pipeline/data/station_pixels.json.gz:
                scene, sun_elev, bands: {name: 5x5 list}}], ...}
 
 Resumable: dates already in the file are skipped unless --redo.
+Default is this season only (since Oct 1); --since=2025-10-01 adds last season.
 
 Usage:
-    python snowline/pipeline/build_station_pixels.py                    # every date (~10-20 min)
+    python snowline/pipeline/build_station_pixels.py                    # this season (~2 min)
     python snowline/pipeline/build_station_pixels.py --date=2026-10-13  # one date
 """
 from __future__ import annotations
@@ -151,13 +152,16 @@ def do_date(d, sts, z, meta):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--date")
+    ap.add_argument("--since", help="first date (default: this season's Oct 1)")
     ap.add_argument("--redo", action="store_true")
     ap.add_argument("--workers", type=int, default=4)
     args = ap.parse_args()
     data = json.loads(gzip.decompress(OUT.read_bytes())) if OUT.exists() else {"rows": []}
     have = {r["date"] for r in data["rows"]}
     dates = [args.date] if args.date else json.loads((DATA_10M / "dates.json").read_text())["dates"]
-    dates = [d for d in dates if (DATA_10M / d / "snowline.json").exists() and d <= Date.today().isoformat()]
+    today = Date.today()
+    since = args.since or f"{today.year if today.month >= 10 else today.year - 1}-10-01"
+    dates = [d for d in dates if (DATA_10M / d / "snowline.json").exists() and since <= d <= today.isoformat()]
     if not args.redo:
         dates = [d for d in dates if d not in have]
     sts = stations()
