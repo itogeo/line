@@ -227,7 +227,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--date")
     ap.add_argument("--all", action="store_true")
-    ap.add_argument("--missing", action="store_true", help="every listed date not in the output yet")
+    ap.add_argument("--missing", action="store_true", help="every listed date not summarised yet (or without a change field)")
     ap.add_argument("--fetch", action="store_true", help="read missing WebPs from the live site")
     args = ap.parse_args()
     if not (args.date or args.all or args.missing):
@@ -238,7 +238,8 @@ def main():
         dates = json.loads((DATA_10M / "dates.json").read_text())["dates"]
         dates = [d for d in dates if (DATA_10M / d / "snowline.json").exists()]
         if args.missing:
-            dates = [d for d in dates if d not in data["dates"]]
+            # Also redo dates summarised before the change field existed.
+            dates = [d for d in dates if "change" not in data["dates"].get(d, {})]
         log(f"{len(dates)} dates to summarise")
     else:
         dates = [args.date]
