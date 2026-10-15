@@ -1,0 +1,36 @@
+{
+ "coordinates": [
+  [
+   -112.6,
+   46.5
+  ],
+  [
+   -109.0,
+   46.5
+  ],
+  [
+   -109.0,
+   44.55
+  ],
+  [
+   -112.6,
+   44.55
+  ]
+ ],
+ "width": 3600,
+ "height": 2784,
+ "band_m": 100,
+ "band_lo_m": 1000,
+ "aspects": [
+  "flat",
+  "N",
+  "NE",
+  "E",
+  "SE",
+  "S",
+  "SW",
+  "W",
+  "NW"
+ ],
+ "encoding": "R band (0 = 1,000-1,100 m), G aspect, B % tree cover, rows even in Web Mercator"
+}

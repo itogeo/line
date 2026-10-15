@@ -27,8 +27,18 @@ About 16 windowed overview reads (tens of MB in all); run once, and again only
 if the area grows. Output (committed, about 5 MB):
     snowline/pipeline/data/terrain_grid.npz
 
+Also writes the grid as an image for the terrain page's map, so a click on
+a slope direction or elevation band can light up every matching place:
+    snowline/site/data/terrain_classes.webp   lossless; R = 100 m elevation
+        band from 1,000 m (0-29), G = aspect (0 flat, 1-8 N..NW),
+        B = % tree cover, A = 255 inside the grid. Rows are spaced evenly in
+        Web Mercator (resampled from the lat/lon grid) so it can be laid on
+        the map as one image without north-south drift.
+    snowline/site/data/terrain_classes.json   corners + encoding
+
 Usage:
     python snowline/pipeline/build_terrain_grid.py
+    python snowline/pipeline/build_terrain_grid.py --image   # only redo the image from the saved grid
 """
 from __future__ import annotations
 
@@ -137,7 +147,38 @@ def slope_aspect(elev):
     return slope, sector
 
 
+IMG = ROOT / "snowline" / "site" / "data" / "terrain_classes.webp"
+
+
+def write_image():
+    from PIL import Image
+    z = np.load(OUT)
+    elev10, aspect, forest = z["elev_10m"], z["aspect"], z["forest"]
+    h, w = elev10.shape
+    merc = lambda lat: np.log(np.tan(np.pi / 4 + np.radians(lat) / 2))
+    y0, y1 = merc(NORTH), merc(SOUTH)
+    rows = round(h * (y0 - y1) / np.radians(NORTH - SOUTH))   # keep the cell aspect ratio
+    ys = y0 + (np.arange(rows) + 0.5) / rows * (y1 - y0)
+    lat = np.degrees(2 * np.arctan(np.exp(ys)) - np.pi / 2)
+    src = np.clip(((NORTH - lat) / RES).astype(int), 0, h - 1)   # nearest lat/lon row
+    band = np.clip((elev10[src].astype(int) * 10 - 1000) // 100, 0, 29).astype(np.uint8)
+    rgba = np.dstack([band, aspect[src], forest[src], np.full(band.shape, 255, np.uint8)])
+    tmp = IMG.with_suffix(".tmp.webp")
+    Image.fromarray(rgba, "RGBA").save(tmp, "WEBP", lossless=True, quality=100, method=6)
+    tmp.replace(IMG)
+    IMG.with_suffix(".json").write_text(json.dumps({
+        "coordinates": [[WEST, NORTH], [EAST, NORTH], [EAST, SOUTH], [WEST, SOUTH]],
+        "width": w, "height": rows, "band_m": 100, "band_lo_m": 1000,
+        "aspects": ["flat", "N", "NE", "E", "SE", "S", "SW", "W", "NW"],
+        "encoding": "R band (0 = 1,000-1,100 m), G aspect, B % tree cover, rows even in Web Mercator",
+    }, indent=1))
+    log(f"wrote {IMG.relative_to(ROOT)} ({IMG.stat().st_size / 1e6:.1f} MB, {w}x{rows})")
+
+
 def main():
+    if "--image" in sys.argv:
+        write_image()
+        return 0
     elev = read_dem()
     missing = np.isnan(elev).mean() * 100
     log(f"grid {elev.shape[1]}x{elev.shape[0]}, {missing:.2f}% without DEM")
@@ -159,6 +200,7 @@ def main():
     e = elev[~np.isnan(elev)]
     log(f"wrote {OUT.relative_to(ROOT)} ({OUT.stat().st_size / 1e6:.1f} MB); "
         f"elevation {e.min():.0f}-{e.max():.0f} m; flat {(sector == 0).mean() * 100:.0f}%")
+    write_image()
     return 0
 
 

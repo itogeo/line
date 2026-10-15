@@ -186,13 +186,11 @@
   details.more > summary::-webkit-details-marker { display: none; }
   details.more > summary::before { content: '▸ '; color: var(--accent); }
   details.more[open] > summary::before { content: '▾ '; }
-  .terrain-line { font-size: 13px; line-height: 1.45; margin: 0 0 6px; }
-  .terrain-line b { color: #8bd3f7; }
-  .terrain-charts { display: flex; gap: 6px; align-items: flex-start; }
-  .terrain-charts > div { flex: 1; min-width: 0; }
-  .terrain-charts svg { width: 100%; height: auto; display: block; }
-  .terrain-charts text { font-family: var(--mono); fill: var(--text-dim); }
-  .terrain-note { font-size: 10px; color: var(--text-dim); line-height: 1.45; margin: 4px 0 8px; }
+  .terrain-link { display: block; margin: 0 0 10px; padding: 7px 10px; border-radius: 7px; font-size: 12px; line-height: 1.45;
+    background: rgba(139,189,217,0.08); border: 1px solid rgba(139,189,217,0.2); color: var(--text); text-decoration: none; }
+  .terrain-link b { color: #8bd3f7; }
+  .terrain-link .go { color: var(--accent); white-space: nowrap; }
+  .terrain-link:hover { border-color: rgba(139,189,217,0.45); }
   .section-label { font-family: var(--mono); font-size: 9px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1.2px; margin: 10px 0 5px; }
   .layers { display: flex; flex-direction: column; gap: 1px; }
   .layer-row { display: flex; align-items: center; gap: 7px; padding: 4px 5px; border-radius: 4px; cursor: pointer; user-select: none; }
@@ -636,6 +634,7 @@
   <span class="nav-sep">/</span>
   <div class="nav-links">
     <a href="/snow/" class="active">Map</a>
+    <a href="/snow/terrain.html">Terrain</a>
     <a href="/snow/webcam.html">Webcams</a>
     <a href="/snow/metadata.html">Data</a>
     <a href="/snow/methods.html">Methods</a>
@@ -671,31 +670,13 @@
       <button type="button" data-view="latest" title="Newest pass on top; passes from the last 10 days fill what it missed">Most recent composite</button>
     </div>
     <div class="view-links">Jump to
-      <button type="button" data-jump="lastyear" title="Last season's snow map for this week: what to expect 2–4 weeks out">Same week last year</button> ·
       <button type="button" data-jump="full" title="The newest single pass that imaged (almost) the whole area">Last full day</button>
     </div>
   </div>
   <div class="next-pass" id="next-pass" style="display:none"></div>
 
-  <!-- Snow by elevation and slope direction (data/terrain_stats.json) -->
-  <div id="terrain-sec" style="display:none">
-    <div class="section-label">Snow by elevation &amp; slope direction</div>
-    <div class="terrain-line" id="terrain-line"></div>
-    <div class="terrain-charts">
-      <div id="terrain-rose"></div>
-      <div id="terrain-profile"></div>
-    </div>
-    <div class="terrain-note" id="terrain-note"></div>
-    <div id="change-sec">
-      <div class="section-label" style="margin-top:6px">Change since the last pass</div>
-      <div class="terrain-line" id="change-line" style="font-size:12px"></div>
-      <div class="terrain-charts" id="change-chart"></div>
-    </div>
-    <div class="section-label" style="margin-top:6px">Snow depth by elevation</div>
-    <div class="terrain-line" id="depth-line" style="font-size:12px"></div>
-    <div class="terrain-charts" id="depth-chart"></div>
-    <div class="terrain-note" id="depth-note"></div>
-  </div>
+  <!-- Snow line + link to the terrain page (data/terrain_stats.json) -->
+  <a class="terrain-link" id="terrain-link" href="/snow/terrain.html" style="display:none"></a>
 
   <!-- SNOTEL depth section -->
   <div class="section-label">Snow stations (SNOTEL)</div>
@@ -1035,7 +1016,6 @@ function jumpTo(mode, date) {
 }
 let AGREEMENT = null;       // satellite vs SNOTEL per date (data/snotel_agreement.json)
 let TERRAIN = null;         // snow by elevation band x slope direction per date (data/terrain_stats.json)
-let MESONET = null;         // valley snow depth, Montana Mesonet (data/mesonet_snow.json)
 let layersAdded = false;
 let playInterval = null;
 
@@ -1232,10 +1212,6 @@ async function init() {
 
   fetch('data/terrain_stats.json').then(r => r.ok ? r.json() : null).then(d => {
     TERRAIN = d && d.dates;
-    renderTerrain();
-  }).catch(() => {});
-  fetch('data/mesonet_snow.json').then(r => r.ok ? r.json() : null).then(d => {
-    MESONET = d && d.stations;
     renderTerrain();
   }).catch(() => {});
 
@@ -2537,22 +2513,6 @@ function renderSource() {
   updatePassFootprint();
   updateCompositeRegions();
   renderLastFullDay();
-  renderLastYear();
-}
-
-// "Same week last year": last season's map nearest this date (within 5 days),
-// for planning a trip a few weeks out.
-function renderLastYear() {
-  const b = document.querySelector('#view-toggle button[data-jump="lastyear"]');
-  if (!b || !CURRENT_DATE) return;
-  const t = Date.parse(CURRENT_DATE) - 365 * 86400000;
-  const best = DATES.filter(d => d !== TODAY_VIRTUAL)
-    .map(d => [d, Math.abs(Date.parse(d) - t) / 86400000]).filter(([, k]) => k <= 5).sort((a, b) => a[1] - b[1])[0];
-  const fmt = d => new Date(d + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
-  b.disabled = !best;
-  b.textContent = best ? `Same week last year · ${fmt(best[0])}` : 'Same week last year';
-  b.title = best ? "Last season's snow map for this week" : 'No map from last season within 5 days of this date';
-  b.onclick = () => { if (best) jumpTo('pass', best[0]); };
 }
 
 // "Last full day": the newest mapped pass whose strip covered the whole area
@@ -2575,201 +2535,19 @@ function renderLastFullDay() {
   b.onclick = () => { if (found) jumpTo('pass', found); };
 }
 
-// ── Snow by elevation and slope direction ──
-// From data/terrain_stats.json (build_terrain_stats.py): for the pass on
-// screen, clear pixels of open ground (under 30% tree cover) counted by
-// 100 m elevation band and slope direction. Forest is shown apart: the
-// satellite sees the canopy, not the snow under it.
-const FT = m => Math.round(m * 3.28084 / 10) * 10;
-const fmtFt = m => FT(m).toLocaleString('en-US') + ' ft';
-// Compass rose rings, outside in: low ground at the edge, summits in the middle.
-const ROSE_RINGS = [[0, 5000], [5000, 6000], [6000, 7000], [7000, 8000], [8000, 9000], [9000, 99999]];
+// ── Snow line, linking to the terrain page ──
+// From data/terrain_stats.json (build_terrain_stats.py); the charts, compass
+// rose and station depths live on /snow/terrain.html.
+const fmtFt = m => (Math.round(m * 3.28084 / 10) * 10).toLocaleString('en-US') + ' ft';
 function renderTerrain() {
-  const sec = document.getElementById('terrain-sec');
+  const el = document.getElementById('terrain-link');
   const d = CURRENT_DATA, t = TERRAIN && d && TERRAIN[d.scene_date];
-  if (!t || !t.clear_px) { sec.style.display = 'none'; return; }
-  sec.style.display = '';
-  const day = new Date(d.scene_date + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
-  const rowsOpen = t.bands_m.map((z, i) => {
-    const s = t.snow_open[i].reduce((a, b) => a + b, 0), c = t.clear_open[i].reduce((a, b) => a + b, 0);
-    return { z: z + 50, s, c, f: c ? s / c : null };
-  });
-  const seen = rowsOpen.filter(r => r.c >= 2000);
-  // Headline sentence.
-  let line;
-  if (t.snowline_m) {
-    const n = t.by_aspect.N, so = t.by_aspect.S;
-    line = `Snow line about <b>${fmtFt(t.snowline_m)}</b>.`
-      + (n && so ? ` Snow is continuous above ${fmtFt(n)} on north slopes, ${fmtFt(so)} on south slopes.` : '');
-  } else if (seen.length && seen[seen.length - 1].f < 0.5) {
-    line = 'Mostly bare at every elevation the satellite saw';
-  } else if (seen.length && seen[0].f >= 0.5) {
-    line = `Snow down to the lowest ground seen (${fmtFt(seen[0].z - 50)})`;
-  } else {
-    line = 'Not enough clear ground to place a snow line';
-  }
-  document.getElementById('terrain-line').innerHTML = line;
-
-  // Compass rose: slope direction x elevation, shaded by share of snow.
-  const R = 80, C = 100, rings = ROSE_RINGS.length, w = R / rings;
-  const cell = (k, lo, hi) => {
-    let s = 0, c = 0;
-    t.bands_m.forEach((z, i) => { const ft = (z + 50) * 3.28084; if (ft >= lo && ft < hi) { s += t.snow_open[i][k]; c += t.clear_open[i][k]; } });
-    return c >= 300 ? s / c : null;
-  };
-  const arc = (r0, r1, a0, a1) => {
-    const p = (r, a) => [C + r * Math.sin(a), C - r * Math.cos(a)];
-    const [x0, y0] = p(r1, a0), [x1, y1] = p(r1, a1), [x2, y2] = p(r0, a1), [x3, y3] = p(r0, a0);
-    return `M${x0.toFixed(1)},${y0.toFixed(1)} A${r1},${r1} 0 0 1 ${x1.toFixed(1)},${y1.toFixed(1)} L${x2.toFixed(1)},${y2.toFixed(1)}`
-      + (r0 > 0 ? ` A${r0},${r0} 0 0 0 ${x3.toFixed(1)},${y3.toFixed(1)}` : '') + ' Z';
-  };
-  const ringName = ([lo, hi]) => lo === 0 ? `below ${hi.toLocaleString('en-US')} ft` : hi > 20000 ? `above ${lo.toLocaleString('en-US')} ft` : `${lo.toLocaleString('en-US')}–${hi.toLocaleString('en-US')} ft`;
-  let rose = `<svg viewBox="0 0 200 206" role="img" aria-label="Snow cover by slope direction and elevation">`;
-  ROSE_RINGS.forEach((rg, ri) => {
-    const r1 = R - ri * w, r0 = R - (ri + 1) * w;
-    for (let k = 1; k <= 8; k++) {
-      const a = (k - 1) * Math.PI / 4, f = cell(k, rg[0], rg[1]);
-      const fill = f == null ? 'rgba(255,255,255,0.04)' : `rgba(100,210,255,${(0.08 + 0.92 * f).toFixed(2)})`;
-      const tip = `${t.aspects[k]}-facing, ${ringName(rg)}: ${f == null ? 'not enough clear ground' : Math.round(f * 100) + '% snow'}`;
-      rose += `<path d="${arc(r0, r1, a - Math.PI / 8, a + Math.PI / 8)}" fill="${fill}" stroke="rgba(10,18,30,0.9)" stroke-width="0.8"><title>${tip}</title></path>`;
-    }
-  });
-  [['N', 0], ['E', 90], ['S', 180], ['W', 270]].forEach(([l, deg]) => {
-    const a = deg * Math.PI / 180, r = R + 9;
-    rose += `<text x="${(C + r * Math.sin(a)).toFixed(1)}" y="${(C - r * Math.cos(a) + 3).toFixed(1)}" font-size="9" text-anchor="middle" style="fill:var(--text-muted)">${l}</text>`;
-  });
-  rose += `<text x="100" y="204" font-size="8" text-anchor="middle">middle 9,000+ ft · edge under 5,000</text></svg>`;
-  document.getElementById('terrain-rose').innerHTML = rose;
-
-  // Profile: % snow (x) by elevation (y), open ground and forest.
-  const W = 180, H = 186, pl = 30, pr = 6, pt = 8, pb = 22;
-  const zLo = 3500, zHi = 12500;
-  const X = f => pl + f * (W - pl - pr), Y = ft => pt + (1 - (ft - zLo) / (zHi - zLo)) * (H - pt - pb);
-  const path = rows => rows.map((r, i) => `${i ? 'L' : 'M'}${X(r.f).toFixed(1)},${Y(r.z * 3.28084).toFixed(1)}`).join(' ');
-  const forest = t.bands_m.map((z, i) => ({ z: z + 50, f: t.clear_forest[i] >= 2000 ? t.snow_forest[i] / t.clear_forest[i] : null })).filter(r => r.f != null);
-  let prof = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Share of ground with snow by elevation">`;
-  for (let ft = 4000; ft <= 12000; ft += 2000) {
-    prof += `<line x1="${pl}" x2="${W - pr}" y1="${Y(ft)}" y2="${Y(ft)}" stroke="rgba(255,255,255,0.06)"/>`
-      + `<text x="${pl - 3}" y="${Y(ft) + 3}" font-size="7.5" text-anchor="end">${ft / 1000}k ft</text>`;
-  }
-  [0, 0.5, 1].forEach(f => { prof += `<text x="${X(f)}" y="${H - 8}" font-size="7.5" text-anchor="${f === 1 ? 'end' : f ? 'middle' : 'start'}">${f * 100}%</text>`; });
-  prof += `<line x1="${X(0.5)}" x2="${X(0.5)}" y1="${pt}" y2="${H - pb}" stroke="rgba(255,255,255,0.08)" stroke-dasharray="2,2"/>`;
-  if (forest.length > 1) prof += `<path d="${path(forest)}" fill="none" stroke="rgba(160,180,170,0.6)" stroke-width="1.4" stroke-dasharray="3,2"><title>Forest: the satellite sees the canopy, so this reads low</title></path>`;
-  if (seen.length > 1) prof += `<path d="${path(seen)}" fill="none" stroke="#64d2ff" stroke-width="2"><title>Open ground (under 30% trees)</title></path>`;
-  if (t.snowline_m) {
-    const y = Y(t.snowline_m * 3.28084);
-    prof += `<line x1="${pl}" x2="${W - pr}" y1="${y}" y2="${y}" stroke="#fff" stroke-width="1" stroke-dasharray="4,2" opacity="0.8"/>`
-      + `<text x="${W - pr}" y="${y - 3}" font-size="7.5" text-anchor="end" style="fill:#fff">snow line</text>`;
-  }
-  prof += `<text x="${(pl + W - pr) / 2}" y="${H}" font-size="7.5" text-anchor="middle">ground with snow</text></svg>`;
-  document.getElementById('terrain-profile').innerHTML = prof;
-
-  document.getElementById('terrain-note').innerHTML =
-    `From the ${day} pass, clear open ground only (cloud left out). `
-    + `<span style="color:rgba(160,180,170,0.9)">Dashed: forest</span>, where the satellite sees treetops, not the snow under them. `
-    + `Snow line: the height above which most ground is snow-covered.`;
-  renderChange(t);
-  renderDepthByElevation(t);
-}
-
-// Snow gained and lost since the previous pass that saw the same open
-// ground (build_terrain_stats.py, "change"): bars by elevation, gained to
-// the right, lost to the left, as a share of the ground both passes saw.
-function renderChange(t) {
-  const sec = document.getElementById('change-sec'), c = t.change;
-  if (!c || !c.compared_cells) { sec.style.display = 'none'; return; }
-  sec.style.display = '';
-  const km = n => { const v = n * c.cell_km2; return v >= 100 ? Math.round(v / 10) * 10 : v >= 10 ? Math.round(v) : Math.round(v * 10) / 10; };
-  const fmt = x => new Date(x + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
-  const sum = a => a.reduce((x, y) => x + y, 0);
-  // Which slope direction gained (or lost) the most, as a share of what was compared.
-  const dir = arr => {
-    let best = null;
-    for (let k = 1; k <= 8; k++) {
-      const g = sum(arr.map(r => r[k])), n = sum(c.compared.map(r => r[k]));
-      if (n >= 2000 && (!best || g / n > best.f)) best = { k, f: g / n };
-    }
-    return best && best.f >= 0.05 ? t.aspects[best.k] : null;
-  };
-  const g = c.gained_cells, l = c.lost_cells;
-  let line = `Since ${fmt(c.from)} (${c.days} day${c.days === 1 ? '' : 's'}), on ground both passes saw: `;
-  line += g >= l * 3 && g > 0 ? `snow arrived on <b>${km(g).toLocaleString('en-US')} km²</b>` : l >= g * 3 && l > 0 ? `snow melted or blew off <b>${km(l).toLocaleString('en-US')} km²</b>` : `<b>${km(g).toLocaleString('en-US')} km²</b> gained snow, <b>${km(l).toLocaleString('en-US')} km²</b> lost it`;
-  const dg = dir(c.gained), dl = dir(c.lost);
-  if (g >= l && dg) line += `, most on ${dg}-facing slopes`;
-  else if (l > g && dl) line += `, most on ${dl}-facing slopes`;
-  document.getElementById('change-line').innerHTML = line + '.';
-
-  const rows = c.compared.map((r, i) => ({ z: 1000 + i * 100 + 50, n: sum(r), g: sum(c.gained[i]), l: sum(c.lost[i]) })).filter(r => r.n >= 500);
-  const W = 360, H = 130, pl = 34, pr = 8, pt = 6, pb = 18, zLo = 3500, zHi = 12500, mid = (pl + W - pr) / 2;
-  const fMax = Math.max(0.1, ...rows.map(r => Math.max(r.g, r.l) / r.n));
-  const Y = ft => pt + (1 - (ft - zLo) / (zHi - zLo)) * (H - pt - pb), bh = Math.max(1.5, (H - pt - pb) / ((zHi - zLo) / 328) - 0.5);
-  const sc = f => f / fMax * (W - pr - mid);
-  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Snow gained and lost by elevation">`;
-  for (let ft = 4000; ft <= 12000; ft += 2000) svg += `<line x1="${pl}" x2="${W - pr}" y1="${Y(ft)}" y2="${Y(ft)}" stroke="rgba(255,255,255,0.06)"/><text x="${pl - 3}" y="${Y(ft) + 3}" font-size="7.5" text-anchor="end">${ft / 1000}k ft</text>`;
-  svg += `<line x1="${mid}" x2="${mid}" y1="${pt}" y2="${H - pb}" stroke="rgba(255,255,255,0.15)"/>`;
-  rows.forEach(r => {
-    const y = Y(r.z * 3.28084) - bh / 2, tip = `${Math.round(r.z * 3.28084 / 100) * 100} ft: gained ${Math.round(r.g / r.n * 100)}%, lost ${Math.round(r.l / r.n * 100)}% of the ground both passes saw`;
-    if (r.g) svg += `<rect x="${mid}" y="${y}" width="${sc(r.g / r.n).toFixed(1)}" height="${bh}" fill="#64d2ff"><title>${tip}</title></rect>`;
-    if (r.l) svg += `<rect x="${(mid - sc(r.l / r.n)).toFixed(1)}" y="${y}" width="${sc(r.l / r.n).toFixed(1)}" height="${bh}" fill="#FFB74D"><title>${tip}</title></rect>`;
-  });
-  svg += `<text x="${mid - 4}" y="${H - 5}" font-size="7.5" text-anchor="end" style="fill:#FFB74D">← lost snow</text><text x="${mid + 4}" y="${H - 5}" font-size="7.5" style="fill:#64d2ff">gained snow →</text><text x="${W - pr}" y="${H - 5}" font-size="7.5" text-anchor="end">${Math.round(fMax * 100)}% of ground</text></svg>`;
-  document.getElementById('change-chart').innerHTML = `<div>${svg}</div>`;
-}
-
-// Snow depth measured at stations, by elevation: SNOTEL (mountains) and the
-// Montana Mesonet (valley floors), with the satellite's snow line as the
-// height where depth reaches zero. Optical satellites see whether there is
-// snow, not how deep it is, so depth here comes only from the stations; the
-// trend line is a rough least-squares fit, shown as an estimate.
-function renderDepthByElevation(t) {
-  const day = snotelDateFor(CURRENT_DATE);
-  // Mesonet daily summaries arrive about two days late, so they get 3 days.
-  const near = (h, days = 2) => { const x = (h || []).filter(r => r.date <= day && r.depth_in != null).pop();
-    return x && (Date.parse(day) - Date.parse(x.date)) / 86400000 <= days ? x.depth_in : null; };
-  const [w, so, e, n] = AOI_BBOX;
-  const inArea = x => x.lon >= w && x.lon <= e && x.lat >= so && x.lat <= n;
-  const sn = (SNOTEL_SEASON?.stations || []).filter(x => x.id && x.id.endsWith(':SNTL') && x.elevation_ft && inArea(x))
-    .map(x => ({ z: x.elevation_ft, d: near(x.history), name: x.name, kind: 'SNOTEL' })).filter(p => p.d != null);
-  const me = (MESONET || []).filter(inArea).map(x => ({ z: x.elevation_ft, d: near(x.history, 3), name: x.name, kind: 'Mesonet' })).filter(p => p.d != null);
-  const lineEl = document.getElementById('depth-line'), chartEl = document.getElementById('depth-chart'), noteEl = document.getElementById('depth-note');
-  if (sn.length + me.length < 3) { lineEl.textContent = 'Not enough station readings for this date.'; chartEl.innerHTML = ''; noteEl.innerHTML = ''; return; }
-  const pts = [...sn, ...me];
-  const snowFt = t.snowline_m ? t.snowline_m * 3.28084 : null;
-  // Rough trend: depth vs elevation through the stations at or above the snow line.
-  const fitPts = pts.filter(p => snowFt == null || p.z >= snowFt);
-  if (snowFt != null) fitPts.push({ z: snowFt, d: 0 });
-  let fit = null;
-  if (fitPts.length >= 6) {
-    const mz = fitPts.reduce((a, p) => a + p.z, 0) / fitPts.length, md = fitPts.reduce((a, p) => a + p.d, 0) / fitPts.length;
-    const sxx = fitPts.reduce((a, p) => a + (p.z - mz) ** 2, 0), sxy = fitPts.reduce((a, p) => a + (p.z - mz) * (p.d - md), 0);
-    const slope = sxx ? sxy / sxx : 0;
-    if (slope > 0) fit = { slope, at: z => md + slope * (z - mz) };
-  }
-  const avg = a => a.length ? a.reduce((x, p) => x + p.d, 0) / a.length : null;
-  const range = a => a.length ? `${Math.min(...a.map(p => p.z)).toLocaleString('en-US')}–${Math.max(...a.map(p => p.z)).toLocaleString('en-US')} ft` : '';
-  const bits = [];
-  if (me.length) bits.push(`Valleys (${range(me)}): <b>${Math.round(avg(me) * 10) / 10}″</b> average`);
-  if (sn.length) bits.push(`mountains (${range(sn)}): <b>${Math.round(avg(sn))}″</b>`);
-  if (fit) bits.push(`roughly ${Math.max(0.1, Math.round(fit.slope * 1000 * 10) / 10)}″ more per 1,000 ft`);
-  lineEl.innerHTML = bits.join(' · ');
-
-  const W = 360, H = 170, pl = 34, pr = 8, pt = 8, pb = 22, zLo = 3500, zHi = 12500;
-  const dMax = Math.max(6, Math.ceil(Math.max(...pts.map(p => p.d)) / 5) * 5);
-  const X = d => pl + d / dMax * (W - pl - pr), Y = ft => pt + (1 - (ft - zLo) / (zHi - zLo)) * (H - pt - pb);
-  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Snow depth by elevation">`;
-  for (let ft = 4000; ft <= 12000; ft += 2000) svg += `<line x1="${pl}" x2="${W - pr}" y1="${Y(ft)}" y2="${Y(ft)}" stroke="rgba(255,255,255,0.06)"/><text x="${pl - 3}" y="${Y(ft) + 3}" font-size="7.5" text-anchor="end">${ft / 1000}k ft</text>`;
-  for (let k = 0; k <= 4; k++) { const d = dMax * k / 4; svg += `<text x="${X(d)}" y="${H - 8}" font-size="7.5" text-anchor="${k === 4 ? 'end' : k ? 'middle' : 'start'}">${Math.round(d)}″</text>`; }
-  if (snowFt != null) svg += `<line x1="${pl}" x2="${W - pr}" y1="${Y(snowFt)}" y2="${Y(snowFt)}" stroke="#fff" stroke-dasharray="4,2" opacity="0.8"/><text x="${W - pr}" y="${Y(snowFt) - 3}" font-size="7.5" text-anchor="end" style="fill:#fff">satellite snow line (0″)</text>`;
-  if (fit) {
-    const z0 = snowFt ?? Math.min(...fitPts.map(p => p.z)), z1 = Math.max(...fitPts.map(p => p.z));
-    svg += `<line x1="${X(Math.max(0, fit.at(z0)))}" y1="${Y(z0)}" x2="${X(Math.min(dMax, fit.at(z1)))}" y2="${Y(z1)}" stroke="#FFB74D" stroke-width="1.4" stroke-dasharray="5,3"><title>Rough trend (estimate)</title></line>`;
-  }
-  sn.forEach(p => { svg += `<circle cx="${X(p.d)}" cy="${Y(p.z)}" r="3" fill="#4FC3F7" stroke="#0a121e" stroke-width="0.8"><title>${p.name} (SNOTEL), ${p.z.toLocaleString('en-US')} ft: ${p.d}″</title></circle>`; });
-  me.forEach(p => { svg += `<rect x="${X(p.d) - 3}" y="${Y(p.z) - 3}" width="6" height="6" fill="#81C784" stroke="#0a121e" stroke-width="0.8"><title>${p.name} (Mesonet), ${p.z.toLocaleString('en-US')} ft: ${p.d}″</title></rect>`; });
-  svg += `<text x="${(pl + W - pr) / 2}" y="${H}" font-size="7.5" text-anchor="middle">snow depth</text></svg>`;
-  chartEl.innerHTML = `<div>${svg}</div>`;
-  noteEl.innerHTML = `<span style="color:#4FC3F7">●</span> SNOTEL (NRCS) &nbsp;<span style="color:#81C784">■</span> valley stations (<a href="https://climate.umt.edu/mesonet/" target="_blank" rel="noopener" style="color:inherit">Montana Mesonet</a>) &nbsp;<span style="color:#FFB74D">- -</span> rough trend, an estimate. `
-    + `Readings within 2 days (valley stations 3) of ${new Date(day + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}. The satellite shows where snow is, not how deep; depth comes from the stations.`;
+  if (!t || !t.clear_px) { el.style.display = 'none'; return; }
+  const n = t.by_aspect && t.by_aspect.N, so = t.by_aspect && t.by_aspect.S;
+  el.href = `/snow/terrain.html#date=${d.scene_date}`;
+  el.innerHTML = (t.snowline_m ? `Snow line about <b>${fmtFt(t.snowline_m)}</b>` + (n && so ? ` (north slopes ${fmtFt(n)}, south ${fmtFt(so)})` : '') : 'Snow by elevation and slope')
+    + ` <span class="go">Snow by terrain →</span>`;
+  el.style.display = '';
 }
 
 // ── Satellite pass strip ──

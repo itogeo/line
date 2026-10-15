@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Snow by Terrain</title>
+<meta name="description" content="Snow cover by elevation and slope direction in SW Montana, from each Sentinel-2 pass, with SNOTEL and Montana Mesonet snow depth.">
+<link rel="icon" href="/snow/img/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" href="/snow/img/favicon-32.png">
+<link rel="apple-touch-icon" href="/snow/img/apple-touch-icon.png">
+<script src="/snow/ito-loader.js"></script>
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.js"></script>
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #0b0f1a;
+    --panel: rgba(11, 15, 26, 0.95);
+    --border: rgba(79, 195, 247, 0.10);
+    --accent: #4FC3F7;
+    --accent-dim: rgba(79, 195, 247, 0.08);
+    --text: #e0e4ec;
+    --text-muted: #8a94a8;
+    --text-dim: #5d677c;
+    --sel: #FFD54F;
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'DM Sans', -apple-system, sans-serif;
+    --nav-h: 44px;
+  }
+  html, body { height: 100%; }
+  body { font-family: var(--sans); background: var(--bg); color: var(--text); overflow: hidden; }
+
+  .top-nav { height: var(--nav-h); background: var(--panel); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; padding: 0 20px; gap: 10px; position: relative; z-index: 200; }
+  .nav-brand { font-size: 12px; font-weight: 500; color: var(--text-muted); letter-spacing: 0.05em; text-transform: lowercase; }
+  .nav-sep { color: var(--text-dim); font-size: 12px; }
+  .nav-links { display: flex; gap: 2px; margin-left: 8px; }
+  .nav-links a { font-family: var(--mono); font-size: 10px; font-weight: 600; padding: 4px 10px; border-radius: 4px;
+    text-decoration: none; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; }
+  .nav-links a:hover { background: var(--accent-dim); color: var(--accent); }
+  .nav-links a.active { background: rgba(79,195,247,0.12); color: var(--accent); }
+
+  .layout { display: flex; height: calc(100% - var(--nav-h)); }
+  #map { flex: 1 1 58%; min-width: 0; position: relative; }
+  .data { flex: 0 0 42%; max-width: 560px; overflow-y: auto; padding: 18px 20px 40px; border-left: 1px solid var(--border); }
+
+  h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+  .sub { font-size: 12px; color: var(--text-muted); line-height: 1.5; margin-bottom: 10px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  select { font: inherit; font-size: 13px; background: #121a2a; color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; }
+  .lead { font-size: 15px; line-height: 1.45; margin: 4px 0 12px; }
+  .lead b { color: #8bd3f7; }
+  h2 { font-family: var(--mono); font-size: 10px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1.2px; margin: 18px 0 6px; }
+  .note { font-size: 11px; color: var(--text-dim); line-height: 1.5; margin-top: 6px; }
+  .note a { color: inherit; }
+  svg { display: block; width: 100%; height: auto; }
+  svg text { font-family: var(--mono); fill: var(--text-dim); }
+
+  .rose-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 140px; gap: 10px; align-items: center; }
+  .rose-wrap svg .cell { cursor: pointer; }
+  .rose-wrap svg .cell:hover { stroke: #fff; stroke-width: 1.2; }
+  .rose-wrap svg .dir { cursor: pointer; }
+  .rings { display: flex; flex-direction: column; gap: 3px; }
+  .rings button, .clear-btn { font: inherit; font-size: 12px; text-align: left; background: transparent; color: var(--text-muted);
+    border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; cursor: pointer; }
+  .rings button:hover, .clear-btn:hover { color: var(--text); border-color: rgba(79,195,247,0.3); }
+  .rings button.on { color: #111; background: var(--sel); border-color: var(--sel); font-weight: 600; }
+  .sel-line { font-size: 13px; line-height: 1.5; margin-top: 8px; min-height: 20px; }
+  .sel-line b { color: var(--sel); }
+  .charts2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  .mapboxgl-popup-content { background: #111827 !important; color: var(--text) !important; border: 1px solid rgba(79,195,247,0.18);
+    border-radius: 8px !important; padding: 8px 10px !important; font-size: 12px; }
+  .mapboxgl-popup-tip { border-top-color: #111827 !important; border-bottom-color: #111827 !important; }
+  .map-key { position: absolute; left: 10px; bottom: 28px; z-index: 5; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 10px; font-size: 11px; color: var(--text-muted); display: flex; gap: 10px; flex-wrap: wrap; max-width: calc(100% - 20px); }
+  .map-key span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+  .sw { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+
+  @media (max-width: 800px) {
+    body { overflow: auto; }
+    .top-nav { padding: 0 10px; }
+    .nav-brand, .nav-sep { display: none; }
+    .nav-links { margin-left: 0; }
+    .nav-links a { padding: 4px 6px; font-size: 9px; }
+    .layout { flex-direction: column; height: auto; }
+    #map { flex: none; height: 46vh; }
+    .data { flex: none; max-width: none; border-left: 0; overflow: visible; padding: 14px 16px 40px; }
+    .rose-wrap { grid-template-columns: minmax(0, 1fr) 120px; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="nav-brand">itogeospatial</span>
+  <div class="nav-links">
+    <a href="https://line.itogeospatial.com/snow" class="active">Snow Cover</a>
+    <a href="https://line.itogeospatial.com/river">River</a>
+  </div>
+  <span class="nav-sep">/</span>
+  <div class="nav-links">
+    <a href="/snow/">Map</a>
+    <a href="/snow/terrain.html" class="active">Terrain</a>
+    <a href="/snow/webcam.html">Webcams</a>
+    <a href="/snow/metadata.html">Data</a>
+    <a href="/snow/methods.html">Methods</a>
+  </div>
+</nav>
+
+<div class="layout">
+  <div id="map">
+    <div class="map-key" id="map-key">
+      <span><i class="sw" style="background:rgb(100,210,255)"></i>Snow</span>
+      <span><i class="sw" style="background:var(--sel)"></i>Selected terrain</span>
+      <span><i class="sw" style="background:#4FC3F7;border-radius:50%"></i>SNOTEL</span>
+      <span><i class="sw" style="background:#81C784;border-radius:50%"></i>Valley station</span>
+    </div>
+  </div>
+  <div class="data">
+    <h1>Snow by terrain</h1>
+    <p class="sub">Where the snow is by elevation and slope direction, from each Sentinel-2 pass, with the ground stations that measure depth.</p>
+    <div class="row"><label for="date-sel" class="sub" style="margin:0">Pass</label><select id="date-sel"></select></div>
+    <div class="lead" id="lead"></div>
+
+    <h2>Slope direction × elevation</h2>
+    <div class="rose-wrap">
+      <div id="rose"></div>
+      <div class="rings" id="rings"></div>
+    </div>
+    <div class="sel-line" id="sel-line"></div>
+    <p class="note">Click a cell, a compass letter or an elevation band to light up every matching place on the map. Shading is the share of open ground with snow (cloud left out); the map highlight covers all terrain, forest included.</p>
+
+    <div class="charts2">
+      <div><h2>Snow by elevation</h2><div id="profile"></div></div>
+      <div><h2>Change since last pass</h2><div id="change"></div></div>
+    </div>
+    <p class="note" id="change-note"></p>
+
+    <h2>Snow depth by elevation</h2>
+    <div class="lead" id="depth-lead" style="font-size:13px;margin-bottom:4px"></div>
+    <div id="depth"></div>
+    <p class="note" id="depth-note"></p>
+
+    <p class="note" style="margin-top:16px">Terrain: Copernicus DEM GLO-30 and ESA WorldCover 2021. Snow: Sentinel-2 via Snowline. Depth: NRCS SNOTEL and the <a href="https://climate.umt.edu/mesonet/" target="_blank" rel="noopener">Montana Mesonet</a> (Montana Climate Office). <a href="/snow/methods.html">How it's made</a>.</p>
+  </div>
+</div>
+
+<script>
+mapboxgl.accessToken = 'pk.eyJ1IjoiaXRvZ2VvIiwiYSI6ImNta3ByYnA1bzBsYW0zZG9mMnMxdWZwMjUifQ.Q7pwAuAEKdBHD_dqaVBhvw';
+
+const TILE = '/snow/api/tile';
+const ASPECTS = ['flat', 'N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+const ASPECT_NAME = { N: 'north', NE: 'northeast', E: 'east', SE: 'southeast', S: 'south', SW: 'southwest', W: 'west', NW: 'northwest' };
+// Rose rings, outside in: valleys at the edge, summits in the middle.
+const RINGS = [[0, 5000], [5000, 6000], [6000, 7000], [7000, 8000], [8000, 9000], [9000, 99999]];
+const ringName = ([lo, hi]) => lo === 0 ? `below ${hi.toLocaleString('en-US')} ft` : hi > 20000 ? `above ${lo.toLocaleString('en-US')} ft` : `${lo.toLocaleString('en-US')}–${hi.toLocaleString('en-US')} ft`;
+const ringOfFt = ft => RINGS.findIndex(([lo, hi]) => ft >= lo && ft < hi);
+const FT = m => m * 3.28084;
+const fmtFt = m => (Math.round(FT(m) / 10) * 10).toLocaleString('en-US') + ' ft';
+const fmtDay = (d, opts = { month: 'short', day: 'numeric' }) => new Date(d + 'T12:00:00Z').toLocaleDateString('en-US', { ...opts, timeZone: 'UTC' });
+const sum = a => a.reduce((x, y) => x + y, 0);
+const AREA = [-112.6, 44.55, -109.6, 46.35];   // mapped area (lib/aoi.py)
+const inArea = x => x.lon >= AREA[0] && x.lon <= AREA[2] && x.lat >= AREA[1] && x.lat <= AREA[3];
+const PX_KM2 = 0.0003 * 111.32 * Math.cos(45.5 * Math.PI / 180) * 0.0003 * 110.574;   // one snow-map pixel
+
+let STATS = null, DATE = null, MESONET = [], SNOTEL = {}, SEL = { k: null, r: null };
+let CLASSES = null;   // ImageData of terrain_classes.webp: R band, G aspect, B forest
+
+const map = new mapboxgl.Map({ container: 'map', style: 'mapbox://styles/mapbox/outdoors-v12', center: [-110.8, 45.5], zoom: 7 });
+map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
+const mapReady = new Promise(ok => map.on('load', ok));
+
+// ── Data ──
+async function getJSON(u) { const r = await fetch(u); if (!r.ok) throw new Error(u + ' ' + r.status); return r.json(); }
+function seasonFile(d) { const [y, m] = d.split('-').map(Number); return m >= 10 ? y : y - 1; }
+async function snotelFor(d) {
+  const y = seasonFile(d);
+  if (!SNOTEL[y]) SNOTEL[y] = getJSON(`data/snotel_season_${y}.json`).catch(() => getJSON('data/snotel_season.json'));
+  return SNOTEL[y];
+}
+
+async function init() {
+  const [stats, mes] = await Promise.all([getJSON('data/terrain_stats.json'), getJSON('data/mesonet_snow.json').catch(() => null)]);
+  STATS = stats.dates;
+  MESONET = (mes && mes.stations) || [];
+  const dates = Object.keys(STATS).filter(d => STATS[d].clear_px).sort().reverse();
+  const sel = document.getElementById('date-sel');
+  sel.innerHTML = dates.map(d => `<option value="${d}">${fmtDay(d, { month: 'short', day: 'numeric', year: 'numeric' })} · ${Math.round(100 * STATS[d].snow_px / STATS[d].clear_px)}% snow</option>`).join('');
+  const want = new URLSearchParams(location.hash.slice(1)).get('date');
+  sel.value = dates.includes(want) ? want : dates[0];
+  sel.onchange = () => setDate(sel.value);
+  loadClasses();
+  setDate(sel.value);
+}
+
+// ── Date ──
+async function setDate(d) {
+  DATE = d;
+  history.replaceState(null, '', '#date=' + d);
+  renderLead(); renderRose(); renderProfile(); renderChange();
+  renderDepth();
+  await mapReady;
+  showSnow(d);
+}
+
+let snowIds = [];
+async function showSnow(d) {
+  snowIds.forEach(id => { if (map.getLayer(id)) map.removeLayer(id); if (map.getSource(id)) map.removeSource(id); });
+  snowIds = [];
+  let meta;
+  try { meta = await getJSON(`data_10m/${d}/snowline.json`); } catch (e) { return; }
+  if (DATE !== d) return;
+  const before = map.getLayer('sel-layer') ? 'sel-layer' : undefined;
+  (meta.chunks || []).forEach((c, i) => {
+    const id = `snow-${i}`, b = c.bounds;
+    map.addSource(id, { type: 'image', url: `${TILE}/${d}/${c.snow_file}`,
+      coordinates: [[b.west, b.north], [b.east, b.north], [b.east, b.south], [b.west, b.south]] });
+    map.addLayer({ id, type: 'raster', source: id, paint: { 'raster-opacity': 0.75, 'raster-fade-duration': 0 } }, before);
+    snowIds.push(id);
+  });
+  const bb = meta.bbox;
+  if (bb && !showSnow.fitted) { showSnow.fitted = true; map.fitBounds([[bb[0], bb[1]], [bb[2], bb[3]]], { padding: 20, duration: 0 }); }
+}
+
+// ── Lead sentence ──
+function renderLead() {
+  const t = STATS[DATE], el = document.getElementById('lead');
+  const rows = t.bands_m.map((z, i) => ({ z: z + 50, f: sum(t.clear_open[i]) >= 2000 ? sum(t.snow_open[i]) / sum(t.clear_open[i]) : null })).filter(r => r.f != null);
+  if (t.snowline_m) {
+    const n = t.by_aspect.N, s = t.by_aspect.S;
+    el.innerHTML = `Snow line about <b>${fmtFt(t.snowline_m)}</b> on ${fmtDay(DATE)}.`
+      + (n && s ? ` Snow is continuous above ${fmtFt(n)} on north slopes and ${fmtFt(s)} on south slopes.` : '');
+  } else if (rows.length && rows[rows.length - 1].f < 0.5) el.innerHTML = `Mostly bare at every elevation the satellite saw on ${fmtDay(DATE)}.`;
+  else if (rows.length && rows[0].f >= 0.5) el.innerHTML = `Snow down to the lowest ground seen on ${fmtDay(DATE)} (${fmtFt(rows[0].z - 50)}).`;
+  else el.textContent = 'Not enough clear ground on this pass to place a snow line.';
+}
+
+// ── Rose ──
+function cellStats(k, r) {
+  // Open-ground snow and clear pixels for aspect k (null = all) and ring r (null = all).
+  const t = STATS[DATE];
+  let s = 0, c = 0;
+  t.bands_m.forEach((z, i) => {
+    if (r != null && ringOfFt(FT(z + 50)) !== r) return;
+    for (let a = 1; a <= 8; a++) if (k == null || a === k) { s += t.snow_open[i][a]; c += t.clear_open[i][a]; }
+  });
+  return { s, c, f: c >= 300 ? s / c : null };
+}
+function renderRose() {
+  const R = 120, C = 140, w = R / RINGS.length;
+  const arc = (r0, r1, a0, a1) => {
+    const p = (r, a) => [C + r * Math.sin(a), C - r * Math.cos(a)];
+    const [x0, y0] = p(r1, a0), [x1, y1] = p(r1, a1), [x2, y2] = p(r0, a1), [x3, y3] = p(r0, a0);
+    return `M${x0.toFixed(1)},${y0.toFixed(1)} A${r1},${r1} 0 0 1 ${x1.toFixed(1)},${y1.toFixed(1)} L${x2.toFixed(1)},${y2.toFixed(1)}`
+      + (r0 > 0 ? ` A${r0},${r0} 0 0 0 ${x3.toFixed(1)},${y3.toFixed(1)}` : '') + ' Z';
+  };
+  let svg = `<svg viewBox="0 0 280 280" role="img" aria-label="Snow cover by slope direction and elevation">`;
+  RINGS.forEach((rg, ri) => {
+    const r1 = R - ri * w, r0 = R - (ri + 1) * w;
+    for (let k = 1; k <= 8; k++) {
+      const a = (k - 1) * Math.PI / 4, { f } = cellStats(k, ri);
+      const on = (SEL.k == null || SEL.k === k) && (SEL.r == null || SEL.r === ri) && (SEL.k != null || SEL.r != null);
+      const fill = f == null ? 'rgba(255,255,255,0.04)' : `rgba(100,210,255,${(0.08 + 0.92 * f).toFixed(2)})`;
+      svg += `<path class="cell" data-k="${k}" data-r="${ri}" d="${arc(r0, r1, a - Math.PI / 8, a + Math.PI / 8)}" fill="${fill}"`
+        + ` stroke="${on ? 'var(--sel)' : 'rgba(10,15,26,0.9)'}" stroke-width="${on ? 2 : 0.8}">`
+        + `<title>${ASPECT_NAME[ASPECTS[k]]}-facing, ${ringName(rg)}: ${f == null ? 'not enough clear ground' : Math.round(f * 100) + '% snow'}</title></path>`;
+    }
+  });
+  for (let k = 1; k <= 8; k++) {
+    const a = (k - 1) * Math.PI / 4, r = R + 13;
+    svg += `<text class="dir" data-k="${k}" x="${(C + r * Math.sin(a)).toFixed(1)}" y="${(C - r * Math.cos(a) + 4).toFixed(1)}" font-size="${k % 2 ? 12 : 10}" text-anchor="middle"`
+      + ` style="fill:${SEL.k === k ? 'var(--sel)' : 'var(--text-muted)'};font-weight:${SEL.k === k ? 700 : 400}">${ASPECTS[k]}</text>`;
+  }
+  svg += '</svg>';
+  const el = document.getElementById('rose');
+  el.innerHTML = svg;
+  el.querySelectorAll('.cell').forEach(p => p.onclick = () => {
+    const k = +p.dataset.k, r = +p.dataset.r;
+    select(SEL.k === k && SEL.r === r ? { k: null, r: null } : { k, r });
+  });
+  el.querySelectorAll('.dir').forEach(p => p.onclick = () => { const k = +p.dataset.k; select({ k: SEL.k === k && SEL.r == null ? null : k, r: null }); });
+  const rings = document.getElementById('rings');
+  rings.innerHTML = [...RINGS.keys()].reverse().map(ri => `<button type="button" data-r="${ri}" class="${SEL.r === ri && SEL.k == null ? 'on' : ''}">${ringName(RINGS[ri])}</button>`).join('')
+    + `<button type="button" class="clear-btn" id="clear-sel" style="${SEL.k == null && SEL.r == null ? 'visibility:hidden' : ''}">Clear</button>`;
+  rings.querySelectorAll('button[data-r]').forEach(b => b.onclick = () => { const r = +b.dataset.r; select({ k: null, r: SEL.r === r && SEL.k == null ? null : r }); });
+  document.getElementById('clear-sel').onclick = () => select({ k: null, r: null });
+  renderSelLine();
+}
+function select(s) { SEL = s; renderRose(); renderProfile(); drawSelection(); }
+function renderSelLine() {
+  const el = document.getElementById('sel-line');
+  if (SEL.k == null && SEL.r == null) { el.innerHTML = ''; return; }
+  const what = [SEL.k != null ? `${ASPECT_NAME[ASPECTS[SEL.k]]}-facing slopes` : 'All slopes', SEL.r != null ? ringName(RINGS[SEL.r]) : ''].filter(Boolean).join(', ');
+  const st = cellStats(SEL.k, SEL.r);
+  el.innerHTML = `<b>${what[0].toUpperCase() + what.slice(1)}</b>: `
+    + (st.f == null ? 'not enough clear open ground on this pass.' : `${Math.round(st.f * 100)}% of the open ground the satellite saw had snow (${Math.round(st.c * PX_KM2).toLocaleString('en-US')} km² seen).`)
+    + ' Highlighted on the map.';
+}
+
+// ── Map highlight of the selected terrain ──
+async function loadClasses() {
+  const meta = await getJSON('data/terrain_classes.json');
+  const img = new Image();
+  img.src = 'data/terrain_classes.webp';
+  await img.decode();
+  const cv = document.createElement('canvas');
+  cv.width = meta.width; cv.height = meta.height;
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0);
+  CLASSES = { meta, data: ctx.getImageData(0, 0, cv.width, cv.height).data };
+  // Elevation band (R) -> rose ring, once.
+  CLASSES.ringOfBand = Array.from({ length: 30 }, (_, b) => ringOfFt(FT(meta.band_lo_m + b * meta.band_m + meta.band_m / 2)));
+  const out = document.createElement('canvas');
+  out.width = meta.width; out.height = meta.height;
+  CLASSES.out = out;
+  await mapReady;
+  map.addSource('sel', { type: 'canvas', canvas: out, coordinates: meta.coordinates, animate: false });
+  map.addLayer({ id: 'sel-layer', type: 'raster', source: 'sel', paint: { 'raster-opacity': 0.8, 'raster-fade-duration': 0, 'raster-resampling': 'nearest' } },
+    map.getLayer('stations') ? 'stations' : undefined);
+  drawSelection();
+}
+function drawSelection() {
+  if (!CLASSES || !map.getSource('sel')) return;
+  const { data, out, ringOfBand } = CLASSES;
+  const ctx = out.getContext('2d');
+  const im = ctx.createImageData(out.width, out.height), o = im.data;
+  if (SEL.k != null || SEL.r != null) {
+    for (let i = 0; i < data.length; i += 4) {
+      if ((SEL.k == null || data[i + 1] === SEL.k) && (SEL.r == null || ringOfBand[data[i]] === SEL.r)) {
+        o[i] = 255; o[i + 1] = 213; o[i + 2] = 79; o[i + 3] = 165;     // selected: yellow
+      } else {
+        o[i] = 10; o[i + 1] = 15; o[i + 2] = 26; o[i + 3] = 120;       // the rest: dimmed
+      }
+    }
+  }
+  ctx.putImageData(im, 0, 0);
+  const src = map.getSource('sel');
+  src.play(); requestAnimationFrame(() => src.pause());
+}
+
+// ── Elevation profile ──
+function renderProfile() {
+  const t = STATS[DATE];
+  const W = 180, H = 190, pl = 30, pr = 6, pt = 8, pb = 24, zLo = 3500, zHi = 12500;
+  const X = f => pl + f * (W - pl - pr), Y = ft => pt + (1 - (ft - zLo) / (zHi - zLo)) * (H - pt - pb);
+  const open = t.bands_m.map((z, i) => ({ z: z + 50, c: sum(t.clear_open[i]), f: sum(t.snow_open[i]) / Math.max(1, sum(t.clear_open[i])) })).filter(r => r.c >= 2000);
+  const forest = t.bands_m.map((z, i) => ({ z: z + 50, c: t.clear_forest[i], f: t.snow_forest[i] / Math.max(1, t.clear_forest[i]) })).filter(r => r.c >= 2000);
+  const path = rows => rows.map((r, i) => `${i ? 'L' : 'M'}${X(r.f).toFixed(1)},${Y(FT(r.z)).toFixed(1)}`).join(' ');
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Share of ground with snow by elevation">`;
+  for (let ft = 4000; ft <= 12000; ft += 2000) svg += `<line x1="${pl}" x2="${W - pr}" y1="${Y(ft)}" y2="${Y(ft)}" stroke="rgba(255,255,255,0.06)"/><text x="${pl - 3}" y="${Y(ft) + 3}" font-size="7.5" text-anchor="end">${ft / 1000}k ft</text>`;
+  [0, 0.5, 1].forEach(f => { svg += `<text x="${X(f)}" y="${H - 12}" font-size="7.5" text-anchor="${f === 1 ? 'end' : f ? 'middle' : 'start'}">${f * 100}%</text>`; });
+  if (SEL.r != null) { const [lo, hi] = RINGS[SEL.r]; svg += `<rect x="${pl}" y="${Y(Math.min(hi, zHi))}" width="${W - pl - pr}" height="${Y(Math.max(lo, zLo)) - Y(Math.min(hi, zHi))}" fill="rgba(255,213,79,0.12)"/>`; }
+  if (forest.length > 1) svg += `<path d="${path(forest)}" fill="none" stroke="rgba(160,180,170,0.6)" stroke-width="1.4" stroke-dasharray="3,2"/>`;
+  if (open.length > 1) svg += `<path d="${path(open)}" fill="none" stroke="#64d2ff" stroke-width="2"/>`;
+  if (t.snowline_m) { const y = Y(FT(t.snowline_m)); svg += `<line x1="${pl}" x2="${W - pr}" y1="${y}" y2="${y}" stroke="#fff" stroke-dasharray="4,2" opacity="0.8"/><text x="${W - pr}" y="${y - 3}" font-size="7.5" text-anchor="end" style="fill:#fff">snow line</text>`; }
+  svg += `<text x="${(pl + W - pr) / 2}" y="${H - 2}" font-size="7.5" text-anchor="middle">ground with snow · <tspan style="fill:rgba(160,180,170,0.9)">- - forest</tspan></text></svg>`;
+  document.getElementById('profile').innerHTML = svg;
+}
+
+// ── Change since the last pass ──
+function renderChange() {
+  const t = STATS[DATE], c = t.change, el = document.getElementById('change'), note = document.getElementById('change-note');
+  if (!c || !c.compared_cells) { el.innerHTML = '<p class="note">No earlier pass in the 12 days before saw enough of the same ground.</p>'; note.textContent = ''; return; }
+  const rows = c.compared.map((r, i) => ({ z: 1000 + i * 100 + 50, n: sum(r), g: sum(c.gained[i]), l: sum(c.lost[i]) })).filter(r => r.n >= 500);
+  const W = 180, H = 190, pl = 30, pr = 6, pt = 8, pb = 24, zLo = 3500, zHi = 12500, mid = (pl + W - pr) / 2;
+  const fMax = Math.max(0.1, ...rows.map(r => Math.max(r.g, r.l) / r.n));
+  const Y = ft => pt + (1 - (ft - zLo) / (zHi - zLo)) * (H - pt - pb), bh = Math.max(1.5, (H - pt - pb) / ((zHi - zLo) / 328) - 0.4);
+  const sc = f => f / fMax * (W - pr - mid);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Snow gained and lost by elevation">`;
+  for (let ft = 4000; ft <= 12000; ft += 2000) svg += `<line x1="${pl}" x2="${W - pr}" y1="${Y(ft)}" y2="${Y(ft)}" stroke="rgba(255,255,255,0.06)"/><text x="${pl - 3}" y="${Y(ft) + 3}" font-size="7.5" text-anchor="end">${ft / 1000}k ft</text>`;
+  svg += `<line x1="${mid}" x2="${mid}" y1="${pt}" y2="${H - pb}" stroke="rgba(255,255,255,0.15)"/>`;
+  rows.forEach(r => {
+    const y = Y(FT(r.z)) - bh / 2, tip = `${Math.round(FT(r.z) / 100) * 100} ft: gained ${Math.round(r.g / r.n * 100)}%, lost ${Math.round(r.l / r.n * 100)}%`;
+    if (r.g) svg += `<rect x="${mid}" y="${y}" width="${sc(r.g / r.n).toFixed(1)}" height="${bh}" fill="#64d2ff"><title>${tip}</title></rect>`;
+    if (r.l) svg += `<rect x="${(mid - sc(r.l / r.n)).toFixed(1)}" y="${y}" width="${sc(r.l / r.n).toFixed(1)}" height="${bh}" fill="#FFB74D"><title>${tip}</title></rect>`;
+  });
+  svg += `<text x="${mid - 3}" y="${H - 12}" font-size="7.5" text-anchor="end" style="fill:#FFB74D">← lost</text><text x="${mid + 3}" y="${H - 12}" font-size="7.5" style="fill:#64d2ff">gained →</text>`
+    + `<text x="${(pl + W - pr) / 2}" y="${H - 2}" font-size="7.5" text-anchor="middle">bar end = ${Math.round(fMax * 100)}% of ground</text></svg>`;
+  el.innerHTML = svg;
+  const km = n => Math.round(n * c.cell_km2).toLocaleString('en-US');
+  note.innerHTML = `Since ${fmtDay(c.from)} (${c.days} day${c.days === 1 ? '' : 's'}), on open ground both passes saw clearly (${km(c.compared_cells)} km²): snow arrived on <b style="color:#64d2ff">${km(c.gained_cells)} km²</b>, left <b style="color:#FFB74D">${km(c.lost_cells)} km²</b>.`;
+}
+
+// ── Stations: depth by elevation, on the chart and on the map ──
+let STATIONS = [];
+async function renderDepth() {
+  const d = DATE, sn = await snotelFor(d);
+  if (DATE !== d) return;
+  const near = (h, days) => { const x = (h || []).filter(r => r.date <= d && r.depth_in != null).pop();
+    return x && (Date.parse(d) - Date.parse(x.date)) / 86400000 <= days ? { v: x.depth_in, on: x.date } : null; };
+  const pts = [];
+  (sn.stations || []).filter(x => x.id && x.id.endsWith(':SNTL') && x.elevation_ft && x.lat && inArea(x)).forEach(x => {
+    const r = near(x.history, 2); if (r) pts.push({ kind: 'SNOTEL', name: x.name, z: x.elevation_ft, d: r.v, on: r.on, lon: x.lon, lat: x.lat });
+  });
+  // Mesonet history starts with this season; older dates have no valley readings.
+  MESONET.filter(inArea).forEach(x => { const r = near(x.history, 3); if (r) pts.push({ kind: 'Mesonet', name: x.name, z: x.elevation_ft, d: r.v, on: r.on, lon: x.lon, lat: x.lat }); });
+  STATIONS = pts.map((p, i) => ({ ...p, id: i }));
+  drawStationsOnMap();
+
+  const sn2 = STATIONS.filter(p => p.kind === 'SNOTEL'), me = STATIONS.filter(p => p.kind === 'Mesonet');
+  const lead = document.getElementById('depth-lead'), el = document.getElementById('depth'), note = document.getElementById('depth-note');
+  if (STATIONS.length < 3) { lead.textContent = 'Not enough station readings for this date.'; el.innerHTML = ''; note.textContent = ''; return; }
+  const t = STATS[d], snowFt = t.snowline_m ? FT(t.snowline_m) : null;
+  const fitPts = STATIONS.filter(p => snowFt == null || p.z >= snowFt).map(p => ({ z: p.z, d: p.d }));
+  if (snowFt != null) fitPts.push({ z: snowFt, d: 0 });
+  let fit = null;
+  if (fitPts.length >= 6) {
+    const mz = sum(fitPts.map(p => p.z)) / fitPts.length, md = sum(fitPts.map(p => p.d)) / fitPts.length;
+    const sxx = sum(fitPts.map(p => (p.z - mz) ** 2)), sxy = sum(fitPts.map(p => (p.z - mz) * (p.d - md)));
+    if (sxx && sxy / sxx > 0) fit = { slope: sxy / sxx, at: z => md + sxy / sxx * (z - mz) };
+  }
+  const avg = a => sum(a.map(p => p.d)) / a.length;
+  const rng = a => `${Math.min(...a.map(p => p.z)).toLocaleString('en-US')}–${Math.max(...a.map(p => p.z)).toLocaleString('en-US')} ft`;
+  lead.innerHTML = [me.length ? `Valleys (${rng(me)}): <b>${(Math.round(avg(me) * 10) / 10)}″</b> average` : 'No valley readings for this date',
+    sn2.length ? `mountains (${rng(sn2)}): <b>${Math.round(avg(sn2))}″</b>` : '',
+    fit ? `roughly ${Math.max(0.1, Math.round(fit.slope * 10000) / 10)}″ more per 1,000 ft` : ''].filter(Boolean).join(' · ');
+
+  const W = 420, H = 210, pl = 36, pr = 10, pt = 8, pb = 26, zLo = 3500, zHi = 12500;
+  const dMax = Math.max(6, Math.ceil(Math.max(...STATIONS.map(p => p.d)) / 5) * 5);
+  const X = v => pl + v / dMax * (W - pl - pr), Y = ft => pt + (1 - (ft - zLo) / (zHi - zLo)) * (H - pt - pb);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Snow depth by elevation">`;
+  for (let ft = 4000; ft <= 12000; ft += 2000) svg += `<line x1="${pl}" x2="${W - pr}" y1="${Y(ft)}" y2="${Y(ft)}" stroke="rgba(255,255,255,0.06)"/><text x="${pl - 4}" y="${Y(ft) + 3}" font-size="8" text-anchor="end">${ft / 1000}k ft</text>`;
+  for (let k = 0; k <= 4; k++) { const v = dMax * k / 4; svg += `<text x="${X(v)}" y="${H - 12}" font-size="8" text-anchor="${k === 4 ? 'end' : k ? 'middle' : 'start'}">${Math.round(v)}″</text>`; }
+  if (snowFt != null) svg += `<line x1="${pl}" x2="${W - pr}" y1="${Y(snowFt)}" y2="${Y(snowFt)}" stroke="#fff" stroke-dasharray="4,2" opacity="0.8"/><text x="${W - pr}" y="${Y(snowFt) - 3}" font-size="8" text-anchor="end" style="fill:#fff">satellite snow line (0″)</text>`;
+  if (fit) { const z0 = snowFt ?? Math.min(...fitPts.map(p => p.z)), z1 = Math.max(...fitPts.map(p => p.z));
+    svg += `<line x1="${X(Math.max(0, fit.at(z0)))}" y1="${Y(z0)}" x2="${X(Math.min(dMax, fit.at(z1)))}" y2="${Y(z1)}" stroke="#FFB74D" stroke-width="1.4" stroke-dasharray="5,3"/>`; }
+  STATIONS.forEach(p => {
+    svg += `<circle class="st" data-id="${p.id}" cx="${X(p.d).toFixed(1)}" cy="${Y(p.z).toFixed(1)}" r="4" fill="${p.kind === 'SNOTEL' ? '#4FC3F7' : '#81C784'}" stroke="#0b0f1a" stroke-width="1" style="cursor:pointer"></circle>`;
+  });
+  svg += `<text x="${(pl + W - pr) / 2}" y="${H - 1}" font-size="8" text-anchor="middle">snow depth</text></svg>`;
+  el.innerHTML = svg;
+  el.querySelectorAll('.st').forEach(c => {
+    c.onmouseenter = () => hoverStation(+c.dataset.id, true);
+    c.onmouseleave = () => hoverStation(null);
+    c.onclick = () => { const p = STATIONS[+c.dataset.id]; map.flyTo({ center: [p.lon, p.lat], zoom: Math.max(map.getZoom(), 9) }); hoverStation(p.id, true); };
+  });
+  note.innerHTML = `<span style="color:#4FC3F7">●</span> SNOTEL (NRCS) <span style="color:#81C784">●</span> valley stations (Montana Mesonet) <span style="color:#FFB74D">- -</span> rough trend, an estimate. `
+    + `Hover a dot to find the station on the map. Readings within 2 days of ${fmtDay(d)} (valley stations 3). The satellite shows where snow is, not how deep; depth comes from the stations.`;
+}
+
+let popup = null;
+function hoverStation(id, fromChart) {
+  document.querySelectorAll('#depth .st').forEach(c => { const on = +c.dataset.id === id; c.setAttribute('r', on ? 7 : 4); c.setAttribute('stroke', on ? '#fff' : '#0b0f1a'); });
+  if (map.getSource('stations')) STATIONS.forEach(p => map.setFeatureState({ source: 'stations', id: p.id }, { hover: p.id === id }));
+  if (popup) { popup.remove(); popup = null; }
+  if (id == null) return;
+  const p = STATIONS[id];
+  popup = new mapboxgl.Popup({ closeButton: false, offset: 10 }).setLngLat([p.lon, p.lat])
+    .setHTML(`<b>${p.name}</b><br>${p.kind === 'SNOTEL' ? 'SNOTEL' : 'Montana Mesonet'} · ${p.z.toLocaleString('en-US')} ft<br>${p.d}″ snow on ${fmtDay(p.on)}`).addTo(map);
+  if (fromChart && !map.getBounds().contains([p.lon, p.lat])) map.panTo([p.lon, p.lat]);
+}
+async function drawStationsOnMap() {
+  await mapReady;
+  const data = { type: 'FeatureCollection', features: STATIONS.map(p => ({ type: 'Feature', id: p.id, geometry: { type: 'Point', coordinates: [p.lon, p.lat] }, properties: { kind: p.kind } })) };
+  if (map.getSource('stations')) { map.getSource('stations').setData(data); return; }
+  map.addSource('stations', { type: 'geojson', data });
+  map.addLayer({ id: 'stations', type: 'circle', source: 'stations', paint: {
+    'circle-color': ['match', ['get', 'kind'], 'SNOTEL', '#4FC3F7', '#81C784'],
+    'circle-radius': ['case', ['boolean', ['feature-state', 'hover'], false], 9, 5.5],
+    'circle-stroke-color': ['case', ['boolean', ['feature-state', 'hover'], false], '#ffffff', '#0b0f1a'], 'circle-stroke-width': 1.5 } });
+  map.on('mousemove', 'stations', e => { map.getCanvas().style.cursor = 'pointer'; if (e.features[0].id !== hoverStation.last) { hoverStation.last = e.features[0].id; hoverStation(e.features[0].id); } });
+  map.on('mouseleave', 'stations', () => { map.getCanvas().style.cursor = ''; hoverStation.last = null; hoverStation(null); });
+  map.on('click', 'stations', e => hoverStation(e.features[0].id));
+}
+
+init().catch(e => { document.getElementById('lead').textContent = 'Could not load the terrain data: ' + e.message; });
+</script>
+</body>
+</html>
