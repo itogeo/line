@@ -2642,10 +2642,11 @@ function updatePassFootprint() {
     // The mapped area, for reference.
     features.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: [[w, s], [e, s], [e, n], [w, n], [w, s]] },
       properties: { label: 'Snowline area', color: '#ffffff', sel: false } });
-  } else if (show && CURRENT_DATA) {
+  } else if (show && CURRENT_DATA && CURRENT_DATA.view !== 'latest') {
+    // (In the composite the dated regions already show each pass's strip.)
     const row = SAT_ROWS.find(r => r.dt === CURRENT_DATA.scene_date);
     if (row) add(row.footprint, { label: `Edge of the ${fmt(row.dt)} pass`, color: '#FF4FD8', sel: false });
-    if (row && CURRENT_DATA.view !== 'latest') missed = missedByPass(row);
+    if (row) missed = missedByPass(row);
   }
   updateMissed(missed);
   const data = { type: 'FeatureCollection', features };
