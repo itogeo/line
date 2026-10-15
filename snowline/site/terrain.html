@@ -68,6 +68,11 @@
   .rings button.on { color: #111; background: var(--sel); border-color: var(--sel); font-weight: 600; }
   .sel-line { font-size: 13px; line-height: 1.5; margin-top: 8px; min-height: 20px; }
   .sel-line b { color: var(--sel); }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  .chips button { font: inherit; font-size: 12px; background: transparent; color: var(--text-muted); border: 1px solid var(--border);
+    border-radius: 14px; padding: 3px 10px; cursor: pointer; }
+  .chips button:hover { color: var(--text); border-color: rgba(79,195,247,0.3); }
+  .chips button.on { color: #111; background: var(--sel); border-color: var(--sel); font-weight: 600; }
   .charts2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
   .mapboxgl-popup-content { background: #111827 !important; color: var(--text) !important; border: 1px solid rgba(79,195,247,0.18);
@@ -113,7 +118,8 @@
   <div id="map">
     <div class="map-key" id="map-key">
       <span><i class="sw" style="background:rgb(100,210,255)"></i>Snow</span>
-      <span><i class="sw" style="background:var(--sel)"></i>Selected terrain</span>
+      <span><i class="sw" style="background:#29B6F6"></i>Selected, snow</span>
+      <span><i class="sw" style="background:var(--sel)"></i>Selected, no snow</span>
       <span><i class="sw" style="background:#4FC3F7;border-radius:50%"></i>SNOTEL</span>
       <span><i class="sw" style="background:#81C784;border-radius:50%"></i>Valley station</span>
     </div>
@@ -124,13 +130,15 @@
     <div class="row"><label for="date-sel" class="sub" style="margin:0">Pass</label><select id="date-sel"></select></div>
     <div class="lead" id="lead"></div>
 
+    <h2>Mountain ranges</h2>
+    <div class="chips" id="range-chips"></div>
     <h2>Slope direction × elevation</h2>
     <div class="rose-wrap">
       <div id="rose"></div>
       <div class="rings" id="rings"></div>
     </div>
     <div class="sel-line" id="sel-line"></div>
-    <p class="note">Click a cell, a compass letter or an elevation band to light up every matching place on the map. Shading is the share of open ground with snow (cloud left out); the map highlight covers all terrain, forest included.</p>
+    <p class="note">Click to add or remove: cells, compass letters (a whole direction), elevation bands and ranges all combine. On the map, selected ground with snow on this pass is <b style="color:#29B6F6">blue</b>, without snow <b style="color:var(--sel)">yellow</b>, under cloud faint yellow. Rose shading and percentages: open ground the satellite saw (forest and cloud left out). Range areas are approximate: terrain above 5,500 ft, assigned to the range of its nearest SNOTEL station.</p>
 
     <div class="charts2">
       <div><h2>Snow by elevation</h2><div id="profile"></div></div>
@@ -165,8 +173,13 @@ const AREA = [-112.6, 44.55, -109.6, 46.35];   // mapped area (lib/aoi.py)
 const inArea = x => x.lon >= AREA[0] && x.lon <= AREA[2] && x.lat >= AREA[1] && x.lat <= AREA[3];
 const PX_KM2 = 0.0003 * 111.32 * Math.cos(45.5 * Math.PI / 180) * 0.0003 * 110.574;   // one snow-map pixel
 
-let STATS = null, DATE = null, MESONET = [], SNOTEL = {}, SEL = { k: null, r: null };
-let CLASSES = null;   // ImageData of terrain_classes.webp: R band, G aspect, B forest
+let STATS = null, DATE = null, MESONET = [], SNOTEL = {};
+// Selection: rose cells (aspect k 0-8 x ring r 0-5, k 0 = flat) and ranges; empty = all.
+const SEL = { cells: new Set(), ranges: new Set() };
+const cellKey = (k, r) => k * 10 + r;
+const selActive = () => SEL.cells.size > 0 || SEL.ranges.size > 0;
+let CLASSES = null;   // terrain grid from terrain_classes.webp: band, aspect, forest (tens of %), range
+let SNOW = null;      // { date, cls: Uint8Array per grid cell, 0 none, 1 ground, 2 snow, 3 cloud }
 
 const map = new mapboxgl.Map({ container: 'map', style: 'mapbox://styles/mapbox/outdoors-v12', center: [-110.8, 45.5], zoom: 7 });
 map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
@@ -191,7 +204,7 @@ async function init() {
   const want = new URLSearchParams(location.hash.slice(1)).get('date');
   sel.value = dates.includes(want) ? want : dates[0];
   sel.onchange = () => setDate(sel.value);
-  loadClasses();
+  await loadClasses();
   setDate(sel.value);
 }
 
@@ -199,8 +212,8 @@ async function init() {
 async function setDate(d) {
   DATE = d;
   history.replaceState(null, '', '#date=' + d);
-  renderLead(); renderRose(); renderProfile(); renderChange();
-  renderDepth();
+  SNOW = null;
+  renderLead(); renderChange(); renderDepth(); refreshTerrain();
   await mapReady;
   showSnow(d);
 }
@@ -220,6 +233,7 @@ async function showSnow(d) {
     map.addLayer({ id, type: 'raster', source: id, paint: { 'raster-opacity': 0.75, 'raster-fade-duration': 0 } }, before);
     snowIds.push(id);
   });
+  sampleSnow(d, meta);
   const bb = meta.bbox;
   if (bb && !showSnow.fitted) { showSnow.fitted = true; map.fitBounds([[bb[0], bb[1]], [bb[2], bb[3]]], { padding: 20, duration: 0 }); }
 }
@@ -237,17 +251,110 @@ function renderLead() {
   else el.textContent = 'Not enough clear ground on this pass to place a snow line.';
 }
 
-// ── Rose ──
-function cellStats(k, r) {
-  // Open-ground snow and clear pixels for aspect k (null = all) and ring r (null = all).
-  const t = STATS[DATE];
-  let s = 0, c = 0;
-  t.bands_m.forEach((z, i) => {
-    if (r != null && ringOfFt(FT(z + 50)) !== r) return;
-    for (let a = 1; a <= 8; a++) if (k == null || a === k) { s += t.snow_open[i][a]; c += t.clear_open[i][a]; }
-  });
-  return { s, c, f: c >= 300 ? s / c : null };
+// ── Terrain grid + this pass's snow, per grid cell ──
+async function loadClasses() {
+  const meta = await getJSON('data/terrain_classes.json');
+  const img = new Image();
+  img.src = 'data/terrain_classes.webp';
+  await img.decode();
+  const W = meta.width, H = meta.height, cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0);
+  const px = ctx.getImageData(0, 0, W, H).data, n = W * H;
+  const band = new Uint8Array(n), aspect = new Uint8Array(n), forest = new Uint8Array(n), rid = new Uint8Array(n), ring = new Uint8Array(n);
+  const ringOfBand = Array.from({ length: 30 }, (_, b) => ringOfFt(FT(meta.band_lo_m + b * meta.band_m + meta.band_m / 2)));
+  for (let i = 0, j = 0; i < n; i++, j += 4) {
+    band[i] = px[j]; aspect[i] = px[j + 1]; forest[i] = px[j + 2] & 15; rid[i] = px[j + 2] >> 4; ring[i] = ringOfBand[px[j]];
+  }
+  // Lon of each column, lat of each row (rows are even in Web Mercator).
+  const [[w, nth], [e], [, sth]] = meta.coordinates;
+  const merc = l => Math.log(Math.tan(Math.PI / 4 + l * Math.PI / 360));
+  const y0 = merc(nth), y1 = merc(sth);
+  const lon = Float64Array.from({ length: W }, (_, x) => w + (x + 0.5) * (e - w) / W);
+  const lat = Float64Array.from({ length: H }, (_, y) => (2 * Math.atan(Math.exp(y0 + (y + 0.5) / H * (y1 - y0))) - Math.PI / 2) * 180 / Math.PI);
+  const out = document.createElement('canvas');
+  out.width = W; out.height = H;
+  CLASSES = { meta, W, H, band, aspect, forest, rid, ring, lon, lat, out };
+  renderRangeChips();
+  await mapReady;
+  map.addSource('sel', { type: 'canvas', canvas: out, coordinates: meta.coordinates, animate: false });
+  map.addLayer({ id: 'sel-layer', type: 'raster', source: 'sel', paint: { 'raster-opacity': 0.85, 'raster-fade-duration': 0, 'raster-resampling': 'nearest' } },
+    map.getLayer('stations') ? 'stations' : undefined);
 }
+
+// Each grid cell takes the class of the snow-map pixel at its centre (alpha:
+// 200 snow, 0 ground, 160/100 cloud, 120/60 no data): one sample per ~80 m cell.
+async function sampleSnow(d, meta) {
+  if (!CLASSES) return;
+  const { W, H, lon, lat } = CLASSES, cls = new Uint8Array(W * H);
+  for (const c of meta.chunks || []) {
+    const img = new Image();
+    img.src = `${TILE}/${d}/${c.snow_file}`;
+    try { await img.decode(); } catch (e) { continue; }
+    if (DATE !== d) return;
+    const cw = img.naturalWidth, ch = img.naturalHeight, cv = document.createElement('canvas');
+    cv.width = cw; cv.height = ch;
+    const ctx = cv.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(img, 0, 0);
+    const a = ctx.getImageData(0, 0, cw, ch).data, b = c.bounds;
+    for (let y = 0; y < H; y++) {
+      if (lat[y] > b.north || lat[y] < b.south) continue;
+      const row = Math.min(ch - 1, Math.floor((b.north - lat[y]) / (b.north - b.south) * ch)) * cw;
+      for (let x = 0; x < W; x++) {
+        if (lon[x] < b.west || lon[x] > b.east) continue;
+        const v = a[(row + Math.min(cw - 1, Math.floor((lon[x] - b.west) / (b.east - b.west) * cw))) * 4 + 3];
+        cls[y * W + x] = v === 200 ? 2 : v === 0 ? 1 : (v === 160 || v === 100) ? 3 : cls[y * W + x];
+      }
+    }
+  }
+  if (DATE !== d) return;
+  SNOW = { date: d, cls };
+  refreshTerrain();
+}
+
+// Open-ground (forest <= 30 %) snow and clear cells by elevation band x
+// aspect, for the selected ranges; forest cells by band apart.
+function tally() {
+  const T = { snow: Array.from({ length: 30 }, () => new Array(9).fill(0)), clear: Array.from({ length: 30 }, () => new Array(9).fill(0)),
+    fsnow: new Array(30).fill(0), fclear: new Array(30).fill(0) };
+  if (!CLASSES || !SNOW) return null;
+  const { band, aspect, forest, rid } = CLASSES, cls = SNOW.cls, rOn = SEL.ranges;
+  for (let i = 0; i < cls.length; i++) {
+    const c = cls[i];
+    if (c !== 1 && c !== 2) continue;
+    if (rOn.size && !rOn.has(rid[i])) continue;
+    if (forest[i] > 3) { T.fclear[band[i]]++; if (c === 2) T.fsnow[band[i]]++; continue; }
+    T.clear[band[i]][aspect[i]]++; if (c === 2) T.snow[band[i]][aspect[i]]++;
+  }
+  return T;
+}
+let TALLY = null;
+function refreshTerrain() { TALLY = tally(); renderRose(); renderProfile(); drawSelection(); }
+const ringBands = r => [...Array(30).keys()].filter(b => ringOfFt(FT(1000 + b * 100 + 50)) === r);
+function cellFrac(k, r) {   // k null = all directions incl. flat, r null = all rings
+  if (!TALLY) return null;
+  let s = 0, c = 0;
+  for (let b = 0; b < 30; b++) {
+    if (r != null && ringOfFt(FT(1000 + b * 100 + 50)) !== r) continue;
+    for (let a = 0; a <= 8; a++) if (k == null ? true : a === k) { s += TALLY.snow[b][a]; c += TALLY.clear[b][a]; }
+  }
+  return { s, c, f: c >= 40 ? s / c : null };
+}
+
+// ── Ranges ──
+function renderRangeChips() {
+  const el = document.getElementById('range-chips'), names = CLASSES.meta.ranges;
+  el.innerHTML = names.map((n, i) => i ? `<button type="button" data-i="${i}" class="${SEL.ranges.has(i) ? 'on' : ''}">${n}</button>` : '').join('');
+  el.querySelectorAll('button').forEach(b => b.onclick = () => {
+    const i = +b.dataset.i;
+    SEL.ranges.has(i) ? SEL.ranges.delete(i) : SEL.ranges.add(i);
+    b.classList.toggle('on', SEL.ranges.has(i));
+    refreshTerrain();
+  });
+}
+
+// ── Rose ──
 function renderRose() {
   const R = 120, C = 140, w = R / RINGS.length;
   const arc = (r0, r1, a0, a1) => {
@@ -260,79 +367,71 @@ function renderRose() {
   RINGS.forEach((rg, ri) => {
     const r1 = R - ri * w, r0 = R - (ri + 1) * w;
     for (let k = 1; k <= 8; k++) {
-      const a = (k - 1) * Math.PI / 4, { f } = cellStats(k, ri);
-      const on = (SEL.k == null || SEL.k === k) && (SEL.r == null || SEL.r === ri) && (SEL.k != null || SEL.r != null);
+      const a = (k - 1) * Math.PI / 4, cf = cellFrac(k, ri), f = cf && cf.f;
+      const on = SEL.cells.has(cellKey(k, ri));
       const fill = f == null ? 'rgba(255,255,255,0.04)' : `rgba(100,210,255,${(0.08 + 0.92 * f).toFixed(2)})`;
       svg += `<path class="cell" data-k="${k}" data-r="${ri}" d="${arc(r0, r1, a - Math.PI / 8, a + Math.PI / 8)}" fill="${fill}"`
-        + ` stroke="${on ? 'var(--sel)' : 'rgba(10,15,26,0.9)'}" stroke-width="${on ? 2 : 0.8}">`
-        + `<title>${ASPECT_NAME[ASPECTS[k]]}-facing, ${ringName(rg)}: ${f == null ? 'not enough clear ground' : Math.round(f * 100) + '% snow'}</title></path>`;
+        + ` stroke="${on ? 'var(--sel)' : 'rgba(10,15,26,0.9)'}" stroke-width="${on ? 2.2 : 0.8}">`
+        + `<title>${ASPECT_NAME[ASPECTS[k]]}-facing, ${ringName(rg)}: ${f == null ? (SNOW ? 'not enough clear open ground' : 'loading') : Math.round(f * 100) + '% snow'}</title></path>`;
     }
   });
+  const allOn = k => RINGS.every((_, r) => SEL.cells.has(cellKey(k, r)));
   for (let k = 1; k <= 8; k++) {
     const a = (k - 1) * Math.PI / 4, r = R + 13;
     svg += `<text class="dir" data-k="${k}" x="${(C + r * Math.sin(a)).toFixed(1)}" y="${(C - r * Math.cos(a) + 4).toFixed(1)}" font-size="${k % 2 ? 12 : 10}" text-anchor="middle"`
-      + ` style="fill:${SEL.k === k ? 'var(--sel)' : 'var(--text-muted)'};font-weight:${SEL.k === k ? 700 : 400}">${ASPECTS[k]}</text>`;
+      + ` style="fill:${allOn(k) ? 'var(--sel)' : 'var(--text-muted)'};font-weight:${allOn(k) ? 700 : 400}">${ASPECTS[k]}</text>`;
   }
   svg += '</svg>';
   const el = document.getElementById('rose');
   el.innerHTML = svg;
-  el.querySelectorAll('.cell').forEach(p => p.onclick = () => {
-    const k = +p.dataset.k, r = +p.dataset.r;
-    select(SEL.k === k && SEL.r === r ? { k: null, r: null } : { k, r });
-  });
-  el.querySelectorAll('.dir').forEach(p => p.onclick = () => { const k = +p.dataset.k; select({ k: SEL.k === k && SEL.r == null ? null : k, r: null }); });
+  const toggle = keys => { const all = keys.every(x => SEL.cells.has(x)); keys.forEach(x => all ? SEL.cells.delete(x) : SEL.cells.add(x)); refreshTerrain(); };
+  el.querySelectorAll('.cell').forEach(p => p.onclick = () => toggle([cellKey(+p.dataset.k, +p.dataset.r)]));
+  el.querySelectorAll('.dir').forEach(p => p.onclick = () => toggle(RINGS.map((_, r) => cellKey(+p.dataset.k, r))));
+  const ringOn = r => [...Array(9).keys()].every(k => SEL.cells.has(cellKey(k, r)));
   const rings = document.getElementById('rings');
-  rings.innerHTML = [...RINGS.keys()].reverse().map(ri => `<button type="button" data-r="${ri}" class="${SEL.r === ri && SEL.k == null ? 'on' : ''}">${ringName(RINGS[ri])}</button>`).join('')
-    + `<button type="button" class="clear-btn" id="clear-sel" style="${SEL.k == null && SEL.r == null ? 'visibility:hidden' : ''}">Clear</button>`;
-  rings.querySelectorAll('button[data-r]').forEach(b => b.onclick = () => { const r = +b.dataset.r; select({ k: null, r: SEL.r === r && SEL.k == null ? null : r }); });
-  document.getElementById('clear-sel').onclick = () => select({ k: null, r: null });
+  rings.innerHTML = [...RINGS.keys()].reverse().map(ri => `<button type="button" data-r="${ri}" class="${ringOn(ri) ? 'on' : ''}">${ringName(RINGS[ri])}</button>`).join('')
+    + `<button type="button" class="clear-btn" id="clear-sel" style="${selActive() ? '' : 'visibility:hidden'}">Clear</button>`;
+  // A band selects all directions at that elevation, flat ground included.
+  rings.querySelectorAll('button[data-r]').forEach(b => b.onclick = () => toggle([...Array(9).keys()].map(k => cellKey(k, +b.dataset.r))));
+  document.getElementById('clear-sel').onclick = () => {
+    SEL.cells.clear(); SEL.ranges.clear();
+    document.querySelectorAll('#range-chips button').forEach(b => b.classList.remove('on'));
+    refreshTerrain();
+  };
   renderSelLine();
 }
-function select(s) { SEL = s; renderRose(); renderProfile(); drawSelection(); }
 function renderSelLine() {
   const el = document.getElementById('sel-line');
-  if (SEL.k == null && SEL.r == null) { el.innerHTML = ''; return; }
-  const what = [SEL.k != null ? `${ASPECT_NAME[ASPECTS[SEL.k]]}-facing slopes` : 'All slopes', SEL.r != null ? ringName(RINGS[SEL.r]) : ''].filter(Boolean).join(', ');
-  const st = cellStats(SEL.k, SEL.r);
-  el.innerHTML = `<b>${what[0].toUpperCase() + what.slice(1)}</b>: `
-    + (st.f == null ? 'not enough clear open ground on this pass.' : `${Math.round(st.f * 100)}% of the open ground the satellite saw had snow (${Math.round(st.c * PX_KM2).toLocaleString('en-US')} km² seen).`)
-    + ' Highlighted on the map.';
+  if (!selActive()) { el.innerHTML = ''; return; }
+  if (!TALLY) { el.textContent = 'Loading the snow map…'; return; }
+  let s = 0, c = 0;
+  for (let b = 0; b < 30; b++) for (let k = 0; k <= 8; k++) {
+    if (SEL.cells.size && !SEL.cells.has(cellKey(k, ringOfFt(FT(1000 + b * 100 + 50))))) continue;
+    s += TALLY.snow[b][k]; c += TALLY.clear[b][k];
+  }
+  const ranges = [...SEL.ranges].map(i => CLASSES.meta.ranges[i]);
+  const what = (ranges.length ? ranges.join(', ') : 'All ranges') + (SEL.cells.size ? `, ${SEL.cells.size} direction × elevation cell${SEL.cells.size === 1 ? '' : 's'}` : '');
+  const km2 = CLASSES.meta.width ? 0.001 * 111.32 * Math.cos(45.5 * Math.PI / 180) * 0.001 * 110.574 : 0;
+  el.innerHTML = `<b>${what}</b>: ` + (c < 40 ? 'not enough clear open ground on this pass.'
+    : `${Math.round(100 * s / c)}% of the open ground the satellite saw had snow (about ${Math.round(c * km2).toLocaleString('en-US')} km² seen).`);
 }
 
 // ── Map highlight of the selected terrain ──
-async function loadClasses() {
-  const meta = await getJSON('data/terrain_classes.json');
-  const img = new Image();
-  img.src = 'data/terrain_classes.webp';
-  await img.decode();
-  const cv = document.createElement('canvas');
-  cv.width = meta.width; cv.height = meta.height;
-  const ctx = cv.getContext('2d', { willReadFrequently: true });
-  ctx.drawImage(img, 0, 0);
-  CLASSES = { meta, data: ctx.getImageData(0, 0, cv.width, cv.height).data };
-  // Elevation band (R) -> rose ring, once.
-  CLASSES.ringOfBand = Array.from({ length: 30 }, (_, b) => ringOfFt(FT(meta.band_lo_m + b * meta.band_m + meta.band_m / 2)));
-  const out = document.createElement('canvas');
-  out.width = meta.width; out.height = meta.height;
-  CLASSES.out = out;
-  await mapReady;
-  map.addSource('sel', { type: 'canvas', canvas: out, coordinates: meta.coordinates, animate: false });
-  map.addLayer({ id: 'sel-layer', type: 'raster', source: 'sel', paint: { 'raster-opacity': 0.8, 'raster-fade-duration': 0, 'raster-resampling': 'nearest' } },
-    map.getLayer('stations') ? 'stations' : undefined);
-  drawSelection();
-}
 function drawSelection() {
   if (!CLASSES || !map.getSource('sel')) return;
-  const { data, out, ringOfBand } = CLASSES;
-  const ctx = out.getContext('2d');
-  const im = ctx.createImageData(out.width, out.height), o = im.data;
-  if (SEL.k != null || SEL.r != null) {
-    for (let i = 0; i < data.length; i += 4) {
-      if ((SEL.k == null || data[i + 1] === SEL.k) && (SEL.r == null || ringOfBand[data[i]] === SEL.r)) {
-        o[i] = 255; o[i + 1] = 213; o[i + 2] = 79; o[i + 3] = 165;     // selected: yellow
-      } else {
-        o[i] = 10; o[i + 1] = 15; o[i + 2] = 26; o[i + 3] = 120;       // the rest: dimmed
-      }
+  const { W, H, aspect, ring, rid, out } = CLASSES, cls = SNOW && SNOW.cls;
+  const ctx = out.getContext('2d'), im = ctx.createImageData(W, H), o = im.data;
+  if (selActive()) {
+    const cellOn = new Uint8Array(90), rOn = new Uint8Array(16);
+    for (let k = 0; k <= 8; k++) for (let r = 0; r < 6; r++) cellOn[k * 10 + r] = SEL.cells.size ? +SEL.cells.has(cellKey(k, r)) : 1;
+    for (let i = 0; i < 16; i++) rOn[i] = SEL.ranges.size ? +SEL.ranges.has(i) : 1;
+    for (let i = 0, j = 0; i < W * H; i++, j += 4) {
+      if (cellOn[aspect[i] * 10 + ring[i]] && rOn[rid[i]]) {
+        const c = cls ? cls[i] : 0;
+        if (c === 2) { o[j] = 41; o[j + 1] = 182; o[j + 2] = 246; o[j + 3] = 200; }          // selected, snow
+        else if (c === 1) { o[j] = 255; o[j + 1] = 213; o[j + 2] = 79; o[j + 3] = 175; }     // selected, no snow
+        else { o[j] = 255; o[j + 1] = 213; o[j + 2] = 79; o[j + 3] = 70; }                   // selected, cloud / not seen
+      } else { o[j] = 10; o[j + 1] = 15; o[j + 2] = 26; o[j + 3] = 120; }                    // the rest, dimmed
     }
   }
   ctx.putImageData(im, 0, 0);
@@ -340,23 +439,30 @@ function drawSelection() {
   src.play(); requestAnimationFrame(() => src.pause());
 }
 
-// ── Elevation profile ──
+// ── Elevation profile (selected ranges; open ground and forest) ──
 function renderProfile() {
   const t = STATS[DATE];
   const W = 180, H = 190, pl = 30, pr = 6, pt = 8, pb = 24, zLo = 3500, zHi = 12500;
   const X = f => pl + f * (W - pl - pr), Y = ft => pt + (1 - (ft - zLo) / (zHi - zLo)) * (H - pt - pb);
-  const open = t.bands_m.map((z, i) => ({ z: z + 50, c: sum(t.clear_open[i]), f: sum(t.snow_open[i]) / Math.max(1, sum(t.clear_open[i])) })).filter(r => r.c >= 2000);
-  const forest = t.bands_m.map((z, i) => ({ z: z + 50, c: t.clear_forest[i], f: t.snow_forest[i] / Math.max(1, t.clear_forest[i]) })).filter(r => r.c >= 2000);
+  let open = [], forest = [];
+  if (TALLY) {
+    for (let b = 0; b < 30; b++) {
+      const c = sum(TALLY.clear[b]), z = 1000 + b * 100 + 50;
+      if (c >= 40) open.push({ z, f: sum(TALLY.snow[b]) / c });
+      if (TALLY.fclear[b] >= 40) forest.push({ z, f: TALLY.fsnow[b] / TALLY.fclear[b] });
+    }
+  }
   const path = rows => rows.map((r, i) => `${i ? 'L' : 'M'}${X(r.f).toFixed(1)},${Y(FT(r.z)).toFixed(1)}`).join(' ');
   let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Share of ground with snow by elevation">`;
   for (let ft = 4000; ft <= 12000; ft += 2000) svg += `<line x1="${pl}" x2="${W - pr}" y1="${Y(ft)}" y2="${Y(ft)}" stroke="rgba(255,255,255,0.06)"/><text x="${pl - 3}" y="${Y(ft) + 3}" font-size="7.5" text-anchor="end">${ft / 1000}k ft</text>`;
   [0, 0.5, 1].forEach(f => { svg += `<text x="${X(f)}" y="${H - 12}" font-size="7.5" text-anchor="${f === 1 ? 'end' : f ? 'middle' : 'start'}">${f * 100}%</text>`; });
-  if (SEL.r != null) { const [lo, hi] = RINGS[SEL.r]; svg += `<rect x="${pl}" y="${Y(Math.min(hi, zHi))}" width="${W - pl - pr}" height="${Y(Math.max(lo, zLo)) - Y(Math.min(hi, zHi))}" fill="rgba(255,213,79,0.12)"/>`; }
+  [...new Set([...SEL.cells].map(x => x % 10))].forEach(r => { const [lo, hi] = RINGS[r]; svg += `<rect x="${pl}" y="${Y(Math.min(hi, zHi))}" width="${W - pl - pr}" height="${Y(Math.max(lo, zLo)) - Y(Math.min(hi, zHi))}" fill="rgba(255,213,79,0.10)"/>`; });
   if (forest.length > 1) svg += `<path d="${path(forest)}" fill="none" stroke="rgba(160,180,170,0.6)" stroke-width="1.4" stroke-dasharray="3,2"/>`;
   if (open.length > 1) svg += `<path d="${path(open)}" fill="none" stroke="#64d2ff" stroke-width="2"/>`;
-  if (t.snowline_m) { const y = Y(FT(t.snowline_m)); svg += `<line x1="${pl}" x2="${W - pr}" y1="${y}" y2="${y}" stroke="#fff" stroke-dasharray="4,2" opacity="0.8"/><text x="${W - pr}" y="${y - 3}" font-size="7.5" text-anchor="end" style="fill:#fff">snow line</text>`; }
-  svg += `<text x="${(pl + W - pr) / 2}" y="${H - 2}" font-size="7.5" text-anchor="middle">ground with snow · <tspan style="fill:rgba(160,180,170,0.9)">- - forest</tspan></text></svg>`;
-  document.getElementById('profile').innerHTML = svg;
+  if (t.snowline_m && !SEL.ranges.size) { const y = Y(FT(t.snowline_m)); svg += `<line x1="${pl}" x2="${W - pr}" y1="${y}" y2="${y}" stroke="#fff" stroke-dasharray="4,2" opacity="0.8"/><text x="${W - pr}" y="${y - 3}" font-size="7.5" text-anchor="end" style="fill:#fff">snow line</text>`; }
+  const scope = SEL.ranges.size ? [...SEL.ranges].map(i => CLASSES.meta.ranges[i]).join(', ') : 'whole area';
+  svg += `<text x="${(pl + W - pr) / 2}" y="${H - 2}" font-size="7.5" text-anchor="middle">${scope.length > 30 ? scope.slice(0, 29) + '…' : scope} · <tspan style="fill:rgba(160,180,170,0.9)">- - forest</tspan></text></svg>`;
+  document.getElementById('profile').innerHTML = TALLY ? svg : '<p class="note">Loading the snow map…</p>';
 }
 
 // ── Change since the last pass ──

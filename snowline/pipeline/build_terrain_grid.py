@@ -31,7 +31,11 @@ Also writes the grid as an image for the terrain page's map, so a click on
 a slope direction or elevation band can light up every matching place:
     snowline/site/data/terrain_classes.webp   lossless; R = 100 m elevation
         band from 1,000 m (0-29), G = aspect (0 flat, 1-8 N..NW),
-        B = % tree cover, A = 255 inside the grid. Rows are spaced evenly in
+        B = range id << 4 | tree cover in tens of % (0-10), A = 255.
+        Range: for terrain at or above RANGE_MIN_M, the mountain range of
+        the nearest SNOTEL station within RANGE_KM (station -> range from
+        site/season.js STATION_RANGE), so range areas are approximate;
+        0 = valley or no range. Rows are spaced evenly in
         Web Mercator (resampled from the lat/lon grid) so it can be laid on
         the map as one image without north-south drift.
     snowline/site/data/terrain_classes.json   corners + encoding
@@ -148,6 +152,33 @@ def slope_aspect(elev):
 
 
 IMG = ROOT / "snowline" / "site" / "data" / "terrain_classes.webp"
+RANGE_KM = 40
+RANGE_MIN_M = 1676    # 5,500 ft: below this is valley, not part of a range
+
+
+def range_grid(shape, elev10):
+    """Range id per grid cell (nearest SNOTEL station's range), and the names."""
+    import re
+    from scipy.spatial import cKDTree
+    js = (ROOT / "snowline" / "site" / "season.js").read_text()
+    block = js[js.index("const STATION_RANGE = {"):js.index("};", js.index("const STATION_RANGE = {"))]
+    names, of = [], {}
+    for name, ids in re.findall(r"'([^']+)':\s*\[([^\]]*)\]", block):
+        names.append(name)
+        for sid in re.findall(r"'([^']+)'", ids):
+            of[sid] = len(names)            # ids start at 1
+    st = json.loads((ROOT / "snowline" / "site" / "data" / "snotel_season.json").read_text())["stations"]
+    pts = [(s["lon"], s["lat"], of[s["id"]]) for s in st if s.get("id") in of and s.get("lat")]
+    kx = 111.32 * math.cos(math.radians((NORTH + SOUTH) / 2))
+    tree = cKDTree([(x * kx, y * 110.574) for x, y, _ in pts])
+    lons = WEST + (np.arange(shape[1]) + 0.5) * RES
+    rid = np.zeros(shape, np.uint8)
+    for i in range(shape[0]):
+        lat = NORTH - (i + 0.5) * RES
+        d, k = tree.query(np.column_stack([lons * kx, np.full(shape[1], lat * 110.574)]))
+        rid[i] = np.where(d <= RANGE_KM, np.array([p[2] for p in pts])[k], 0)
+    rid[elev10 * 10 < RANGE_MIN_M] = 0
+    return rid, names
 
 
 def write_image():
@@ -155,6 +186,7 @@ def write_image():
     z = np.load(OUT)
     elev10, aspect, forest = z["elev_10m"], z["aspect"], z["forest"]
     h, w = elev10.shape
+    rid, range_names = range_grid((h, w), elev10)
     merc = lambda lat: np.log(np.tan(np.pi / 4 + np.radians(lat) / 2))
     y0, y1 = merc(NORTH), merc(SOUTH)
     rows = round(h * (y0 - y1) / np.radians(NORTH - SOUTH))   # keep the cell aspect ratio
@@ -162,7 +194,8 @@ def write_image():
     lat = np.degrees(2 * np.arctan(np.exp(ys)) - np.pi / 2)
     src = np.clip(((NORTH - lat) / RES).astype(int), 0, h - 1)   # nearest lat/lon row
     band = np.clip((elev10[src].astype(int) * 10 - 1000) // 100, 0, 29).astype(np.uint8)
-    rgba = np.dstack([band, aspect[src], forest[src], np.full(band.shape, 255, np.uint8)])
+    packed = (rid[src] << 4) | np.minimum(forest[src] // 10, 10).astype(np.uint8)
+    rgba = np.dstack([band, aspect[src], packed, np.full(band.shape, 255, np.uint8)])
     tmp = IMG.with_suffix(".tmp.webp")
     Image.fromarray(rgba, "RGBA").save(tmp, "WEBP", lossless=True, quality=100, method=6)
     tmp.replace(IMG)
@@ -170,7 +203,8 @@ def write_image():
         "coordinates": [[WEST, NORTH], [EAST, NORTH], [EAST, SOUTH], [WEST, SOUTH]],
         "width": w, "height": rows, "band_m": 100, "band_lo_m": 1000,
         "aspects": ["flat", "N", "NE", "E", "SE", "S", "SW", "W", "NW"],
-        "encoding": "R band (0 = 1,000-1,100 m), G aspect, B % tree cover, rows even in Web Mercator",
+        "ranges": [""] + range_names, "range_km": RANGE_KM, "range_min_m": RANGE_MIN_M,
+        "encoding": "R band (0 = 1,000-1,100 m), G aspect, B = range id << 4 | tree cover / 10, rows even in Web Mercator",
     }, indent=1))
     log(f"wrote {IMG.relative_to(ROOT)} ({IMG.stat().st_size / 1e6:.1f} MB, {w}x{rows})")
 
