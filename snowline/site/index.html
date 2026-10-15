@@ -471,14 +471,16 @@
   .feedback-toggle {
     position: absolute; bottom: 60px; right: 12px;
     background: var(--panel);
-    border: 1px solid rgba(139,189,217,0.35); border-radius: 10px;
-    padding: 12px 20px; z-index: 10; cursor: pointer;
-    font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--text);
+    border: 1px solid rgba(139,189,217,0.35); border-radius: 8px;
+    padding: 5px 11px; z-index: 10; cursor: pointer; text-align: right;
+    font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--text);
     transition: all 0.15s;
     box-shadow: 0 4px 16px rgba(0,0,0,0.3);
   }
   .feedback-toggle:hover { color: var(--accent); border-color: rgba(139,189,217,0.2); }
-  .feedback-toggle .ft-sub { display: block; font-size: 10px; font-weight: 400; color: var(--text-muted); margin-top: 3px; }
+  /* "Buy me a coffee" shows when the pointer is on Feedback */
+  .feedback-toggle .coffee-link { display: none; }
+  .feedback-toggle:hover .coffee-link { display: block; }
   .coffee-link { display: inline-block; margin-top: 5px; padding: 1px 6px; border-radius: 4px; background: #FFDD00; color: #0a121e;
     font-size: 9px; font-weight: 700; text-decoration: none; }
   .coffee-link:hover { filter: brightness(1.05); }
@@ -589,8 +591,7 @@
     .layers-title { font-size: 10px !important; }
     /* Feedback sits under the legend, clear of the bottom sheet */
     .feedback-toggle { top: 86px; left: 8px; right: auto; bottom: auto; padding: 5px 10px; }
-    .feedback-toggle .ft-sub { display: none; }
-    .feedback-toggle .coffee-link { display: none; }   /* on phones it lives inside the feedback form */
+    .feedback-toggle .coffee-link, .feedback-toggle:hover .coffee-link { display: none; }   /* on phones it lives inside the feedback form */
     .fb-coffee { display: block; }
     .feedback-box { top: 86px; left: 8px; right: 8px; bottom: auto; width: auto; }
     /* Every other month on the timeline; all eight collide at phone width */
@@ -825,7 +826,6 @@
 
 <div class="feedback-toggle" id="fb-toggle">
   Feedback
-  <span class="ft-sub">Open source &middot; Help us improve</span>
   <a class="coffee-link" href="https://buymeacoffee.com/itogeo" target="_blank" rel="noopener" onclick="event.stopPropagation()">&#9749; Buy me a coffee</a>
 </div>
 
@@ -2669,7 +2669,7 @@ function startNextAnimation(tracks) {
   const t0 = performance.now(), dur = 12000;   // one orbit in 12 s
   const wrap = lon => ((lon + 540) % 360) - 180;
   const frame = now => {
-    const f = ((now - t0) % dur) / dur;
+    const f = ((((now - t0) % dur) + dur) % dur) / dur;   // the first frame can be stamped before t0
     set({ type: 'FeatureCollection', features: tracks.filter(t => t.pts.length > 1).map((t, i) => {
       // Staggered so satellites on neighbouring paths don't sit on each other.
       const x = ((f + i / tracks.length) % 1) * (t.pts.length - 1), k = Math.floor(x), r = x - k, a = t.pts[k], b = t.pts[Math.min(k + 1, t.pts.length - 1)];
@@ -2713,9 +2713,31 @@ function updatePassFootprint() {
       const g = orbitGeo(gr.u.src.footprint);
       // The whole orbit around the globe, and the imaging swath on its daylight half.
       const swath = g.features.find(f => f.properties.kind === 'swath'), track = g.features.find(f => f.properties.kind === 'track');
+      const edge = g.features.find(f => f.properties.kind === 'edge');
+      // Shaded like the composite's dated regions: the swath, its two edges,
+      // and the date where it crosses Montana.
       features.push({ type: 'Feature', geometry: swath.geometry, properties: { ...props, fill: true } });
-      features.push({ type: 'Feature', geometry: track.geometry, properties: props });
+      if (props.sel) features.push({ type: 'Feature', geometry: edge.geometry, properties: { ...props, label: '' } });
+      features.push({ type: 'Feature', geometry: track.geometry, properties: { ...props, label: '', track: true } });
+      // Date label on the swath: Montana for the first, further south for
+      // each later one, since all four cross Montana within a few degrees.
+      const lat = 45.5 - i * 9;
+      const at = g.day.reduce((b, q) => Math.abs(q[1] - lat) < Math.abs(b[1] - lat) ? q : b, g.day[0]);
+      features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [((at[0] + 540) % 360) - 180, at[1]] }, properties: props });
       tracks.push({ pts: track.geometry.coordinates, props });
+      // The chosen pass: the same satellite's other daylight swaths that day,
+      // one orbit (360/14.3 deg of longitude, ~100 min) apart, all round the globe.
+      if (props.sel) {
+        const step = 360 / 14.3;
+        for (let k = -7; k <= 7; k++) {
+          if (!k) continue;
+          // Whole ring moved by 360 so it starts inside -180..180 (the map drops longitudes past 180).
+          const shift = ring => { const off = -k * step, x0 = ring[0][0] + off, wrap = -360 * Math.round(x0 / 360);
+            return ring.map(([x, y]) => [x + off + wrap, y]); };
+          features.push({ type: 'Feature', geometry: { type: 'Polygon', coordinates: swath.geometry.coordinates.map(shift) },
+            properties: { ...props, label: '', sel: false, other: true, fill: true } });
+        }
+      }
     });
     startNextAnimation(tracks);
     // The mapped area, for reference.
@@ -2733,17 +2755,21 @@ function updatePassFootprint() {
   else map.addSource('pass', { type: 'geojson', data });
   if (!map.getLayer('pass-fill')) {
     map.addLayer({ id: 'pass-fill', type: 'fill', source: 'pass', filter: ['==', ['geometry-type'], 'Polygon'],
-      paint: { 'fill-color': ['get', 'color'], 'fill-opacity': ['case', ['get', 'sel'], 0.22, 0.08] } });
+      paint: { 'fill-color': ['get', 'color'], 'fill-opacity': ['case', ['boolean', ['get', 'other'], false], 0.18, ['get', 'sel'], 0.3, 0.15] } });
   }
   if (!map.getLayer('pass-line')) {
     // Dark casing under a bright dashed line so the strip edge reads on snow.
-    map.addLayer({ id: 'pass-casing', type: 'line', source: 'pass', filter: ['==', ['geometry-type'], 'LineString'], paint: {
+    map.addLayer({ id: 'pass-casing', type: 'line', source: 'pass', filter: ['all', ['==', ['geometry-type'], 'LineString'], ['!', ['boolean', ['get', 'track'], false]]], paint: {
       'line-color': 'rgba(10,18,30,0.8)', 'line-width': ['case', ['get', 'sel'], 6, 5],
     }});
-    map.addLayer({ id: 'pass-line', type: 'line', source: 'pass', filter: ['==', ['geometry-type'], 'LineString'], paint: {
+    // Orbit tracks (where each satellite goes, all the way round): thin and solid.
+    map.addLayer({ id: 'pass-track', type: 'line', source: 'pass', filter: ['boolean', ['get', 'track'], false], paint: {
+      'line-color': ['get', 'color'], 'line-width': 1.4, 'line-opacity': 0.85,
+    }});
+    map.addLayer({ id: 'pass-line', type: 'line', source: 'pass', filter: ['all', ['==', ['geometry-type'], 'LineString'], ['!', ['boolean', ['get', 'track'], false]]], paint: {
       'line-color': ['get', 'color'], 'line-width': ['case', ['get', 'sel'], 3.5, 2.5], 'line-dasharray': [3, 2],
     }});
-    map.addLayer({ id: 'pass-label', type: 'symbol', source: 'pass', filter: ['==', ['geometry-type'], 'LineString'], layout: {
+    map.addLayer({ id: 'pass-label', type: 'symbol', source: 'pass', filter: ['all', ['==', ['geometry-type'], 'LineString'], ['!', ['boolean', ['get', 'track'], false]]], layout: {
       'symbol-placement': 'line', 'text-field': ['get', 'label'], 'text-size': 12,
       'text-font': ['DIN Pro Bold', 'Arial Unicode MS Bold'], 'symbol-spacing': 250,
     }, paint: { 'text-color': ['get', 'color'], 'text-halo-color': 'rgba(10,18,30,0.9)', 'text-halo-width': 1.8 }});
@@ -3332,7 +3358,7 @@ function bringSnotelToTop() {
       // zoomed in on snow or imagery (Sam, issue #1); then our own lines.
       style.layers.filter(l => l.type === 'line' && /^(road|bridge|tunnel|waterway|admin)/.test(l.id))
         .forEach(l => { try { map.moveLayer(l.id); } catch (e) {} });
-      ['comp-fill', 'comp-line', 'pass-fill', 'pass-casing', 'pass-line', 'areas-casing', 'areas-line']
+      ['comp-fill', 'comp-line', 'pass-fill', 'pass-casing', 'pass-track', 'pass-line', 'areas-casing', 'areas-line']
         .forEach(id => { if (map.getLayer(id)) try { map.moveLayer(id); } catch (e) {} });
       const symbolLayers = style.layers.filter(l =>
         l.type === 'symbol' && !l.id.startsWith('snotel') && !l.id.startsWith('webcam'));
