@@ -147,7 +147,14 @@
   .next-pass { display: block; margin: 0 0 10px; padding: 5px 9px; border-radius: 6px; line-height: 1.5;
     background: rgba(139,189,217,0.08); border: 1px solid rgba(139,189,217,0.18); font-family: var(--mono); font-size: 9px; color: var(--text-muted); }
   .next-pass b { color: var(--accent); font-weight: 600; }
-  .tl-season { font-family: var(--mono); font-size: 10px; min-width: 64px; }
+  .tl-btn.tl-season { font-family: var(--mono); font-size: 10px; min-width: 64px; width: auto; padding: 0 8px; white-space: nowrap; }
+  .tl-dot { position: absolute; top: 5px; width: 9px; height: 9px; border-radius: 50%; cursor: pointer; transform: translate(-50%, -50%);
+    border: 1px solid rgba(10,18,30,0.8); transition: transform 0.1s; }
+  .tl-dot:hover { transform: translate(-50%, -50%) scale(1.35); opacity: 1 !important; }
+  .tl-key { position: absolute; left: 6px; top: 22px; font-size: 8px; color: var(--text-dim); white-space: nowrap; }
+  .tl-key-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-right: 4px; vertical-align: -1px; }
+  .narrow-only { display: none; }
+  @media (max-width: 768px) { .wide-only { display: none; } .narrow-only { display: inline; } }
   .tl-pass { position: absolute; top: 1px; width: 2px; height: 8px; border-radius: 1px; transform: translateX(-1px); pointer-events: auto; }
 
   .card { background: var(--accent-dim); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 8px; }
@@ -271,7 +278,7 @@
     box-shadow: 0 0 8px rgba(139,189,217,0.3);
   }
   .tl-tick-row {
-    position: relative; height: 22px;
+    position: relative; height: 32px;
     padding: 0 6px; font-family: var(--mono); font-size: 8px; color: var(--text-dim);
   }
 
@@ -2373,7 +2380,7 @@ function buildTimeline() {
   const months = seasonMonthKeys(SEASON).map(k =>
     [new Date(k + '-01T00:00:00').toLocaleDateString('en-US', { month: 'short' }), k + '-01']);
   months.forEach(([label, d], i) => {
-    html += `<span class="tl-mon${i % 2 ? ' tl-mon-odd' : ''}" style="position:absolute;left:${dateToPct(d)}%;top:12px;font-size:7px;color:var(--text-dim);transform:translateX(-50%)">${label}</span>`;
+    html += `<span class="tl-mon${i % 2 ? ' tl-mon-odd' : ''}" style="position:absolute;left:${dateToPct(d)}%;top:12px;font-size:8px;color:var(--text-dim);transform:translateX(-50%)">${label}</span>`;
     html += `<div style="position:absolute;left:${dateToPct(d)}%;top:0;width:1px;height:10px;background:rgba(255,255,255,0.08)"></div>`;
   });
 
@@ -2400,17 +2407,20 @@ function buildTimeline() {
       ? 'Today (live SNOTEL, no imagery yet)'
       : new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', {month:'short',day:'numeric'});
     const bg = isToday ? '#69f0ae' : 'var(--accent)';
-    const opacity = isToday ? '0.95' : '0.5';
+    const opacity = isToday ? '0.95' : '0.8';
     const shadow = isToday ? 'box-shadow:0 0 6px rgba(105,240,174,0.6);' : '';
-    html += `<div data-idx="${idx}" title="${label}" onclick="loadDate(DATES[${idx}])" style="position:absolute;left:${pct}%;top:2px;width:6px;height:6px;border-radius:50%;background:${bg};opacity:${opacity};cursor:pointer;transform:translateX(-3px);${shadow}"></div>`;
+    html += `<div class="tl-dot" data-idx="${idx}" title="${label}: click for that day's map" onclick="loadDate(DATES[${idx}])" style="left:${pct}%;background:${bg};opacity:${opacity};${shadow}"></div>`;
   });
 
+  // What the marks mean, under the months.
+  html += `<div class="tl-key"><span class="tl-key-dot"></span><span class="narrow-only">tap a day</span><span class="wide-only">day with a snow map: click one · ticks: every satellite pass
+    (<span style="color:rgba(224,242,255,0.9)">clear</span>, <span style="color:rgb(255,183,77)">partial</span>, <span style="color:rgb(150,165,180)">cloudy</span>)</span></div>`;
   tickEl.innerHTML = html;
 
   const seasonBtn = document.getElementById('tl-season');
   if (seasonBtn) {
     const seasons = [...new Set(DATES.map(d => seasonOf(d).label))];
-    seasonBtn.textContent = SEASON.label;
+    seasonBtn.innerHTML = `<span class="wide-only">Season&nbsp;</span>${SEASON.label.replace('-', '–')} ▾`;
     seasonBtn.style.display = seasons.length > 1 ? '' : 'none';
     seasonBtn.title = seasons.length > 1 ? `Season ${SEASON.label} — click for another season` : '';
   }
@@ -2974,16 +2984,16 @@ function updateTimelineUI() {
       // Active: bigger, brighter, marker bar on top
       dot.style.background = isToday ? '#a7ffb8' : '#ffffff';
       dot.style.opacity = '1';
-      dot.style.width = '9px';
-      dot.style.height = '9px';
+      dot.style.width = '13px';
+      dot.style.height = '13px';
       const marker = document.getElementById('tl-marker');
       if (marker) marker.style.left = dot.style.left;
     } else {
       // Inactive: today stays green, others go to dim cyan
       dot.style.background = isToday ? '#69f0ae' : 'var(--accent)';
-      dot.style.opacity = isToday ? '0.85' : '0.4';
-      dot.style.width = '5px';
-      dot.style.height = '5px';
+      dot.style.opacity = isToday ? '0.85' : '0.75';
+      dot.style.width = '9px';
+      dot.style.height = '9px';
     }
   });
 
