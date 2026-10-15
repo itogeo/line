@@ -48,17 +48,38 @@ Open ground (< 30 % trees), share of clear pixels with snow:
 
 ## Plan
 
-1. **Stats (cheap, no reprocessing).** Per-watershed profiles (USGS WBD
-   HUC8, public domain) instead of one area-wide curve, and hide a band
-   when under half its open ground was clear. Fixes what the page shows.
+1. **Stats (cheap, no reprocessing).** Per-mountain-range profiles
+   (done 2026-10-15 on the terrain page; Ian chose ranges over
+   watersheds), and hide a band when under half its open ground was clear.
 2. **Classifier v2 (needs a season reprocess; Ian triggers):**
    a. Bright-"bare" test: SCL 4/5/7 with green > ~0.35 and B11 > ~0.3 is
       cloud, not ground (Box Canyon case).
    b. LIS-style second pass above the snowline: looser NDSI with a red
       floor, forest/shade only (Monument Peak case). Watch false snow.
    c. Dark-cloud rescue for SCL 8/9 with high NDSI and low B11 (~6 % here).
-   Thresholds tuned on cached bands; each change kept only if SNOTEL
+   Thresholds tuned on station pixels (step 0 below); each change kept only if SNOTEL
    false negatives fall more than false positives rise, on 10+ dates,
    reported by elevation band, canopy and cloud.
 3. **Don't:** lower NDSI everywhere, adopt SPIReS, or swap in an ML cloud
    model before the steps above are measured.
+
+## Step 0: station test bench (built 2026-10-15)
+
+`snowline/pipeline/build_station_pixels.py` reads, for every processed
+date, a 5x5 window of 20 m pixels (blue, green, red, NIR, B11, SCL, Sen2Cor
+cloud and snow probability) at each SNOTEL and Mesonet station, from the
+same L2A scenes the map used, with that day's measured depth. Windowed
+reads only, nothing saved but the result (~10 KB per date). About 50 s per
+date; 68 dates with 4 workers is roughly 15-20 min.
+
+`snowline/pipeline/classifier_eval.py` scores each candidate rule against
+the stations in seconds, split by tree cover and elevation. Rules live in
+that file as small functions; the winner moves into `process_tiles.py`.
+
+First date (2026-10-13, 21 labelled stations): v1 called 13 of them,
+missing snow at Box Canyon and Monument Peak and calling snow at Big Timber
+SE (bare). Three snow stations (Porcupine, Shower Falls and White Mill)
+were Sen2Cor cloud, so the dark-cloud rescue never triggered:
+their B11 was 0.2-0.6, which is real cloud or snow under cloud, not dark
+cloud. The loose forest rule added two false snows. One date is not
+evidence; judge on the full run.
