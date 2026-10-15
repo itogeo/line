@@ -95,11 +95,12 @@
   }
   .panel.collapsed { opacity: 0; transform: translateX(-300px); pointer-events: none; }
 
-  .brand { display: flex; flex-direction: column; align-items: flex-start; gap: 0; margin-bottom: 8px; }
-  .brand .wordmark { font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 500; color: var(--text-muted); letter-spacing: 0.05em; text-transform: lowercase; }
+  .brand { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+  .headline { font-size: 14px; line-height: 1.45; color: var(--text); margin: 6px 0 10px; }
+  .headline b { color: #8bd3f7; }
+  .headline .up { color: #69f0ae; } .headline .down { color: #FF8A65; }
   .brand h1 { font-family: 'Playfair Display', serif; font-size: 22px; font-weight: 700; color: var(--text); letter-spacing: -0.01em; line-height: 1; margin-top: 2px; }
-  .brand .region { font-family: var(--mono); font-size: 9px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
-  .data-freshness { font-family: var(--mono); font-size: 9px; color: var(--text-dim); margin-top: 3px; }
+  .brand .region { font-family: var(--mono); font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
 
   .scene-date-badge {
     font-family: var(--mono); font-size: 16px; font-weight: 700;
@@ -612,8 +613,9 @@
 
 <!-- Info Panel -->
 <div class="panel collapsed" id="panel">
-  <div class="brand"><span class="wordmark">itogeospatial</span><h1>Snow Cover</h1><span class="region">SW Montana</span><span class="data-freshness" id="data-freshness"></span></div>
+  <div class="brand"><h1>Snow Cover</h1><span class="region">SW Montana</span></div>
   <div class="scene-date-badge" id="date-badge"></div>
+  <div class="headline" id="headline"></div>
   <div class="scene-meta" id="meta"></div>
   <!-- Big button to toggle the satellite (truecolor) imagery overlay.
        This is a prominent CTA because the raw S2 imagery is the most loved
@@ -876,8 +878,7 @@ async function loadSnotelSeason(s) {
   const d = await SNOTEL_SEASON_FILES[s.year];
   if (s.year !== SEASON.year) return;   // the viewer has moved on
   SNOTEL_SEASON = d;
-  const el = document.getElementById('data-freshness');
-  if (el) el.textContent = d?.generated_at ? 'Updated ' + formatAge(d.generated_at) : '';
+  renderHeadline();
   refreshSnotelDots();
   loadRangeDepths();
 }
@@ -1327,6 +1328,30 @@ async function loadDate(dateStr) {
   }
 }
 
+// One plain line that answers "how much snow?": the satellite's share of
+// snow over what it could see, and the SNOTEL stations' average depth and
+// its change over 7 days, for the date on screen.
+function renderHeadline() {
+  const el = document.getElementById('headline');
+  const d = CURRENT_DATA;
+  if (!el || !d || d.no_imagery) { if (el) el.innerHTML = ''; return; }
+  const parts = [];
+  if (d.snow_cover_pct != null) parts.push(`Snow on <b>${Math.round(d.snow_cover_pct)}%</b> of the ground the satellite could see`);
+  const st = (SNOTEL_SEASON?.stations || []).filter(x => x.id && x.id.endsWith(':SNTL'));
+  const day = snotelDateFor(CURRENT_DATE);
+  const avgOn = ds => {
+    const v = st.map(x => (x.history || []).filter(h => h.date <= ds && h.depth_in != null).pop())
+      .filter(h => h && (Date.parse(ds) - Date.parse(h.date)) / 86400000 <= 2).map(h => h.depth_in);
+    return v.length >= 5 ? v.reduce((a, b) => a + b, 0) / v.length : null;
+  };
+  const now = avgOn(day), before = avgOn(new Date(Date.parse(day) - 7 * 86400000).toISOString().slice(0, 10));
+  if (now != null) {
+    const dlt = before != null ? Math.round(now - before) : null;
+    parts.push(`snow stations average <b>${Math.round(now)}″</b> deep` + (dlt ? `, <span class="${dlt > 0 ? 'up' : 'down'}">${dlt > 0 ? 'up' : 'down'} ${Math.abs(dlt)}″ this week</span>` : ''));
+  }
+  el.innerHTML = parts.join(' &middot; ');
+}
+
 // ── Panel rendering ──
 function renderPanel() {
   const d = CURRENT_DATA;
@@ -1339,11 +1364,9 @@ function renderPanel() {
   const isLive = age <= 3;
   const latestProcessed = TODAY_VIRTUAL ? DATES[DATES.length - 2] : DATES[DATES.length - 1];
   const isLatestProcessed = CURRENT_DATE === latestProcessed;
-  const modeBadge = isLive
-    ? '<span class="mode-badge live">Live</span>'
-    : isLatestProcessed
-      ? `<span class="mode-badge archive">Latest clear image &middot; ${ageText}</span>`
-      : `<span class="mode-badge archive">${ageText}</span>`;
+  const modeBadge = isLatestProcessed
+    ? `<span class="mode-badge ${isLive ? 'live' : 'archive'}">Newest &middot; ${ageText}</span>`
+    : `<span class="mode-badge archive">${ageText}</span>`;
 
   document.getElementById('date-badge').innerHTML =
     `${formatted}${modeBadge}`;
@@ -1380,26 +1403,23 @@ function renderPanel() {
   }
 
   const coverage = d.coverage_pct != null ? d.coverage_pct : 100;
+  const seenPct = Math.round(d.view === 'latest' && d.pass_coverage_pct != null ? d.pass_coverage_pct : coverage);
   const coverageNote = d.view === 'latest' && d.pass_coverage_pct != null && d.pass_coverage_pct < coverage
-    ? ` &middot; this pass saw ${d.pass_coverage_pct}%, latest view ${coverage}%`
-    : (coverage < 80 ? ` &middot; <span style="color:#FFB74D">${coverage}% AOI covered</span>` : '');
+    ? ` &middot; satellite saw ${seenPct}% of the area that day; recent passes fill it to ${Math.round(coverage)}%`
+    : ` &middot; <span style="${coverage < 80 ? 'color:#FFB74D' : ''}">satellite saw ${seenPct}% of the area</span>`;
   // When viewing the latest processed date: show "imagery from X · SNOTEL live"
   // so the user knows the snow image is historical but the ground-truth numbers
   // are current. For other dates: just show the archive info.
-  if (isLatestProcessed && !isLive) {
-    document.getElementById('meta').innerHTML =
-      `Imagery: ${ageText}${coverageNote}<br><span style="color:#69f0ae;font-size:9px">SNOTEL readings: live</span>`;
-  } else {
+  {
     // Scene cloud averaged over the tiles used (newer maps list their scenes).
     const sc = d.scenes || [];
     const cloud = sc.length ? Math.round(sc.reduce((a, x) => a + (x.cloud || 0), 0) / sc.length)
       : (d.cloud_cover_pct != null ? Math.round(d.cloud_cover_pct) : null);
-    const bits = ['Sentinel-2 L2A'];
+    const bits = ['Sentinel-2 satellite'];
     if (cloud != null) bits.push(`${cloud}% cloud`);
-    if (sc.length) bits.push(`${sc.length} tiles`);
-    if (!isLive) bits.push(`Archived ${ageText}`);
     document.getElementById('meta').innerHTML = bits.join(' &middot; ') + coverageNote;
   }
+  renderHeadline();
 
   // Toggle archive mode styling
   document.getElementById('panel').classList.toggle('archive-mode', !isLive);
