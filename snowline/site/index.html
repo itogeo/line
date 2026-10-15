@@ -434,10 +434,10 @@
   }
   .feedback-toggle:hover { color: var(--accent); border-color: rgba(139,189,217,0.2); }
   .feedback-toggle .ft-sub { display: block; font-size: 10px; font-weight: 400; color: var(--text-muted); margin-top: 3px; }
-  .coffee-btn { position: absolute; bottom: 64px; right: 250px; z-index: 10; display: flex; align-items: center; gap: 7px;
-    padding: 9px 14px; border-radius: 10px; background: #FFDD00; color: #0a121e; text-decoration: none;
-    font-family: var(--mono); font-size: 12px; font-weight: 700; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
-  .coffee-btn:hover { filter: brightness(1.05); }
+  .coffee-link { display: inline-block; margin-top: 5px; padding: 1px 6px; border-radius: 4px; background: #FFDD00; color: #0a121e;
+    font-size: 9px; font-weight: 700; text-decoration: none; }
+  .coffee-link:hover { filter: brightness(1.05); }
+  .fb-coffee { display: none; font-size: 10px; margin-top: 8px; }
 
   .feedback-box {
     position: absolute; bottom: 60px; right: 12px;
@@ -550,7 +550,8 @@
     /* Feedback sits under the legend, clear of the bottom sheet */
     .feedback-toggle { top: 86px; left: 8px; right: auto; bottom: auto; padding: 5px 10px; }
     .feedback-toggle .ft-sub { display: none; }
-    .coffee-btn { top: 128px; left: 8px; right: auto; bottom: auto; padding: 5px 10px; font-size: 11px; }
+    .feedback-toggle .coffee-link { display: none; }   /* on phones it lives inside the feedback form */
+    .fb-coffee { display: block; }
     .feedback-box { top: 86px; left: 8px; right: 8px; bottom: auto; width: auto; }
     /* Every other month on the timeline; all eight collide at phone width */
     .tl-mon-odd { display: none; }
@@ -762,19 +763,15 @@
 </div>
 
 
-<a class="coffee-btn" id="coffee-btn" target="_blank" rel="noopener" style="display:none">&#9749; Buy me a coffee</a>
-<script>
-  // Set to the Buy Me a Coffee page; the button stays hidden until it is.
-  const COFFEE_URL = 'https://buymeacoffee.com/itogeo';
-  if (COFFEE_URL) { const c = document.getElementById('coffee-btn'); c.href = COFFEE_URL; c.style.display = ''; }
-</script>
 <div class="feedback-toggle" id="fb-toggle">
   Feedback
   <span class="ft-sub">Open source &middot; Help us improve</span>
+  <a class="coffee-link" href="https://buymeacoffee.com/itogeo" target="_blank" rel="noopener" onclick="event.stopPropagation()">&#9749; Buy me a coffee</a>
 </div>
 
 <div class="feedback-box" id="fb-box">
   <h4>Help us improve Snowline</h4>
+  <div class="fb-coffee">Like it? <a class="coffee-link" href="https://buymeacoffee.com/itogeo" target="_blank" rel="noopener">&#9749; Buy me a coffee</a></div>
   <p>Snowline is an open-source project by <a href="https://itogeospatial.com" target="_blank">Ito Geospatial</a>. Tell us what features, data, or improvements would be most useful to you.</p>
   <textarea id="fb-text" placeholder="What would make this tool more useful? Feature requests, bug reports, data suggestions — anything helps."></textarea>
   <p style="font-size:10px;opacity:0.75;margin-top:4px">Feedback is filed as an issue on the project's <a href="https://github.com/itogeo/line/issues" target="_blank" rel="noopener">GitHub</a>. Please don't include personal details.</p>
@@ -2083,6 +2080,11 @@ function initAreaDrawing() {
 
 async function onSpotClick(e) {
   if (DRAWING || drawnBox) return;   // drawing an area, not asking about a spot
+  {
+    // No snow history outside the mapped area.
+    const { lng, lat } = e.lngLat, [w, s, ea, n] = AOI_BBOX;
+    if (lng < w || lng > ea || lat < s || lat > n) return;
+  }
   if (map.queryRenderedFeatures(e.point, { layers: ['snotel-circles', 'webcam-icons'].filter(id => map.getLayer(id)) }).length) return;
   const { lng, lat } = e.lngLat;
   const dates = DATES.filter(d => d !== TODAY_VIRTUAL && d >= SEASON.start && d <= SEASON.end);
