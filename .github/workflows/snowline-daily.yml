@@ -83,7 +83,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          NEW_DATE=$(python snowline/pipeline/check_new_clear_pass.py 2>/dev/null)
+          NEW_DATE=$(python snowline/pipeline/check_new_clear_pass.py)   # a crash fails the step, not "no new pass"
           if [ -n "$NEW_DATE" ]; then
             echo "New clear pass: $NEW_DATE — triggering imagery processing"
             gh workflow run snowline-process-imagery.yml \
