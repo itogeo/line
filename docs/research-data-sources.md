@@ -61,3 +61,44 @@ docs.opendata.aws/noaa-hrrr-pds · github.com/blaylockbk/Herbie ·
 climate.umt.edu/mesonet · weather.gov/documentation/services-web-api ·
 data.fs.usda.gov/geodata/edw · catalog.data.gov/dataset/recreation-information-database-ridb-58364 ·
 bridgerskifoundation.org/trails · nps.gov/yell/planyourvisit/parkroads.htm
+
+## Aspect, wind and snow change over time (2026-10-14, second pass)
+
+Built tonight: snow line, compass rose (slope direction x elevation) and
+% snow by elevation per pass (`build_terrain_stats.py`, terrain grid from
+Copernicus GLO-30 + ESA WorldCover); depth by elevation from SNOTEL + Montana
+Mesonet with the satellite snow line as 0″ (`fetch_mesonet_snow.py`).
+
+What the first numbers show (measured, not literature):
+- North vs south: 2026-05-29 snow continuous above 2,571 m on N slopes,
+  2,787 m on SW; 2026-03-20: 2,122 m N vs 2,273 m S. The expected pattern.
+- Forest hides snow: at 2,000–2,600 m on 2026-10-13, forested ground read
+  43–56 % snow vs 56–68 % on open ground. Stats use open ground (< 30 % trees).
+- One area-wide profile mixes storms: 2026-10-13 snow fell mainly north
+  and east, so open ground at 2,000–3,000 m read ~60 % while 1,700 m read
+  91 %. Per-range profiles would separate this (next).
+
+Literature points (from a research agent; [U] = recalled, not checked):
+elevation controls accumulation, aspect controls melt-out, and aspect
+differences grow from about February [U, Elder et al. 1991; Molotch & Meromy
+2014]. Prevailing W–SW winter wind loads N, NE and E slopes [U, Winstral et
+al. 2002]. Optical snow mapping is weakest on shaded north slopes in Nov–Jan
+and under canopy. An aspect x elevation rose is an avalanche-bulletin
+convention; ours is labelled "snow cover" only.
+
+Recommendation, in order:
+1. **Per-range snow line** (same counts, split by range). Fixes the storm
+   mixing above. Needs range outlines: derive from the SNOTEL range table
+   or draw them once; say which.
+2. **Pass-to-pass change**: between two clear passes, area that gained or
+   lost snow by elevation and slope direction, with the gap in days. An
+   observation, not a model; both pixels must be clear.
+3. **Wind exposure (Winstral Sx)**, optional: a static DEM-only layer of
+   terrain that tends to catch or lose wind-blown snow under W–SW winds.
+   Cheap; validated only qualitatively, so label it "tendency".
+4. **Melt by aspect (degree-day)**, later: needs a season of hindcasting
+   against SNOTEL before it is shown.
+5. **Skip**: WindNinja snow transport, SnowModel / SnowTran-3D,
+   iSnobal / AWSM. Each needs calibrated precipitation and wind forcing
+   (research-group effort) and would look more certain than it is.
+   WindNinja wind speed alone (no snow) is possible but is weather, not snow.
