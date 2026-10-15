@@ -26,12 +26,17 @@ if __name__ == "__main__":
     ARGS = _ap.parse_args()
 
 import json
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
 import requests
 
-SNOTEL_BBOX = [-112.5, 44.4, -108.5, 46.6]
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT.parent))  # repo root, for `lib`
+from lib.aoi import SNOWLINE, pad_bbox  # noqa: E402
+
+SNOTEL_BBOX = pad_bbox(SNOWLINE.bbox, 0.15)   # AOI + 0.15 deg so edge stations count
 DATA_DIR = Path(__file__).parent.parent / "site" / "data"
 OUTPUT = DATA_DIR / "snotel_season.json"
 

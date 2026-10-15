@@ -93,6 +93,11 @@ def main():
                     help="Upload the lidar terrain tiles (site/terrain/shade) instead of snow maps")
     ap.add_argument("--workers", type=int, default=8, help="Parallel uploads (default 8)")
     ap.add_argument("--check", action="store_true", help="Report missing objects, upload nothing")
+    ap.add_argument("--terrain-dir", type=Path, default=TERRAIN,
+                    help="Folder of terrain tiles to upload with --terrain (default site/terrain)")
+    ap.add_argument("--overwrite", action="store_true",
+                    help="Re-upload every local file, replacing what is in R2 (use when a date or the "
+                         "terrain was rebuilt; keys are otherwise skipped)")
     args = ap.parse_args()
     acct, token = creds()
 
@@ -100,9 +105,9 @@ def main():
     if args.terrain:
         have = list_keys(acct, token, prefix="terrain/")
         log(f"{len(have)} terrain objects already in R2")
-        for f in sorted(TERRAIN.rglob("*.webp")):
-            key = "terrain/" + f.relative_to(TERRAIN).as_posix()
-            if key not in have:
+        for f in sorted(args.terrain_dir.rglob("*.webp")):
+            key = "terrain/" + f.relative_to(args.terrain_dir).as_posix()
+            if args.overwrite or key not in have:
                 missing.append((key, f))
     else:
         dates = [args.date] if args.date else sorted(p.name for p in DATA_10M.iterdir() if p.is_dir())
@@ -111,7 +116,7 @@ def main():
         for d in dates:
             for f in sorted([*(DATA_10M / d).glob("*.webp"), *(DATA_10M / d).glob("*.tif")]):
                 key = f"tiles/{d}/{f.name}"
-                if key not in have:
+                if args.overwrite or key not in have:
                     missing.append((key, f))
     log(f"{len(missing)} local files missing from R2")
     if args.check:

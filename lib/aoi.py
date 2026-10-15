@@ -9,6 +9,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
+def pad_bbox(bbox: tuple[float, float, float, float], margin: float) -> list[float]:
+    """Grow a (west, south, east, north) box by `margin` degrees on every side."""
+    w, s, e, n = bbox
+    return [round(w - margin, 4), round(s - margin, 4), round(e + margin, 4), round(n + margin, 4)]
+
+
 @dataclass(frozen=True)
 class AOI:
     name: str
@@ -20,13 +26,17 @@ class AOI:
         return list(self.bbox)
 
 
-# SW Montana: Bridger Range to Red Lodge, Gallatin Valley to Yellowstone.
-# The 12 tiles are every MGRS tile whose footprint touches the bbox
-# (measured against the S2 GeoParquet index on 2026-10-05). 12TXQ only
-# clips the SE corner and is often absent from a pass.
+# SW Montana: Bozeman, Tobacco Roots, Madisons, Gallatins, Absarokas to
+# Yellowstone's north edge, Cooke City. Changed 2026-10-14 (Ian approved).
+# Old box (through 2026-10-13): (-112.2, 44.9, -109.0, 46.5), same 12 tiles.
+# All 12 tiles are needed for the new box. The W column ends at -109.82
+# (12TWQ), -109.58 (12TWR) and -109.56 (12TWS), so the east edge at -109.6
+# runs into the X column in every row (12TXQ, 12TXR, 12TXS). Checked
+# 2026-10-14 against the UTM grid and cache/*/meta.json footprints. Dropping
+# the X column would leave a ~0.13 deg wide strip unimaged on the east side.
 SNOWLINE = AOI(
     name="snowline",
-    bbox=(-112.2, 44.9, -109.0, 46.5),
+    bbox=(-112.6, 44.55, -109.6, 46.35),
     tiles=(
         "12TUQ", "12TUR", "12TUS",
         "12TVQ", "12TVR", "12TVS",

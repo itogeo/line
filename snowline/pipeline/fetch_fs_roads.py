@@ -37,9 +37,13 @@ from pathlib import Path
 
 import requests
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT.parent))  # repo root, for `lib`
+from lib.aoi import SNOWLINE  # noqa: E402
+
 REPO_ROOT = Path(__file__).parent.parent
 OUTPUT = REPO_ROOT / "site" / "data" / "fs_roads.geojson"
-BBOX = [-112.2, 44.9, -109.0, 46.5]
+BBOX = SNOWLINE.bbox_list   # the snowline AOI (lib/aoi.py)
 
 ROADS_ENDPOINT = "https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_RoadBasic_01/MapServer/0/query"
 MVUM_ENDPOINT = "https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_MVUM_01/MapServer/1/query"
@@ -67,6 +71,10 @@ def fetch_geojson(endpoint, out_fields, label):
     r = requests.get(endpoint, params=params, timeout=180)
     r.raise_for_status()
     data = r.json()
+    # ArcGIS caps each query (maxRecordCount) and flags a cut-off result.
+    # A silently truncated road set is worse than none, so stop here.
+    if data.get("exceededTransferLimit") or (data.get("properties") or {}).get("exceededTransferLimit"):
+        raise SystemExit(f"{label}: result truncated by the server limit; split the query before using this")
     n = len(data.get("features", []))
     log(f"  {n} features")
     return data

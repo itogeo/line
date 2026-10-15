@@ -13,8 +13,10 @@ Output:
 if __name__ == "__main__":
     # --help before the heavy imports below (and before anything runs).
     import argparse
-    argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter).parse_args()
+    # parse_known_args: --help exits here; options like --out-dir are read in main().
+    argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter).parse_known_args()
 
+import argparse
 import json
 import sys
 from datetime import datetime, timedelta
@@ -24,7 +26,11 @@ from collections import defaultdict
 import requests
 import numpy as np
 
-SNOTEL_BBOX = [-112.5, 44.5, -110.0, 46.5]
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT.parent))  # repo root, for `lib`
+from lib.aoi import SNOWLINE, pad_bbox  # noqa: E402
+
+SNOTEL_BBOX = pad_bbox(SNOWLINE.bbox, 0.15)   # AOI + 0.15 deg so edge stations count
 YEARS = list(range(2005, 2026))  # 20 years
 OUTPUT = Path(__file__).parent.parent / "site" / "data" / "snotel_normals.json"
 
@@ -34,6 +40,9 @@ def log(msg):
 
 
 def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--out", type=Path, default=OUTPUT, help="Output JSON (default site/data/snotel_normals.json)")
+    out = ap.parse_args().out
     base = "https://wcc.sc.egov.usda.gov/awdbRestApi/services/v1"
 
     # Get SNOTEL stations in bbox
@@ -132,12 +141,12 @@ def main():
         'normals': normals,
     }
 
-    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    with open(OUTPUT, 'w') as f:
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with open(out, 'w') as f:
         json.dump(output, f)
 
-    size_kb = OUTPUT.stat().st_size // 1024
-    log(f"Done. {OUTPUT} ({size_kb}KB)")
+    size_kb = out.stat().st_size // 1024
+    log(f"Done. {out} ({size_kb}KB)")
 
 
 if __name__ == "__main__":

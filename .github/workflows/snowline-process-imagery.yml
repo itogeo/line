@@ -9,6 +9,14 @@ name: Snowline — Process Imagery
 #      last 10 days listed in sat_availability.json, cloudy ones included
 #      (their imagery still shows on the map), or set "since" to backfill:
 #        gh workflow run snowline-process-imagery.yml -R itogeo/line -f since=2026-10-01
+#   4. "force" reprocesses dates already on the map too (use it after an AOI
+#      or grid change). Reprocessed tiles overwrite the R2 copies:
+#        gh workflow run snowline-process-imagery.yml -R itogeo/line -f since=2026-10-01 -f force=true
+#
+# Failures: a date that fails to process fails the job, after the other dates,
+# the latest view, the STAC catalog and the commit have still run. A date with
+# no usable Sentinel-2 scene (all cloud or orbit-edge slivers) is skipped and
+# does not fail the job.
 #
 # Scenes are found in the S2 STAC GeoParquet index (lib/s2index.py) and the
 # pixels are read from the public Sentinel-2 Collection 1 COGs on AWS.
@@ -26,6 +34,11 @@ on:
         description: "Backfill: every unprocessed pass on or after this date (YYYY-MM-DD)"
         required: false
         default: ""
+      force:
+        description: "Reprocess dates already on the map (overwrites their R2 tiles)"
+        type: boolean
+        required: false
+        default: false
 
 # Pushes processed output back to the repo; a read-only GITHUB_TOKEN 403s.
 permissions:
@@ -57,6 +70,7 @@ jobs:
 
           input_date = "${{ github.event.inputs.date }}".strip()
           since = "${{ github.event.inputs.since }}".strip()
+          force = "${{ github.event.inputs.force }}" == "true"
           out = []
 
           if input_date:
@@ -76,7 +90,7 @@ jobs:
               for r in rows:
                   if r["dt"] < cutoff:
                       break
-                  if r["dt"] in existing:
+                  if r["dt"] in existing and not force:
                       continue
                   # Every pass, cloudy or clear, so its imagery is on the map.
                   # Skip orbit-edge slivers that barely touch the area.
@@ -88,18 +102,24 @@ jobs:
               # Newest first: if the job runs out of time, today's map is
               # the one that must exist.
               out.sort(reverse=True)
-              print(f"Found {len(out)} unprocessed passes since {cutoff}: {out}")
+              print(f"Found {len(out)} {'passes to reprocess' if force else 'unprocessed passes'} since {cutoff}: {out}")
 
           with open("/tmp/dates_to_process.txt", "w") as f:
               f.write("\n".join(out))
           PYEOF
 
       - name: Process each date
+        id: process
         run: |
+          # Failures are collected here and turned into a failed job by the
+          # last step, after composite, STAC, prune and commit have run.
+          : > /tmp/failed_steps.txt
           if [[ ! -s /tmp/dates_to_process.txt ]]; then
             echo "Nothing to process."
             exit 0
           fi
+          OVERWRITE_ARG=""
+          [[ "${{ github.event.inputs.force }}" == "true" ]] && OVERWRITE_ARG="--overwrite"
           # "|| [[ -n ... ]]" keeps the last line, which has no trailing newline
           while IFS= read -r dt || [[ -n "$dt" ]]; do
             [[ -z "$dt" ]] && continue
@@ -107,16 +127,30 @@ jobs:
             echo "=========================================="
             echo "Processing $dt"
             echo "=========================================="
-            if bash snowline/pipeline/update_date.sh "$dt" --max-cloud=100; then
-              python snowline/pipeline/build_snotel_agreement.py --date="$dt" || echo "agreement check failed for $dt"
+            rc=0
+            bash snowline/pipeline/update_date.sh "$dt" --max-cloud=100 $OVERWRITE_ARG || rc=$?
+            if [[ $rc -eq 0 ]]; then
+              if ! python snowline/pipeline/build_snotel_agreement.py --date="$dt"; then
+                echo "::error::SNOTEL agreement check failed for $dt"
+                echo "agreement $dt" >> /tmp/failed_steps.txt
+              fi
+            elif [[ $rc -eq 3 ]]; then
+              echo "No usable Sentinel-2 scene for $dt (all cloud or orbit-edge slivers): skipped."
             else
-              echo "FAILED $dt — continuing"
+              echo "::error::FAILED $dt (exit $rc) — continuing with the other dates"
+              echo "date $dt (exit $rc)" >> /tmp/failed_steps.txt
             fi
           done < /tmp/dates_to_process.txt
           # Latest view: newest clear look per pixel over the last 10 days,
           # for every recent date (a new pass also improves the days after it).
-          python snowline/pipeline/build_composite.py --recent 12 --upload || echo "latest view: some dates not uploaded"
-          python snowline/pipeline/build_stac.py || echo "STAC build failed"
+          if ! python snowline/pipeline/build_composite.py --recent 12 --upload; then
+            echo "::error::latest view: some dates not uploaded"
+            echo "latest view (build_composite --upload)" >> /tmp/failed_steps.txt
+          fi
+          if ! python snowline/pipeline/build_stac.py; then
+            echo "::error::STAC build failed"
+            echo "STAC catalog (build_stac)" >> /tmp/failed_steps.txt
+          fi
         env:
           CF_ACCOUNT_ID: 3b134bb7dc7ac46e5a2ffe71302f8d69
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
@@ -132,6 +166,8 @@ jobs:
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
 
       - name: Commit and push
+        # Runs even after a failure above: the successful dates are still committed.
+        if: always()
         run: |
           git config user.name "snowline-bot"
           git config user.email "bot@snowline"
@@ -148,3 +184,17 @@ jobs:
               git pull --rebase origin main || git rebase --abort
             done
           fi
+
+      - name: Fail the job if any date or step failed
+        if: always()
+        run: |
+          if [[ "${{ steps.process.outcome }}" != "success" ]]; then
+            echo "::error::Process step ended ${{ steps.process.outcome }}"
+            exit 1
+          fi
+          if [[ -s /tmp/failed_steps.txt ]]; then
+            echo "::error::Imagery run had failures:"
+            cat /tmp/failed_steps.txt
+            exit 1
+          fi
+          echo "All dates processed."

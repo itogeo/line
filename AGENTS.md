@@ -26,11 +26,14 @@ are separate products.
 
 ## Area
 
-`lib/aoi.py` is the only definition. Snowline is bbox `(-112.2, 44.9, -109.0, 46.5)`
+`lib/aoi.py` is the only definition. Snowline is bbox `(-112.6, 44.55, -109.6, 46.35)`
 (west, south, east, north, EPSG:4326) and 12 MGRS tiles:
 `12TUQ 12TUR 12TUS 12TVQ 12TVR 12TVS 12TWQ 12TWR 12TWS 12TXQ 12TXR 12TXS`.
-These are every tile whose footprint intersects the bbox in the index
-(measured 2026-10-05). `12TXQ` only clips the SE corner.
+Changed 2026-10-14 from `(-112.2, 44.9, -109.0, 46.5)`, which had the same 12 tiles.
+All 12 are needed: the east edge at -109.6 runs into the X column in every row.
+Dropping `12TX*` leaves a strip on the east side unimaged. Pipeline code reads
+the box and tiles from `lib/aoi.py`; SNOTEL boxes are the AOI plus 0.15°
+(`pad_bbox`). Old maps keep the old grid; composites only mix passes on the same grid.
 
 ## Finding scenes (`lib/s2index.py`)
 
@@ -134,7 +137,7 @@ years yet. That's a gap in the index, not a gap in the imagery.
 
 `snowline/site/data/snotel_season_{YEAR}.json` (written by
 `build_snotel_season.py`): daily `depth_in` and `swe_in` for every SNOTEL
-station in `[-112.5, 44.4, -108.5, 46.6]`, Oct 1 of YEAR to Jun 30, from the
+station in `[-112.75, 44.4, -109.45, 46.5]` (AOI plus 0.15°), Oct 1 of YEAR to Jun 30, from the
 NRCS AWDB API. `snotel_season.json` is the current season. The map and the
 Data page load the file for the season on screen. "% of normal" is the summed
 depth of the stations that have a 20-year median that day over the sum of

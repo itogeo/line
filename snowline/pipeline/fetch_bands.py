@@ -245,6 +245,13 @@ def fetch_tile(row, tile_dir, force, workers):
     return (tile_id, success, err)
 
 
+# Exit code for "the index has no usable scene for this date" (all cloud, or
+# orbit-edge slivers). Not a failure: update_date.sh passes it on, and the
+# imagery workflow skips the date without failing the job. Any other
+# non-zero exit is a real failure.
+NO_SCENES_EXIT = 3
+
+
 def main():
     parser = argparse.ArgumentParser(description="Phase 1: download Sentinel-2 band windows for one date")
     parser.add_argument("--date", required=True, help="Target date YYYY-MM-DD")
@@ -275,7 +282,7 @@ def main():
              and (r["nodata"] or 0) < 95]
     if not items:
         log(f"No usable Sentinel-2 scenes for {args.date} ({n_all} all cloud or slivers)")
-        return 1
+        return NO_SCENES_EXIT
     log(f"Found {len(items)} usable S2 scenes for {args.date} (skipped {n_all - len(items)} cloudy/sliver)")
     items_sorted = sorted(items, key=lambda r: r["tile"])
 

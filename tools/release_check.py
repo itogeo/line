@@ -42,8 +42,8 @@ def age_days(iso_or_date):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--base", default="https://line.itogeospatial.com")
-    ap.add_argument("--max-pass-age", type=float, default=10,
-                    help="days the newest map may lag the newest clear pass (default 10)")
+    ap.add_argument("--max-pass-age", type=float, default=3,
+                    help="days the newest map may lag the newest pass that imaged >=10%% of the AOI (default 3)")
     a = ap.parse_args()
     B = a.base.rstrip("/") + "/snow"
     results = []
@@ -91,11 +91,19 @@ def main():
         rows = sat.get("rows") or []
         ga = sat.get("generated_at") or sat.get("generated")
         check("sat_availability fresh (<36 h)", bool(ga) and age_days(ga) < 1.5, f"generated {ga}")
-        clear = [r["dt"] for r in rows if r.get("q") in ("excellent", "good")]
-        if clear and newest:
-            lag = (datetime.fromisoformat(max(clear)) - datetime.fromisoformat(newest)).days
-            check(f"newest map within {a.max_pass_age:g} d of newest clear pass", lag <= a.max_pass_age,
-                  f"newest clear pass {max(clear)}, newest map {newest}")
+        # Every pass is mapped now, cloudy ones too, so the newest pass that
+        # imaged at least 10% of the AOI is the one the map must keep up with.
+        # aoi_cover_pct is only on recent rows; older rows fall back to s2aoi.
+        def cover(r):
+            c = r.get("aoi_cover_pct")
+            return c if c is not None else (r.get("s2aoi") or 0)
+        covering = [r["dt"] for r in rows if cover(r) >= 10]
+        if covering and newest:
+            lag = (datetime.fromisoformat(max(covering)) - datetime.fromisoformat(newest)).days
+            check(f"newest map within {a.max_pass_age:g} d of newest pass over 10% of AOI", lag <= a.max_pass_age,
+                  f"newest pass {max(covering)}, newest map {newest}")
+        elif newest:
+            check("newest pass over 10% of AOI", False, "no pass in sat_availability.json covers 10% of the AOI")
     else:
         check("sat_availability", False, f"HTTP {st}")
 

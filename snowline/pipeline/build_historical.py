@@ -22,7 +22,8 @@ Output:
 if __name__ == "__main__":
     # --help before the heavy imports below (and before anything runs).
     import argparse
-    argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter).parse_args()
+    # parse_known_args: --help exits here; options like --out-dir are read in main().
+    argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter).parse_known_args()
 
 import argparse
 import json
@@ -41,7 +42,11 @@ from rasterio.crs import CRS
 from rasterio.merge import merge
 from PIL import Image
 
-BBOX = [-112.2, 45.0, -110.5, 46.2]
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT.parent))  # repo root, for `lib`
+from lib.aoi import SNOWLINE  # noqa: E402
+
+BBOX = SNOWLINE.bbox_list   # the snowline AOI (lib/aoi.py)
 YEARS = list(range(2001, 2026))  # 25 years of MODIS
 OUTPUT_DIR = Path(__file__).parent.parent / "site" / "data" / "historical"
 MAX_DIM = 4000  # 500m source, so 4000px is plenty (~35m/px)
@@ -200,9 +205,13 @@ def main():
     parser.add_argument("--start-doy", type=int, default=1, help="Start DOY")
     parser.add_argument("--end-doy", type=int, default=365, help="End DOY")
     parser.add_argument("--step", type=int, default=5, help="DOY step")
+    parser.add_argument("--out-dir", type=Path, default=OUTPUT_DIR,
+                        help="Where the WebPs and historical.json go (default site/data/historical)")
+    parser.add_argument("--force", action="store_true",
+                        help="Rebuild periods whose WebP already exists in --out-dir (default: skip them)")
     args = parser.parse_args()
-
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    out_dir = args.out_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     if args.doy:
         doys = [args.doy]
@@ -221,21 +230,27 @@ def main():
     }
 
     for doy in snow_doys:
-        freq = build_frequency_for_doy(doy)
-        if freq is not None:
-            fname = export_frequency(freq, doy, OUTPUT_DIR)
-            dt = datetime(2024, 1, 1) + timedelta(days=doy - 1)
-            index["periods"][str(doy)] = {
-                "file": fname,
-                "label": f"{dt:%b %d}",
-                "month": dt.month,
-                "day": dt.day,
-            }
+        dt = datetime(2024, 1, 1) + timedelta(days=doy - 1)
+        fname = f"doy_{doy:03d}.webp"
+        # Resumable: a period already written in out_dir is kept as is.
+        if not args.force and (out_dir / fname).exists():
+            log(f"DOY {doy:03d}: already in {out_dir.name}, skipped")
+        else:
+            freq = build_frequency_for_doy(doy)
+            if freq is None:
+                continue
+            fname = export_frequency(freq, doy, out_dir)
+        index["periods"][str(doy)] = {
+            "file": fname,
+            "label": f"{dt:%b %d}",
+            "month": dt.month,
+            "day": dt.day,
+        }
 
-    with open(OUTPUT_DIR / "historical.json", 'w') as f:
+    with open(out_dir / "historical.json", 'w') as f:
         json.dump(index, f, indent=2)
 
-    log(f"Done. {len(index['periods'])} periods in {OUTPUT_DIR}")
+    log(f"Done. {len(index['periods'])} periods in {out_dir}")
 
 
 if __name__ == "__main__":

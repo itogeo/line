@@ -14,12 +14,16 @@
 #   bash snowline/pipeline/update_date.sh 2026-04-04 --keep-cache  # don't delete cache
 #   bash snowline/pipeline/update_date.sh 2026-04-04 --quality=88  # lower quality
 #   bash snowline/pipeline/update_date.sh 2026-04-04 --max-cloud=100  # keep all-cloud tiles too
+#   bash snowline/pipeline/update_date.sh 2026-04-04 --overwrite      # replace this date's R2 tiles (reprocess)
+#
+# Exit codes: 0 done; 3 no usable Sentinel-2 scene for the date (all cloud or
+# slivers; nothing mapped, not a failure); anything else is a failure.
 #
 # Run from the repository root, with the requirements installed (CONTRIBUTING.md).
 
 set -euo pipefail
 
-usage() { echo "usage: bash snowline/pipeline/update_date.sh YYYY-MM-DD [--keep-cache] [--quality=N] [--max-cloud=N]"; }
+usage() { echo "usage: bash snowline/pipeline/update_date.sh YYYY-MM-DD [--keep-cache] [--quality=N] [--max-cloud=N] [--overwrite]"; }
 if [[ $# -lt 1 || "$1" == "-h" || "$1" == "--help" ]]; then
     usage; [[ $# -lt 1 ]] && exit 1 || exit 0
 fi
@@ -33,9 +37,11 @@ shift || true
 KEEP_CACHE=0
 QUALITY=92
 MAX_CLOUD=90
+OVERWRITE=0
 for arg in "$@"; do
     case "$arg" in
         --keep-cache) KEEP_CACHE=1 ;;
+        --overwrite) OVERWRITE=1 ;;
         --quality=*) QUALITY="${arg#--quality=}" ;;
         --max-cloud=*) MAX_CLOUD="${arg#--max-cloud=}" ;;
         *) echo "Unknown arg: $arg"; exit 1 ;;
@@ -71,7 +77,17 @@ echo "  SNOWLINE PIPELINE — $DATE"
 echo "═══════════════════════════════════════════════"
 echo ""
 echo "── Phase 1: fetch bands ──"
-$PYTHON pipeline/fetch_bands.py --date="$DATE" --max-cloud="$MAX_CLOUD"
+FETCH_RC=0
+$PYTHON pipeline/fetch_bands.py --date="$DATE" --max-cloud="$MAX_CLOUD" || FETCH_RC=$?
+if [[ $FETCH_RC -eq 3 ]]; then
+    echo "  No usable Sentinel-2 scenes for $DATE (all cloud or slivers): nothing to map."
+    exit 3
+fi
+if [[ $FETCH_RC -ne 0 ]]; then
+    # Same as a failure after process_tiles: unlist the date in CI.
+    on_error
+    exit $FETCH_RC
+fi
 
 echo ""
 echo "── Phase 2: process tiles ──"
@@ -86,7 +102,10 @@ UPLOADED=0
 if [[ -n "${CF_ACCOUNT_ID:-}" && -n "${CF_API_TOKEN:-}" ]]; then
     echo ""
     echo "── Upload tiles to R2 ──"
-    if $PYTHON pipeline/sync_r2.py --date="$DATE"; then
+    # No array here: an empty "${arr[@]}" is an error under set -u on macOS bash 3.2.
+    OVERWRITE_FLAG=""
+    [[ $OVERWRITE -eq 1 ]] && OVERWRITE_FLAG="--overwrite"
+    if $PYTHON pipeline/sync_r2.py --date="$DATE" $OVERWRITE_FLAG; then
         UPLOADED=1
     fi
 else

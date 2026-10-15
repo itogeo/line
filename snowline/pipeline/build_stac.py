@@ -59,13 +59,22 @@ def write(path: Path, obj):
     path.write_text(json.dumps(obj, indent=1))
 
 
+def date_bbox(meta):
+    """The box this map was made on: snowline.json "bbox" (west, south, east,
+    north). Older maps were made on an older AOI, so each item keeps its own."""
+    if meta.get("bbox"):
+        return [float(v) for v in meta["bbox"]]
+    b = meta.get("bounds") or {}
+    if b:
+        return [b["west"], b["south"], b["east"], b["north"]]
+    return list(SNOWLINE.bbox)
+
+
 def main():
-    w, s, e, n = SNOWLINE.bbox
-    poly = {"type": "Polygon", "coordinates": [[[w, s], [e, s], [e, n], [w, n], [w, s]]]}
     # Only dates the site lists: a date is listed once its tiles are in R2,
     # so every asset URL below resolves.
     listed = set(json.loads((DATA_10M / "dates.json").read_text()).get("dates", []))
-    items = []
+    items, boxes = [], []
     for d in sorted(p for p in DATA_10M.iterdir() if p.is_dir() and p.name in listed):
         mp = d / "snowline.json"
         if not mp.exists():
@@ -75,6 +84,8 @@ def main():
         if not any(c.get("class_file") for c in chunks):
             continue
         date = d.name
+        w, s, e, n = date_bbox(meta)
+        poly = {"type": "Polygon", "coordinates": [[[w, s], [e, s], [e, n], [w, n], [w, s]]]}
         assets = {"metadata": {"href": f"{SITE}/data_10m/{date}/snowline.json", "type": "application/json",
                                "title": "Snowline map metadata (scenes, coverage)", "roles": ["metadata"]}}
         for c in chunks:
@@ -100,7 +111,7 @@ def main():
         item = {
             "type": "Feature", "stac_version": STAC, "stac_extensions": EXT,
             "id": f"snowline-{date}", "collection": COLL,
-            "geometry": poly, "bbox": list(SNOWLINE.bbox),
+            "geometry": poly, "bbox": [w, s, e, n],
             "properties": {
                 # Real acquisition times from the scenes used; a nominal
                 # local-noon time only for older maps that don't list them.
@@ -124,6 +135,7 @@ def main():
         }
         write(OUT / COLL / date / f"{date}.json", item)
         items.append(date)
+        boxes.append([w, s, e, n])
 
     if not items:
         log("no maps with class COGs yet (run export_cogs.py)")
@@ -141,7 +153,8 @@ def main():
             {"name": "ESA Copernicus", "roles": ["producer", "licensor"], "url": "https://sentinels.copernicus.eu"},
             {"name": "Taylor Geospatial / TGE Labs", "roles": ["host"], "url": "https://research.taylorgeospatial.org/s2-stac-geoparquet/"},
         ],
-        "extent": {"spatial": {"bbox": [list(SNOWLINE.bbox)]},
+        "extent": {"spatial": {"bbox": [[min(b[0] for b in boxes), min(b[1] for b in boxes),
+                                          max(b[2] for b in boxes), max(b[3] for b in boxes)]]},
                    "temporal": {"interval": [[f"{items[0]}T00:00:00Z", f"{items[-1]}T23:59:59Z"]]}},
         "summaries": {"classification:classes": CLASSES},
         "links": [

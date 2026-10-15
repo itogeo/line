@@ -103,10 +103,18 @@ def all_maps():
     return out
 
 
+def same_bounds(a, b, tol=1e-6):
+    """True when two chunk bounds dicts describe the same rectangle."""
+    if not a or not b:
+        return False
+    return all(abs(a[k] - b[k]) <= tol for k in ("west", "south", "east", "north"))
+
+
 def build(target, maps):
     meta = maps[target]
     t = d(target)
     sources = sorted((s for s in maps if t - timedelta(days=WINDOW) < d(s) <= t), reverse=True)
+    skipped = set()   # (source date, chunk, reason): logged once per target
     chunks_out, totals = [], {"px": 0, "valid": 0, "snow": 0}
     age_px = {}
     for ch in meta["chunks"]:
@@ -117,11 +125,15 @@ def build(target, maps):
         age = np.full(shape, 255, np.uint8)
         seen_cloud = np.zeros(shape, bool)
         for s in sources:
+            # Only passes cut on the same grid: same chunk id AND same bounds
+            # (an AOI change keeps ids r0c0..r1c2 but moves the edges).
             sch = next((c for c in maps[s]["chunks"] if c["chunk_id"] == cid), None)
-            if sch is None:
+            if sch is None or not same_bounds(sch.get("bounds"), ch.get("bounds")):
+                skipped.add((s, cid, "grid differs"))
                 continue
             src = ref if s == target else read_class(s, sch, shape)
             if src.shape != shape:
+                skipped.add((s, cid, f"shape {src.shape} != {shape}"))
                 continue
             clear = (src == SNOW) | (src == GROUND)
             take = clear & (age == 255)
@@ -155,6 +167,8 @@ def build(target, maps):
             age_px[int(a)] = age_px.get(int(a), 0) + int(n)
         chunks_out.append({"chunk_id": cid, "snow_file": f"{stem}.webp", "class_file": f"{stem}.tif", "bounds": b})
 
+    for sd, cid, why in sorted(skipped):
+        log(f"  {target}: skipped {sd} chunk {cid} ({why})")
     used = sorted({(t - timedelta(days=a)).isoformat() for a in age_px}, reverse=True)
     meta["latest"] = {
         "window_days": WINDOW,

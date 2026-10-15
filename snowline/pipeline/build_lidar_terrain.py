@@ -32,7 +32,7 @@ Usage:
   python snowline/pipeline/build_lidar_terrain.py fetch --workers=6
   python snowline/pipeline/build_lidar_terrain.py shade --workers=2
   python snowline/pipeline/build_lidar_terrain.py tiles
-  python snowline/pipeline/build_lidar_terrain.py tiles --z=13 --only=1600,2900   # one tile, for a test
+  python snowline/pipeline/build_lidar_terrain.py tiles --out=DIR                 # build into DIR (staging)
 """
 
 from __future__ import annotations
@@ -301,6 +301,7 @@ def save(alpha, path, np):
 
 
 def cmd_tiles(args):
+    out = Path(args.out) if args.out else OUT   # --out: build into a staging dir
     import numpy as np
     import rasterio
     from PIL import Image
@@ -315,7 +316,7 @@ def cmd_tiles(args):
 
     def work(xy):
         x, y = xy
-        path = OUT / str(MAX_Z) / str(x) / f"{y}.webp"
+        path = out / str(MAX_Z) / str(x) / f"{y}.webp"
         if path.exists() and not args.force:
             return True
         w, s, e, n = merc_bounds(MAX_Z, x, y)
@@ -347,7 +348,7 @@ def cmd_tiles(args):
                 any_child = False
                 for dx in (0, 1):
                     for dy in (0, 1):
-                        p = OUT / str(z + 1) / str(2 * x + dx) / f"{2 * y + dy}.webp"
+                        p = out / str(z + 1) / str(2 * x + dx) / f"{2 * y + dy}.webp"
                         if p.exists():
                             any_child = True
                             quad[dy * TILE:(dy + 1) * TILE, dx * TILE:(dx + 1) * TILE] = \
@@ -355,12 +356,12 @@ def cmd_tiles(args):
                 if not any_child:
                     continue
                 parent = quad.reshape(TILE, 2, TILE, 2).mean(axis=(1, 3))
-                save(np.clip(parent, 0, 255).astype(np.uint8), OUT / str(z) / str(x) / f"{y}.webp", np)
+                save(np.clip(parent, 0, 255).astype(np.uint8), out / str(z) / str(x) / f"{y}.webp", np)
                 n_out += 1
         log(f"z{z}: {n_out} tiles")
 
-    files = list(OUT.rglob("*.webp"))
-    (OUT.parent / "shade.json").write_text(json.dumps({
+    files = list(out.rglob("*.webp"))
+    (out.parent / "shade.json").write_text(json.dumps({
         "tiles": "terrain/shade/{z}/{x}/{y}.webp", "tileSize": TILE, "minzoom": MIN_Z, "maxzoom": MAX_Z,
         "bounds": list(SNOWLINE.bbox),
         "source": "USGS 3D Elevation Program (3DEP) 1 m lidar DEM, read at 4 m; newest survey wins where they overlap",
@@ -379,6 +380,7 @@ def main():
     f = sub.add_parser("fetch"); f.add_argument("--workers", type=int, default=4)
     t = sub.add_parser("tiles"); t.add_argument("--workers", type=int, default=2)
     t.add_argument("--only", help="x,y of one z13 tile (test)"); t.add_argument("--force", action="store_true")
+    t.add_argument("--out", help="write tiles and terrain/shade.json here instead of site/terrain/shade")
     args = ap.parse_args()
     return {"list": cmd_list, "fetch": cmd_fetch, "shade": cmd_shade, "tiles": cmd_tiles}[args.cmd](args) or 0
 

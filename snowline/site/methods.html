@@ -79,7 +79,7 @@
   </ol>
 
   <h2 id="area">Area and imagery</h2>
-  <p>The map covers 112.2°W to 109.0°W and 44.9°N to 46.5°N: the Bridger, Gallatin, Madison, Tobacco Root, Gravelly, Crazy, Absaroka and Beartooth ranges and the northern edge of Yellowstone. That is twelve 110&nbsp;km Sentinel-2 tiles (<code>12TUQ</code> to <code>12TXS</code>).</p>
+  <p>The map covers 112.6°W to 109.6°W and 44.55°N to 46.35°N: the Bozeman area, the Tobacco Root, Ruby, Madison, Gallatin and Crazy ranges, the Absaroka Range south toward Yellowstone, and Cooke City. That is twelve 110&nbsp;km Sentinel-2 tiles (<code>12TUQ</code> to <code>12TXS</code>).</p>
   <p><a href="https://sentinels.copernicus.eu/web/sentinel/missions/sentinel-2" target="_blank" rel="noopener">Sentinel-2</a> is the European Space Agency's pair (now trio) of optical satellites. Each one repeats its ground track every 10 days. Together they pass over some part of the area most days, and over any one tile every 2–5 days. Snowline uses the Level-2A product, which is surface reflectance corrected for the atmosphere, from ESA's Collection&nbsp;1 reprocessing.</p>
 
   <h2 id="scenes">Finding the scenes</h2>
@@ -151,7 +151,7 @@ snow  = (NDSI ≥ 0.4  or  SCL = 11)  and not masked</pre>
   <p>On many days only part of the area is under the satellite's swath, and the rest is hatched. The coverage bar on the map says how much was imaged.</p>
 
   <h2 id="cadence">How often it updates</h2>
-  <p>Every morning (5&nbsp;am Mountain) a GitHub Action rebuilds the list of passes from the index and refreshes SNOTEL. Two hours later, any pass from the last 10 days with at least two clear tiles is processed into a map, uploaded, and only then added to the timeline. Season maps run October to May. The index itself refreshes daily at 03:42 UTC.</p>
+  <p>Every morning (5&nbsp;am Mountain) a GitHub Action rebuilds the list of passes from the index and refreshes SNOTEL. Two hours later, every pass from the last 10 days that imaged at least 10% of the area, cloudy or clear, is processed into a map, uploaded, and only then added to the timeline. Cloudy passes still show their imagery; the snow layer marks the cloud. Season maps run October to May. The index itself refreshes daily at 03:42 UTC.</p>
 
   <h2 id="repro">Reproduce it</h2>
   <p>Everything above is open source. To find the scenes behind any date:</p>

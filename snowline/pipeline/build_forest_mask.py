@@ -18,10 +18,13 @@ Output:
 if __name__ == "__main__":
     # --help before the heavy imports below (and before anything runs).
     import argparse
-    argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter).parse_args()
+    # parse_known_args: --help exits here; options like --out-dir are read in main().
+    argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter).parse_known_args()
 
+import argparse
 import json
 import os
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -35,7 +38,11 @@ from rasterio.merge import merge
 from rasterio.io import MemoryFile
 from PIL import Image
 
-BBOX = [-112.2, 45.0, -110.5, 46.2]
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT.parent))  # repo root, for `lib`
+from lib.aoi import SNOWLINE  # noqa: E402
+
+BBOX = SNOWLINE.bbox_list   # the snowline AOI (lib/aoi.py)
 OUTPUT_DIR = Path(__file__).parent.parent / "site" / "data"
 MAX_DIM = 4000  # 30m source, 4000px is ~33m — near native
 
@@ -45,6 +52,10 @@ def log(msg):
 
 
 def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--out-dir", type=Path, default=OUTPUT_DIR,
+                    help="Where forest_mask.webp and forest_mask.json go (default site/data)")
+    out_dir = ap.parse_args().out_dir
     log("Searching for ESA WorldCover on Planetary Computer...")
 
     catalog = pystac_client.Client.open(
@@ -88,7 +99,9 @@ def main():
         crs = src.crs
         src.close()
     else:
-        mosaic_arr, tf = merge(datasets)
+        # Clip while merging: whole WorldCover tiles are ~1 GB each in memory.
+        clip = transform_bounds(CRS.from_epsg(4326), datasets[0].crs, *BBOX)
+        mosaic_arr, tf = merge(datasets, bounds=clip)
         crs = datasets[0].crs
         for ds in datasets:
             ds.close()
@@ -129,9 +142,9 @@ def main():
                 rgba[y, x] = [40, 80, 40, 60]  # dark green stripes, very subtle
 
     img = Image.fromarray(rgba, 'RGBA')
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    img.save(OUTPUT_DIR / 'forest_mask.webp', 'WEBP', lossless=True)
-    size_kb = os.path.getsize(OUTPUT_DIR / 'forest_mask.webp') // 1024
+    out_dir.mkdir(parents=True, exist_ok=True)
+    img.save(out_dir / 'forest_mask.webp', 'WEBP', lossless=True)
+    size_kb = os.path.getsize(out_dir / 'forest_mask.webp') // 1024
     log(f"forest_mask.webp: {img.size} ({size_kb}KB)")
 
     meta = {
@@ -139,7 +152,7 @@ def main():
         'forest_pct': round(forest_pct, 1),
         'source': 'ESA WorldCover 2021 (10m)',
     }
-    with open(OUTPUT_DIR / 'forest_mask.json', 'w') as f:
+    with open(out_dir / 'forest_mask.json', 'w') as f:
         json.dump(meta, f, indent=2)
 
     log("Done.")
