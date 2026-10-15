@@ -186,6 +186,13 @@
   details.more > summary::-webkit-details-marker { display: none; }
   details.more > summary::before { content: '▸ '; color: var(--accent); }
   details.more[open] > summary::before { content: '▾ '; }
+  .terrain-line { font-size: 13px; line-height: 1.45; margin: 0 0 6px; }
+  .terrain-line b { color: #8bd3f7; }
+  .terrain-charts { display: flex; gap: 6px; align-items: flex-start; }
+  .terrain-charts > div { flex: 1; min-width: 0; }
+  .terrain-charts svg { width: 100%; height: auto; display: block; }
+  .terrain-charts text { font-family: var(--mono); fill: var(--text-dim); }
+  .terrain-note { font-size: 10px; color: var(--text-dim); line-height: 1.45; margin: 4px 0 8px; }
   .section-label { font-family: var(--mono); font-size: 9px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1.2px; margin: 10px 0 5px; }
   .layers { display: flex; flex-direction: column; gap: 1px; }
   .layer-row { display: flex; align-items: center; gap: 7px; padding: 4px 5px; border-radius: 4px; cursor: pointer; user-select: none; }
@@ -670,6 +677,17 @@
   </div>
   <div class="next-pass" id="next-pass" style="display:none"></div>
 
+  <!-- Snow by elevation and slope direction (data/terrain_stats.json) -->
+  <div id="terrain-sec" style="display:none">
+    <div class="section-label">Snow by elevation &amp; slope direction</div>
+    <div class="terrain-line" id="terrain-line"></div>
+    <div class="terrain-charts">
+      <div id="terrain-rose"></div>
+      <div id="terrain-profile"></div>
+    </div>
+    <div class="terrain-note" id="terrain-note"></div>
+  </div>
+
   <!-- SNOTEL depth section -->
   <div class="section-label">Snow stations (SNOTEL)</div>
   <div style="font-size:8px;color:var(--text-dim);margin:-2px 0 6px;line-height:1.4;font-family:var(--mono)">
@@ -1007,6 +1025,7 @@ function jumpTo(mode, date) {
   loadDate(date);
 }
 let AGREEMENT = null;       // satellite vs SNOTEL per date (data/snotel_agreement.json)
+let TERRAIN = null;         // snow by elevation band x slope direction per date (data/terrain_stats.json)
 let layersAdded = false;
 let playInterval = null;
 
@@ -1199,6 +1218,11 @@ async function init() {
     renderNextPass();
     renderLastFullDay();
     updateCompositeRegions();
+  }).catch(() => {});
+
+  fetch('data/terrain_stats.json').then(r => r.ok ? r.json() : null).then(d => {
+    TERRAIN = d && d.dates;
+    renderTerrain();
   }).catch(() => {});
 
   fetch('data/snotel_agreement.json').then(r => r.ok ? r.json() : null).then(d => {
@@ -1471,6 +1495,7 @@ function renderPanel() {
     document.getElementById('meta').innerHTML = bits.join(' &middot; ') + coverageNote;
   }
   renderHeadline();
+  renderTerrain();
 
   // Toggle archive mode styling
   document.getElementById('panel').classList.toggle('archive-mode', !isLive);
@@ -2534,6 +2559,101 @@ function renderLastFullDay() {
   b.title = 'The newest pass whose strip covered the whole area (clouds can still hide parts of it)';
   b.classList.toggle('active', !!found && found === CURRENT_DATE && VIEW_MODE === 'pass');
   b.onclick = () => { if (found) jumpTo('pass', found); };
+}
+
+// ── Snow by elevation and slope direction ──
+// From data/terrain_stats.json (build_terrain_stats.py): for the pass on
+// screen, clear pixels of open ground (under 30% tree cover) counted by
+// 100 m elevation band and slope direction. Forest is shown apart: the
+// satellite sees the canopy, not the snow under it.
+const FT = m => Math.round(m * 3.28084 / 10) * 10;
+const fmtFt = m => FT(m).toLocaleString('en-US') + ' ft';
+// Compass rose rings, outside in: low ground at the edge, summits in the middle.
+const ROSE_RINGS = [[0, 5000], [5000, 6000], [6000, 7000], [7000, 8000], [8000, 9000], [9000, 99999]];
+function renderTerrain() {
+  const sec = document.getElementById('terrain-sec');
+  const d = CURRENT_DATA, t = TERRAIN && d && TERRAIN[d.scene_date];
+  if (!t || !t.clear_px) { sec.style.display = 'none'; return; }
+  sec.style.display = '';
+  const day = new Date(d.scene_date + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  const rowsOpen = t.bands_m.map((z, i) => {
+    const s = t.snow_open[i].reduce((a, b) => a + b, 0), c = t.clear_open[i].reduce((a, b) => a + b, 0);
+    return { z: z + 50, s, c, f: c ? s / c : null };
+  });
+  const seen = rowsOpen.filter(r => r.c >= 2000);
+  // Headline sentence.
+  let line;
+  if (t.snowline_m) {
+    const n = t.by_aspect.N, so = t.by_aspect.S;
+    line = `Snow line about <b>${fmtFt(t.snowline_m)}</b>.`
+      + (n && so ? ` Snow is continuous above ${fmtFt(n)} on north slopes, ${fmtFt(so)} on south slopes.` : '');
+  } else if (seen.length && seen[seen.length - 1].f < 0.5) {
+    line = 'Mostly bare at every elevation the satellite saw';
+  } else if (seen.length && seen[0].f >= 0.5) {
+    line = `Snow down to the lowest ground seen (${fmtFt(seen[0].z - 50)})`;
+  } else {
+    line = 'Not enough clear ground to place a snow line';
+  }
+  document.getElementById('terrain-line').innerHTML = line;
+
+  // Compass rose: slope direction x elevation, shaded by share of snow.
+  const R = 80, C = 100, rings = ROSE_RINGS.length, w = R / rings;
+  const cell = (k, lo, hi) => {
+    let s = 0, c = 0;
+    t.bands_m.forEach((z, i) => { const ft = (z + 50) * 3.28084; if (ft >= lo && ft < hi) { s += t.snow_open[i][k]; c += t.clear_open[i][k]; } });
+    return c >= 300 ? s / c : null;
+  };
+  const arc = (r0, r1, a0, a1) => {
+    const p = (r, a) => [C + r * Math.sin(a), C - r * Math.cos(a)];
+    const [x0, y0] = p(r1, a0), [x1, y1] = p(r1, a1), [x2, y2] = p(r0, a1), [x3, y3] = p(r0, a0);
+    return `M${x0.toFixed(1)},${y0.toFixed(1)} A${r1},${r1} 0 0 1 ${x1.toFixed(1)},${y1.toFixed(1)} L${x2.toFixed(1)},${y2.toFixed(1)}`
+      + (r0 > 0 ? ` A${r0},${r0} 0 0 0 ${x3.toFixed(1)},${y3.toFixed(1)}` : '') + ' Z';
+  };
+  const ringName = ([lo, hi]) => lo === 0 ? `below ${hi.toLocaleString('en-US')} ft` : hi > 20000 ? `above ${lo.toLocaleString('en-US')} ft` : `${lo.toLocaleString('en-US')}–${hi.toLocaleString('en-US')} ft`;
+  let rose = `<svg viewBox="0 0 200 206" role="img" aria-label="Snow cover by slope direction and elevation">`;
+  ROSE_RINGS.forEach((rg, ri) => {
+    const r1 = R - ri * w, r0 = R - (ri + 1) * w;
+    for (let k = 1; k <= 8; k++) {
+      const a = (k - 1) * Math.PI / 4, f = cell(k, rg[0], rg[1]);
+      const fill = f == null ? 'rgba(255,255,255,0.04)' : `rgba(100,210,255,${(0.08 + 0.92 * f).toFixed(2)})`;
+      const tip = `${t.aspects[k]}-facing, ${ringName(rg)}: ${f == null ? 'not enough clear ground' : Math.round(f * 100) + '% snow'}`;
+      rose += `<path d="${arc(r0, r1, a - Math.PI / 8, a + Math.PI / 8)}" fill="${fill}" stroke="rgba(10,18,30,0.9)" stroke-width="0.8"><title>${tip}</title></path>`;
+    }
+  });
+  [['N', 0], ['E', 90], ['S', 180], ['W', 270]].forEach(([l, deg]) => {
+    const a = deg * Math.PI / 180, r = R + 9;
+    rose += `<text x="${(C + r * Math.sin(a)).toFixed(1)}" y="${(C - r * Math.cos(a) + 3).toFixed(1)}" font-size="9" text-anchor="middle" style="fill:var(--text-muted)">${l}</text>`;
+  });
+  rose += `<text x="100" y="204" font-size="8" text-anchor="middle">middle 9,000+ ft · edge under 5,000</text></svg>`;
+  document.getElementById('terrain-rose').innerHTML = rose;
+
+  // Profile: % snow (x) by elevation (y), open ground and forest.
+  const W = 180, H = 186, pl = 30, pr = 6, pt = 8, pb = 22;
+  const zLo = 3500, zHi = 12500;
+  const X = f => pl + f * (W - pl - pr), Y = ft => pt + (1 - (ft - zLo) / (zHi - zLo)) * (H - pt - pb);
+  const path = rows => rows.map((r, i) => `${i ? 'L' : 'M'}${X(r.f).toFixed(1)},${Y(r.z * 3.28084).toFixed(1)}`).join(' ');
+  const forest = t.bands_m.map((z, i) => ({ z: z + 50, f: t.clear_forest[i] >= 2000 ? t.snow_forest[i] / t.clear_forest[i] : null })).filter(r => r.f != null);
+  let prof = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Share of ground with snow by elevation">`;
+  for (let ft = 4000; ft <= 12000; ft += 2000) {
+    prof += `<line x1="${pl}" x2="${W - pr}" y1="${Y(ft)}" y2="${Y(ft)}" stroke="rgba(255,255,255,0.06)"/>`
+      + `<text x="${pl - 3}" y="${Y(ft) + 3}" font-size="7.5" text-anchor="end">${ft / 1000}k ft</text>`;
+  }
+  [0, 0.5, 1].forEach(f => { prof += `<text x="${X(f)}" y="${H - 8}" font-size="7.5" text-anchor="${f === 1 ? 'end' : f ? 'middle' : 'start'}">${f * 100}%</text>`; });
+  prof += `<line x1="${X(0.5)}" x2="${X(0.5)}" y1="${pt}" y2="${H - pb}" stroke="rgba(255,255,255,0.08)" stroke-dasharray="2,2"/>`;
+  if (forest.length > 1) prof += `<path d="${path(forest)}" fill="none" stroke="rgba(160,180,170,0.6)" stroke-width="1.4" stroke-dasharray="3,2"><title>Forest: the satellite sees the canopy, so this reads low</title></path>`;
+  if (seen.length > 1) prof += `<path d="${path(seen)}" fill="none" stroke="#64d2ff" stroke-width="2"><title>Open ground (under 30% trees)</title></path>`;
+  if (t.snowline_m) {
+    const y = Y(t.snowline_m * 3.28084);
+    prof += `<line x1="${pl}" x2="${W - pr}" y1="${y}" y2="${y}" stroke="#fff" stroke-width="1" stroke-dasharray="4,2" opacity="0.8"/>`
+      + `<text x="${W - pr}" y="${y - 3}" font-size="7.5" text-anchor="end" style="fill:#fff">snow line</text>`;
+  }
+  prof += `<text x="${(pl + W - pr) / 2}" y="${H}" font-size="7.5" text-anchor="middle">ground with snow</text></svg>`;
+  document.getElementById('terrain-profile').innerHTML = prof;
+
+  document.getElementById('terrain-note').innerHTML =
+    `From the ${day} pass, clear open ground only (cloud left out). `
+    + `<span style="color:rgba(160,180,170,0.9)">Dashed: forest</span>, where the satellite sees treetops, not the snow under them. `
+    + `Snow line: the height above which most ground is snow-covered.`;
 }
 
 // ── Satellite pass strip ──
