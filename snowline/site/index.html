@@ -686,6 +686,11 @@
       <div id="terrain-profile"></div>
     </div>
     <div class="terrain-note" id="terrain-note"></div>
+    <div id="change-sec">
+      <div class="section-label" style="margin-top:6px">Change since the last pass</div>
+      <div class="terrain-line" id="change-line" style="font-size:12px"></div>
+      <div class="terrain-charts" id="change-chart"></div>
+    </div>
     <div class="section-label" style="margin-top:6px">Snow depth by elevation</div>
     <div class="terrain-line" id="depth-line" style="font-size:12px"></div>
     <div class="terrain-charts" id="depth-chart"></div>
@@ -2663,7 +2668,52 @@ function renderTerrain() {
     `From the ${day} pass, clear open ground only (cloud left out). `
     + `<span style="color:rgba(160,180,170,0.9)">Dashed: forest</span>, where the satellite sees treetops, not the snow under them. `
     + `Snow line: the height above which most ground is snow-covered.`;
+  renderChange(t);
   renderDepthByElevation(t);
+}
+
+// Snow gained and lost since the previous pass that saw the same open
+// ground (build_terrain_stats.py, "change"): bars by elevation, gained to
+// the right, lost to the left, as a share of the ground both passes saw.
+function renderChange(t) {
+  const sec = document.getElementById('change-sec'), c = t.change;
+  if (!c || !c.compared_cells) { sec.style.display = 'none'; return; }
+  sec.style.display = '';
+  const km = n => { const v = n * c.cell_km2; return v >= 100 ? Math.round(v / 10) * 10 : v >= 10 ? Math.round(v) : Math.round(v * 10) / 10; };
+  const fmt = x => new Date(x + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  const sum = a => a.reduce((x, y) => x + y, 0);
+  // Which slope direction gained (or lost) the most, as a share of what was compared.
+  const dir = arr => {
+    let best = null;
+    for (let k = 1; k <= 8; k++) {
+      const g = sum(arr.map(r => r[k])), n = sum(c.compared.map(r => r[k]));
+      if (n >= 2000 && (!best || g / n > best.f)) best = { k, f: g / n };
+    }
+    return best && best.f >= 0.05 ? t.aspects[best.k] : null;
+  };
+  const g = c.gained_cells, l = c.lost_cells;
+  let line = `Since ${fmt(c.from)} (${c.days} day${c.days === 1 ? '' : 's'}), on ground both passes saw: `;
+  line += g >= l * 3 && g > 0 ? `snow arrived on <b>${km(g).toLocaleString('en-US')} km²</b>` : l >= g * 3 && l > 0 ? `snow melted or blew off <b>${km(l).toLocaleString('en-US')} km²</b>` : `<b>${km(g).toLocaleString('en-US')} km²</b> gained snow, <b>${km(l).toLocaleString('en-US')} km²</b> lost it`;
+  const dg = dir(c.gained), dl = dir(c.lost);
+  if (g >= l && dg) line += `, most on ${dg}-facing slopes`;
+  else if (l > g && dl) line += `, most on ${dl}-facing slopes`;
+  document.getElementById('change-line').innerHTML = line + '.';
+
+  const rows = c.compared.map((r, i) => ({ z: 1000 + i * 100 + 50, n: sum(r), g: sum(c.gained[i]), l: sum(c.lost[i]) })).filter(r => r.n >= 500);
+  const W = 360, H = 130, pl = 34, pr = 8, pt = 6, pb = 18, zLo = 3500, zHi = 12500, mid = (pl + W - pr) / 2;
+  const fMax = Math.max(0.1, ...rows.map(r => Math.max(r.g, r.l) / r.n));
+  const Y = ft => pt + (1 - (ft - zLo) / (zHi - zLo)) * (H - pt - pb), bh = Math.max(1.5, (H - pt - pb) / ((zHi - zLo) / 328) - 0.5);
+  const sc = f => f / fMax * (W - pr - mid);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Snow gained and lost by elevation">`;
+  for (let ft = 4000; ft <= 12000; ft += 2000) svg += `<line x1="${pl}" x2="${W - pr}" y1="${Y(ft)}" y2="${Y(ft)}" stroke="rgba(255,255,255,0.06)"/><text x="${pl - 3}" y="${Y(ft) + 3}" font-size="7.5" text-anchor="end">${ft / 1000}k ft</text>`;
+  svg += `<line x1="${mid}" x2="${mid}" y1="${pt}" y2="${H - pb}" stroke="rgba(255,255,255,0.15)"/>`;
+  rows.forEach(r => {
+    const y = Y(r.z * 3.28084) - bh / 2, tip = `${Math.round(r.z * 3.28084 / 100) * 100} ft: gained ${Math.round(r.g / r.n * 100)}%, lost ${Math.round(r.l / r.n * 100)}% of the ground both passes saw`;
+    if (r.g) svg += `<rect x="${mid}" y="${y}" width="${sc(r.g / r.n).toFixed(1)}" height="${bh}" fill="#64d2ff"><title>${tip}</title></rect>`;
+    if (r.l) svg += `<rect x="${(mid - sc(r.l / r.n)).toFixed(1)}" y="${y}" width="${sc(r.l / r.n).toFixed(1)}" height="${bh}" fill="#FFB74D"><title>${tip}</title></rect>`;
+  });
+  svg += `<text x="${mid - 4}" y="${H - 5}" font-size="7.5" text-anchor="end" style="fill:#FFB74D">← lost snow</text><text x="${mid + 4}" y="${H - 5}" font-size="7.5" style="fill:#64d2ff">gained snow →</text><text x="${W - pr}" y="${H - 5}" font-size="7.5" text-anchor="end">${Math.round(fMax * 100)}% of ground</text></svg>`;
+  document.getElementById('change-chart').innerHTML = `<div>${svg}</div>`;
 }
 
 // Snow depth measured at stations, by elevation: SNOTEL (mountains) and the

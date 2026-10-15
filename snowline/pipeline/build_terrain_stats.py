@@ -26,6 +26,13 @@ the site can show coverage.
 The map's classes are read back from the published snow WebPs (alpha: 200
 snow, 0 ground, 160/100 cloud, 120/60 no data), exactly what a visitor sees.
 
+    change       snow gained and lost since the previous pass that saw the
+                 same ground: both passes are summarised onto the terrain
+                 grid (a cell is snow if at least half its clear pixels
+                 are), and only cells clear on both dates (open ground)
+                 are compared; counted by elevation band x aspect, with
+                 the gap in days. An observation, not a model.
+
 Writes site/data/terrain_stats.json: {"dates": {date: {...}}, ...}.
 
 Usage:
@@ -62,6 +69,8 @@ ASPECTS = ["flat", "N", "NE", "E", "SE", "S", "SW", "W", "NW"]
 MIN_BAND = 2000    # clear pixels (~1.2 km2) for a band to count toward a snowline
 MIN_CELL = 300     # clear pixels for a band x aspect cell
 OPEN_MAX = 30      # % tree cover at or below which a cell counts as open ground
+CHANGE_MAX_DAYS = 12    # look back at most this far for the previous pass
+CHANGE_MIN_CELLS = 20000  # cells clear on both dates (~170 km2) to report a change
 
 
 def log(msg):
@@ -119,6 +128,60 @@ def count(date, elev10, aspect, meta, fetch):
         snow += np.bincount(key[is_snow], minlength=NB * 18)
         clear += np.bincount(key[is_clear], minlength=NB * 18)
     return snow.reshape(NB, 2, 9), clear.reshape(NB, 2, 9), seen
+
+
+def cell_counts(date, shape, meta, fetch):
+    """Per terrain-grid cell: (snow pixels, clear pixels), flattened; None if no images."""
+    n = shape[0] * shape[1]
+    snow = np.zeros(n, dtype=np.int32)
+    clear = np.zeros(n, dtype=np.int32)
+    seen = 0
+    for a, b in snow_images(date, fetch):
+        seen += 1
+        h, w = a.shape
+        lon = b["west"] + (np.arange(w) + 0.5) * (b["east"] - b["west"]) / w
+        lat = b["north"] - (np.arange(h) + 0.5) * (b["north"] - b["south"]) / h
+        gj = np.floor((lon - meta["west"]) / meta["res"]).astype(np.int64)
+        gi = np.floor((meta["north"] - lat) / meta["res"]).astype(np.int64)
+        okj, oki = (gj >= 0) & (gj < shape[1]), (gi >= 0) & (gi < shape[0])
+        a, gi, gj = a[oki][:, okj], gi[oki], gj[okj]
+        idx = gi[:, None] * shape[1] + gj[None, :]
+        is_snow = a == 200
+        snow += np.bincount(idx[is_snow], minlength=n).astype(np.int32)
+        clear += np.bincount(idx[is_snow | (a == 0)], minlength=n).astype(np.int32)
+    return (snow, clear) if seen else None
+
+
+def change_since(date, prev_dates, elev10, code, meta, fetch):
+    """Snow gained / lost on open ground since the nearest earlier pass that saw it."""
+    shape = elev10.shape
+    now = cell_counts(date, shape, meta, fetch)
+    if now is None:
+        return None
+    band = np.clip((elev10.ravel().astype(np.int64) * 10 - BAND_LO) // BAND_M, 0, NB - 1)
+    asp = code.ravel()
+    open_ = asp < 9
+    for p in reversed(prev_dates):
+        gap = (datetime.fromisoformat(date) - datetime.fromisoformat(p)).days
+        if gap > CHANGE_MAX_DAYS:
+            break
+        before = cell_counts(p, shape, meta, fetch)
+        if before is None:
+            continue
+        # A cell is judged when at least 4 of its pixels were clear on each date.
+        both = open_ & (now[1] >= 4) & (before[1] >= 4)
+        if both.sum() < CHANGE_MIN_CELLS:
+            continue
+        s_now = now[0] * 2 >= now[1]
+        s_before = before[0] * 2 >= before[1]
+        key = band * 9 + asp
+        gained = np.bincount(key[both & s_now & ~s_before], minlength=NB * 9).reshape(NB, 9)
+        lost = np.bincount(key[both & ~s_now & s_before], minlength=NB * 9).reshape(NB, 9)
+        compared = np.bincount(key[both], minlength=NB * 9).reshape(NB, 9)
+        return {"from": p, "days": gap, "cell_km2": round(meta["res"] ** 2 * 111.32 * 110.574 * np.cos(np.radians(45.5)), 5),
+                "gained": gained.tolist(), "lost": lost.tolist(), "compared": compared.tolist(),
+                "gained_cells": int(gained.sum()), "lost_cells": int(lost.sum()), "compared_cells": int(compared.sum())}
+    return None
 
 
 def snowline(snow, clear, min_n):
@@ -193,6 +256,11 @@ def main():
             continue
         data["dates"][d] = summarise(snow, clear)
         s = data["dates"][d]
+        listed = json.loads((DATA_10M / "dates.json").read_text())["dates"]
+        s["change"] = change_since(d, [x for x in listed if x < d], elev10, aspect, meta, args.fetch)
+        if s["change"]:
+            c = s["change"]
+            log(f"  since {c['from']} ({c['days']} d): gained {c['gained_cells']:,} cells, lost {c['lost_cells']:,} of {c['compared_cells']:,}")
         log(f"{d}: {s['clear_px']:,} clear px, snow {100 * s['snow_px'] / max(1, s['clear_px']):.0f}%, "
             f"snowline {s['snowline_m']} m, by aspect {s['by_aspect']}")
     data["dates"] = dict(sorted(data["dates"].items()))
