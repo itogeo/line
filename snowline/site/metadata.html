@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Snowline Data</title>
+<title>Snow Cover Data</title>
 <link rel="icon" href="/snow/img/favicon.ico" sizes="any">
 <link rel="icon" type="image/png" href="/snow/img/favicon-32.png">
 <link rel="apple-touch-icon" href="/snow/img/apple-touch-icon.png">
@@ -17,7 +17,7 @@
   a { color:var(--accent); text-decoration:none; }
   a:hover { text-decoration:underline; }
   .header { margin-bottom:24px; }
-  .header h1 { font-family:var(--mono); font-size:28px; color:var(--accent); font-weight:700; }
+  .header h1 { font-family:'DM Sans',sans-serif; font-size:26px; color:var(--text); font-weight:700; }
   .header .subtitle { color:var(--text-muted); font-size:14px; margin-top:4px; }
   .header .back { font-family:var(--mono); font-size:12px; margin-top:8px; }
   .tabs { display:flex; gap:4px; margin-bottom:20px; }
@@ -156,7 +156,7 @@
 </nav>
 
 <div class="header">
-  <h1>SNOWLINE DATA</h1>
+  <h1>Snow Cover data</h1>
   <div class="subtitle">Every satellite scene behind the map, snow history since 2018, and the ground stations that check it. All open data.</div>
   <div class="back"><a href="/snow/">&larr; Back to map</a> &middot; <a href="/snow/methods.html">How the map is made</a> &middot; <a href="/snow/stac/catalog.json" title="Every Snowline map as Cloud-Optimized GeoTIFFs, in a static STAC catalog">Download the maps (STAC + GeoTIFF)</a></div>
 </div>
@@ -220,7 +220,7 @@
     <div class="stats-grid" id="snotel-stats"></div>
 
     <div class="section" style="margin-bottom:24px">
-      <h2 style="font-size:13px;margin-bottom:8px">Basin-Wide Season Snow Depth</h2>
+      <h2 style="font-size:13px;margin-bottom:8px">Snow depth this season, all stations</h2>
       <div id="basin-chart" class="loading">Loading all stations...</div>
       <div style="display:flex;gap:12px;align-items:flex-start;margin-top:8px">
         <div id="inset-map" style="width:300px;height:240px;flex-shrink:0;background:rgba(0,0,0,0.3);border-radius:8px;border:1px solid var(--border);overflow:hidden"></div>
@@ -402,7 +402,7 @@ async function loadSnotelData() {
     <div class="stat-card"><div class="sv">${sntl.length}</div><div class="sl">Stations</div></div>
     <div class="stat-card"><div class="sv">${hasSnow.length}</div><div class="sl">With Snow</div></div>
     <div class="stat-card"><div class="sv">${maxD}"</div><div class="sl">Max Depth</div></div>
-    <div class="stat-card"><div class="sv">${NORMALS ? Object.keys(NORMALS.stations).length : '?'}</div><div class="sl">20yr Normals</div></div>
+    <div class="stat-card"><div class="sv">${NORMALS ? Object.keys(NORMALS.stations).length : '?'}</div><div class="sl">With a 20-yr median</div></div>
     <div style="grid-column:1/-1;font-size:10px;font-family:var(--mono);color:var(--text-dim)">Season ${SNOTEL_SEASON.label} · readings as of ${asOf || '—'} · <a href="data/snotel_season_${SNOTEL_SEASON.year}.json">data</a></div>`;
 
   // Fetch ALL station season data in parallel
@@ -587,7 +587,11 @@ async function seasonRecords(triplets) {
   return out;
 }
 
-// ── Basin-wide chart (all stations averaged + individual lines) ──
+// Charts are drawn at their real on-screen width, so the axis text stays
+// readable on a phone instead of a 900-wide drawing shrunk to fit.
+function chartW(el) { return Math.round(Math.max(320, Math.min(1200, (el && el.clientWidth) || 900))); }
+
+// ── Snow depth this season, all stations (averaged + individual lines) ──
 async function loadBasinChart(triplets) {
   const el = document.getElementById('basin-chart');
   try {
@@ -628,7 +632,7 @@ async function loadBasinChart(triplets) {
     }
     maxD = Math.ceil(maxD / 10) * 10;
 
-    const w = 900, h = 350;
+    const w = chartW(el), h = w < 600 ? 240 : 350;
     const padL = 34, padT = 14, padR = 4, padB = 20;
     const cw = w-padL-padR, ch = h-padT-padB;
 
@@ -892,7 +896,7 @@ async function toggleRangeChart(rowId, tripletsStr) {
       if (n) for (const dv of Object.values(n)) { if (dv.p75 > maxD) maxD = dv.p75; }
     }
     maxD = Math.ceil(maxD / 10) * 10;
-    const w = 900, h = 140;
+    const w = chartW(el), h = 140;
     const padL = 30, padT = 14, padR = 4, padB = 18;
     const cw = w-padL-padR, ch = h-padT-padB;
     // Build interactive station lines with hover highlighting
@@ -1053,7 +1057,7 @@ async function toggleSnotelChart(rowId, triplet) {
     const values = data[0].data[0].values.filter(v => v.value != null);
     if (values.length < 5) { chartEl.textContent = 'Insufficient data'; return; }
 
-    const chart = buildChart(values, [triplet], 900, 140);
+    const chart = buildChart(values, [triplet], chartW(chartEl), 140);
     const peak = values.reduce((a,b) => b.value > a.value ? b : a);
     const latest = values[values.length - 1];
 

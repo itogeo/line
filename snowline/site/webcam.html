@@ -125,6 +125,7 @@
   }
 
   /* Card */
+  .cam-card.dead { opacity: 0.5; }
   .cam-card {
     background: rgba(255,255,255,0.022);
     border: 1px solid var(--border);
@@ -240,7 +241,7 @@
   <div class="cams-header">
     <div>
       <div class="cams-title">Live Cameras</div>
-      <div class="cams-sub">SW Montana · NW Wyoming · Yellowstone — click any card to fly map</div>
+      <div class="cams-sub">SW Montana · NW Wyoming · Yellowstone. Click a card to see where the camera is and which way it looks.</div>
     </div>
   </div>
   <div class="cam-grid" id="cam-grid"></div>
@@ -324,13 +325,23 @@ function fmtTime(d) {
 function stampLoad(i) {
   const el = document.getElementById('ts-' + i);
   if (!el) return;
-  el.textContent = 'updated ' + fmtTime(new Date());
+  el.textContent = 'loaded ' + fmtTime(new Date());   // when we fetched it, not when the camera took it
+  const card = el.closest('.cam-card');
+  if (card) card.classList.remove('dead');
   el.classList.add('fresh');
   setTimeout(() => el.classList.remove('fresh'), 4000);
 }
 function stampErr(i) {
   const el = document.getElementById('ts-' + i);
-  if (el) el.textContent = 'unavailable';
+  if (!el) return;
+  el.textContent = 'unavailable right now';
+  // Working cameras first: a dead one drops to the end of its group, dimmed.
+  const card = el.closest('.cam-card');
+  if (!card || card.classList.contains('dead')) return;
+  card.classList.add('dead');
+  let end = card;   // last card before the next group's label
+  while (end.nextElementSibling && end.nextElementSibling.classList.contains('cam-card')) end = end.nextElementSibling;
+  if (end !== card) end.after(card);
 }
 
 function refreshImages() {
