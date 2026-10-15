@@ -105,7 +105,7 @@ item per commit, each checked on desktop and a 390 px phone.
 | # | Problem a visitor hits | Fix | Status |
 |---|---|---|---|
 | U1 | No answer to "how much snow is there?" until you read bars and charts. | One plain headline under the date: "Snow on 58% of what the satellite saw · stations average 3″, up 3″ this week". | done |
-| U2 | Jargon: LIVE (the imagery is a day old), AOI, S2 Imagery, Satellite pass, Lidar terrain, Historical, SNOTEL unexplained. | Plain names: "Newest" / "N days ago", "of the area seen", "Satellite photo", "Strip edge", "Terrain shading", "How often it's snowy (2000–25)", "Snow stations (SNOTEL)". | badge + meta done; layer names open |
+| U2 | Jargon: LIVE (the imagery is a day old), AOI, S2 Imagery, Satellite pass, Lidar terrain, Historical, SNOTEL unexplained. | Plain names: "Newest" / "N days ago", "of the area seen", "Satellite photo", "Strip edge", "Terrain shading", "How often it's snowy (2000–25)", "Snow stations (SNOTEL)". | done |
 | U3 | On "Most recent pass" half the map is bare basemap; it reads as "no snow" instead of "not photographed that day". | Shade and label the part the pass missed: "Not photographed Oct 13 · try Most recent composite". | open |
 | U4 | Legend misses what the map shows: hatching (no data), station dot colours (red = least snow, blue = most today), webcams. | Complete legend, one line each. | open |
 | U5 | Desktop layers panel is open over the map with 10 toggles + a draw button; Sam: "too much". | Collapsed to a "Layers" button by default (as on phones); everyday layers first, the rest under "More". | open |

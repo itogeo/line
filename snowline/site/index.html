@@ -633,9 +633,9 @@
   <div class="next-pass" id="next-pass" style="display:none"></div>
 
   <!-- SNOTEL depth section -->
-  <div class="section-label">SNOTEL Ground Measurements</div>
+  <div class="section-label">Snow stations (SNOTEL)</div>
   <div style="font-size:8px;color:var(--text-dim);margin:-2px 0 6px;line-height:1.4;font-family:var(--mono)">
-    Actual snow depth from ground stations. <span style="color:#FFB74D">Dashed line = 20yr median</span>.
+    Snow depth measured at ground stations. <span style="color:#FFB74D">Dashed line = 20yr median</span>.
   </div>
 
   <div class="card">
@@ -713,16 +713,16 @@
   <div class="layers">
     <label class="layer-row"><input type="checkbox" id="tog-snow" checked><div class="sw"></div><span class="layer-label">Snow</span></label>
     <div class="opacity-wrap" id="opacity-snow"><label>Opacity</label><input type="range" min="0" max="100" value="70" id="slider-snow"></div>
-    <label class="layer-row"><input type="checkbox" id="tog-s2" checked><div class="sw"></div><span class="layer-label">S2 Imagery</span></label>
+    <label class="layer-row"><input type="checkbox" id="tog-s2" checked><div class="sw"></div><span class="layer-label" title="Sentinel-2 true-colour photo from this pass">Satellite photo</span></label>
     <div class="opacity-wrap" id="opacity-s2"><label>Opacity</label><input type="range" min="0" max="100" value="90" id="slider-s2"></div>
-    <label class="layer-row" title="Outline of the strip the satellite imaged on this date"><input type="checkbox" id="tog-pass" checked><div class="sw"></div><span class="layer-label">Satellite pass</span></label>
-    <label class="layer-row"><input type="checkbox" id="tog-historical"><div class="sw"></div><span class="layer-label">Historical</span></label>
+    <label class="layer-row" title="Outline of the strip the satellite imaged on this date"><input type="checkbox" id="tog-pass" checked><div class="sw"></div><span class="layer-label">Strip edge</span></label>
+    <label class="layer-row"><input type="checkbox" id="tog-historical"><div class="sw"></div><span class="layer-label" title="Share of years 2000–2025 with snow here at this time of year (MODIS, 500 m)">Usual snow</span></label>
     <div class="opacity-wrap hidden" id="opacity-historical"><label>Opacity</label><input type="range" min="0" max="100" value="50" id="slider-historical"></div>
-    <label class="layer-row" title="Terrain shading from USGS 1 m lidar"><input type="checkbox" id="tog-lidar" checked><div class="sw"></div><span class="layer-label">Lidar terrain</span></label>
+    <label class="layer-row" title="Terrain shading from USGS 1 m lidar"><input type="checkbox" id="tog-lidar" checked><div class="sw"></div><span class="layer-label">Terrain shading</span></label>
     <label class="layer-row"><input type="checkbox" id="tog-forest"><div class="sw"></div><span class="layer-label">Forest</span></label>
-    <label class="layer-row"><input type="checkbox" id="tog-snotel" checked><div class="sw"></div><span class="layer-label">SNOTEL</span></label>
+    <label class="layer-row"><input type="checkbox" id="tog-snotel" checked><div class="sw"></div><span class="layer-label" title="NRCS SNOTEL ground stations: measured snow depth">Snow stations</span></label>
     <label class="layer-row"><input type="checkbox" id="tog-webcams" checked><div class="sw"></div><span class="layer-label">Webcams</span></label>
-    <label class="layer-row"><input type="checkbox" id="tog-terrain"><div class="sw"></div><span class="layer-label">3D Terrain</span></label>
+    <label class="layer-row"><input type="checkbox" id="tog-terrain"><div class="sw"></div><span class="layer-label">3D mountains</span></label>
     <label class="layer-row" title="The area Snowline maps now, and the larger area proposed"><input type="checkbox" id="tog-aoi"><div class="sw"></div><span class="layer-label">Map area</span></label>
     <button type="button" id="draw-area-btn" class="draw-area-btn" title="Drag a box on the map to ask for that area to be mapped">Draw an area to request</button>
   </div>
@@ -732,8 +732,8 @@
 <div class="legend" id="legend" style="display:none">
   <div class="legend-item"><div class="legend-swatch" style="background:#8bbdd9"></div><span class="legend-text">Snow</span></div>
   <div class="legend-item"><div class="legend-swatch" style="background:#b4b4b4"></div><span class="legend-text">Cloud</span></div>
-  <div class="legend-item"><div class="legend-swatch" style="background:#8bbdd9; border-radius:50%; width:7px; height:7px; border:1.5px solid #fff"></div><span class="legend-text">SNOTEL</span></div>
-  <div class="legend-item" title="Where the satellite's strip ends: outside this line, the pass took no picture"><div class="legend-swatch" style="background:repeating-linear-gradient(90deg,#FF4FD8 0 4px,transparent 4px 7px);height:3px;border-radius:0"></div><span class="legend-text">Pass edge</span></div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#8bbdd9; border-radius:50%; width:7px; height:7px; border:1.5px solid #fff"></div><span class="legend-text">Snow station</span></div>
+  <div class="legend-item" title="Where the satellite's strip ends: outside this line, the pass took no picture"><div class="legend-swatch" style="background:repeating-linear-gradient(90deg,#FF4FD8 0 4px,transparent 4px 7px);height:3px;border-radius:0"></div><span class="legend-text">Strip edge</span></div>
 </div>
 
 <div class="compass" id="compass" title="Click to reset north">
@@ -2987,7 +2987,7 @@ function syncLayerButtons() {
   const s2 = document.getElementById('tog-s2').checked;
   const snow = document.getElementById('tog-snow').checked;
   const b1 = document.getElementById('big-s2-btn'), b2 = document.getElementById('big-snow-btn');
-  b1.textContent = s2 ? '🛰  Imagery: on' : '🛰  Imagery: off';
+  b1.textContent = s2 ? '🛰  Photo: on' : '🛰  Photo: off';
   b1.classList.toggle('on', s2);
   b1.setAttribute('aria-pressed', s2);
   b2.textContent = snow ? '❄  Snow: on' : '❄  Snow: off';
