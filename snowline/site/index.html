@@ -127,18 +127,25 @@
   .timeline.archive-mode { border-top-color: rgba(255,152,0,0.15); }
   .timeline.archive-mode .tl-date { color: #FFB74D; }
   .scene-meta { font-family: var(--mono); font-size: 9px; color: var(--text-dim); margin: 3px 0 10px; line-height: 1.5; }
-  .view-toggle { display: flex; flex-wrap: wrap; margin: 8px 0 8px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
-  .view-toggle button { font-family: var(--mono); font-size: 9px; letter-spacing: 0.5px; text-transform: uppercase; padding: 4px 9px;
+  .view-toggle { margin: 8px 0; }
+  .view-tabs { display: flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+  .view-tabs button { flex: 1; font-family: 'Inter', sans-serif; font-size: 12px; padding: 6px 8px;
     background: transparent; color: var(--text-muted); border: 0; cursor: pointer; }
-  .view-toggle button.active { background: rgba(139,189,217,0.18); color: var(--accent); }
-  .view-toggle button:disabled { opacity: 0.35; cursor: not-allowed; }
+  .view-tabs button + button { border-left: 1px solid var(--border); }
+  .view-tabs button:hover { color: var(--text); }
+  .view-tabs button.active { background: rgba(139,189,217,0.18); color: var(--accent); font-weight: 600; }
+  .view-links { margin-top: 5px; font-size: 11px; color: var(--text-dim); }
+  .view-links button { font: inherit; background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer;
+    text-decoration: underline; text-decoration-color: rgba(139,189,217,0.35); text-underline-offset: 2px; }
+  .view-links button.active { color: var(--text); font-weight: 600; text-decoration: none; }
+  .view-links button:disabled { color: var(--text-dim); text-decoration: none; cursor: not-allowed; }
   .layer-btns { display: flex; gap: 8px; margin-top: 10px; }
   #next-pass .pass-chip { display: inline-block; margin: 0 4px 4px 0; padding: 2px 7px; border-radius: 5px; border: 1px solid var(--border);
     color: var(--text); text-decoration: none; white-space: nowrap; }
   #next-pass .pass-chip span { opacity: 0.6; }
   #next-pass .pass-chip.on { background: rgba(255,255,255,0.9); color: #0a121e; }
-  .layer-btn { flex: 1; padding: 10px 8px; border-radius: var(--radius); font-family: var(--mono); font-size: 10px; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 1px; cursor: pointer; transition: background 0.15s, color 0.15s;
+  .layer-btn { flex: 1; padding: 10px 8px; border-radius: var(--radius); font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: background 0.15s, color 0.15s;
     background: transparent; color: var(--accent); border: 1.5px solid rgba(139,189,217,0.5); }
   .layer-btn.on { background: linear-gradient(135deg,#8bbdd9,#5a95b8); color: #080e1a; border-color: transparent; box-shadow: 0 4px 12px rgba(139,189,217,0.25); }
   .scene-source { font-family: var(--mono); font-size: 9px; color: var(--text-muted); margin: -4px 0 10px; line-height: 1.6; }
@@ -652,10 +659,14 @@
     <button id="big-snow-btn" type="button" class="layer-btn"></button>
   </div>
   <div class="view-toggle" id="view-toggle" role="group" aria-label="Which imagery the map shows">
-    <button type="button" data-view="pass" title="The newest satellite pass, on its own">Most recent pass</button>
-    <button type="button" data-view="latest" title="Newest pass on top; passes from the last 10 days fill what it missed">Most recent composite</button>
-    <button type="button" data-jump="lastyear" title="Last season's snow map for this week: what to expect 2–4 weeks out">Same week last year</button>
-    <button type="button" data-jump="full" title="The newest single pass that imaged (almost) the whole area">Last full day</button>
+    <div class="view-tabs">
+      <button type="button" data-view="pass" title="The newest satellite pass, on its own">Most recent pass</button>
+      <button type="button" data-view="latest" title="Newest pass on top; passes from the last 10 days fill what it missed">Most recent composite</button>
+    </div>
+    <div class="view-links">Jump to
+      <button type="button" data-jump="lastyear" title="Last season's snow map for this week: what to expect 2–4 weeks out">Same week last year</button> ·
+      <button type="button" data-jump="full" title="The newest single pass that imaged (almost) the whole area">Last full day</button>
+    </div>
   </div>
   <div class="next-pass" id="next-pass" style="display:none"></div>
 
@@ -2482,7 +2493,7 @@ function renderSource() {
       + `map matches ${ag.agree} of ${ag.evaluated} snow stations it could see</a>${off.length ? ` (${off.join('; ')})` : ''}`;
   }
   el.innerHTML =
-    `Source: ${what} &middot; <a href="/snow/metadata.html#tab=scenes&date=${d.scene_date}">see scenes &amp; reproduce</a>` +
+    `Source: ${what} &middot; <a href="/snow/metadata.html#tab=scenes&date=${d.scene_date}">see scenes</a>` +
     ` &middot; <a href="/snow/methods.html">how it's made</a>` + check;
   updatePassFootprint();
   updateCompositeRegions();
