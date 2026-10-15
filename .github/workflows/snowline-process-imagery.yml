@@ -116,6 +116,9 @@ jobs:
           : > /tmp/failed_steps.txt
           if [[ ! -s /tmp/dates_to_process.txt ]]; then
             echo "Nothing to process."
+            # Still fill in terrain stats for dates processed before they existed.
+            python snowline/pipeline/build_terrain_stats.py --missing --fetch \
+              || echo "terrain stats (build_terrain_stats)" >> /tmp/failed_steps.txt
             exit 0
           fi
           OVERWRITE_ARG=""
@@ -147,6 +150,12 @@ jobs:
             echo "::error::latest view: some dates not uploaded"
             echo "latest view (build_composite --upload)" >> /tmp/failed_steps.txt
           fi
+          # Snow cover by elevation and slope direction, for every date not
+          # summarised yet (new passes from disk, older ones from the site).
+          if ! python snowline/pipeline/build_terrain_stats.py --missing --fetch; then
+            echo "::error::terrain stats failed"
+            echo "terrain stats (build_terrain_stats)" >> /tmp/failed_steps.txt
+          fi
           if ! python snowline/pipeline/build_stac.py; then
             echo "::error::STAC build failed"
             echo "STAC catalog (build_stac)" >> /tmp/failed_steps.txt
@@ -171,7 +180,7 @@ jobs:
         run: |
           git config user.name "snowline-bot"
           git config user.email "bot@snowline"
-          git add snowline/site/data_10m/dates.json snowline/site/data/snotel_agreement.json snowline/site/stac
+          git add snowline/site/data_10m/dates.json snowline/site/data/snotel_agreement.json snowline/site/data/terrain_stats.json snowline/site/stac
           git add 'snowline/site/data_10m/*/snowline.json' 2>/dev/null || true
           if git diff --staged --quiet; then
             echo "No changes to commit"
