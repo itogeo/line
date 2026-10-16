@@ -7,6 +7,7 @@
 #   historical  MODIS snow frequency, 2001-2025 -> site/data/historical/
 #   forest      ESA WorldCover 2021 tree mask -> site/data/forest_mask.*
 #   normals     SNOTEL 20-year medians -> site/data/snotel_normals.json
+#               (also automatic: the daily job adds any new station's median)
 #
 # How it stays safe:
 #   - Every layer builds into snowline/cache/rebuild/ first (gitignored).

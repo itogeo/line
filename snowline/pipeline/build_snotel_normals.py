@@ -5,6 +5,7 @@ Outputs a small JSON file that the site loads for "% of normal" display.
 
 Usage:
     python snowline/pipeline/build_snotel_normals.py
+    python snowline/pipeline/build_snotel_normals.py --if-missing   # daily: only when a station is new
 
 Output:
     site/data/snotel_normals.json (~50KB)
@@ -42,7 +43,10 @@ def log(msg):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", type=Path, default=OUTPUT, help="Output JSON (default site/data/snotel_normals.json)")
-    out = ap.parse_args().out
+    ap.add_argument("--if-missing", action="store_true",
+                    help="do nothing unless a SNTL station in the area hasn't been checked yet")
+    args = ap.parse_args()
+    out = args.out
     base = "https://wcc.sc.egov.usda.gov/awdbRestApi/services/v1"
 
     # Get SNOTEL stations in bbox
@@ -61,6 +65,14 @@ def main():
     # Filter to only SNTL network (not USGS, COOP, etc)
     sntl = [s for s in local if s['stationTriplet'].endswith(':SNTL')]
     log(f"{len(sntl)} SNTL stations in bbox")
+    if args.if_missing and out.exists():
+        old = json.loads(out.read_text())
+        known = set(old.get("stations", {})) | set(old.get("checked", []))
+        new = [s['stationTriplet'] for s in sntl if s['stationTriplet'] not in known]
+        if not new:
+            log("every station already checked; nothing to do")
+            return 0
+        log(f"{len(new)} station(s) not yet checked: {', '.join(new)}")
 
     # For each station, fetch 20 years of Oct-Mar data and compute median by DOY
     results = {}
@@ -139,6 +151,9 @@ def main():
         'years': [YEARS[0], YEARS[-1]],
         'stations': station_meta,
         'normals': normals,
+        # Every station looked at, with or without enough history for a median,
+        # so --if-missing doesn't refetch stations that can never have one.
+        'checked': sorted(s['stationTriplet'] for s in sntl),
     }
 
     out.parent.mkdir(parents=True, exist_ok=True)
