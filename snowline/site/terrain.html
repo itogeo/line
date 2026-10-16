@@ -169,7 +169,7 @@ const FT = m => m * 3.28084;
 const fmtFt = m => (Math.round(FT(m) / 10) * 10).toLocaleString('en-US') + ' ft';
 const fmtDay = (d, opts = { month: 'short', day: 'numeric' }) => new Date(d + 'T12:00:00Z').toLocaleDateString('en-US', { ...opts, timeZone: 'UTC' });
 const sum = a => a.reduce((x, y) => x + y, 0);
-const AREA = [-112.6, 44.55, -109.6, 46.35];   // mapped area (lib/aoi.py)
+const AREA = [-112.6, 44.55, -109.0, 46.35];   // mapped area (lib/aoi.py)
 const inArea = x => x.lon >= AREA[0] && x.lon <= AREA[2] && x.lat >= AREA[1] && x.lat <= AREA[3];
 const PX_KM2 = 0.0003 * 111.32 * Math.cos(45.5 * Math.PI / 180) * 0.0003 * 110.574;   // one snow-map pixel
 

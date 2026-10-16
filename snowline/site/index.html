@@ -2095,7 +2095,7 @@ let spotPopup = null;
 // ── Map area: current and proposed, plus "draw an area to request" ──
 // Proposed bbox from Ian's list (2026-10-14): Rubies + Tobacco Roots to
 // Cooke City, all of the Madisons, the Crazies, south toward Yellowstone.
-const AOI_PROPOSED = [-112.6, 44.55, -109.6, 46.35];
+const AOI_PROPOSED = [-112.6, 44.55, -109.0, 46.35];
 let DRAWING = false, drawStart = null, drawnBox = null, areaPopup = null;
 const boxRing = b => [[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]], [b[0], b[1]]];
 function updateAreaLayer() {

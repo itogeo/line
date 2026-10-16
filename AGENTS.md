@@ -26,11 +26,12 @@ are separate products.
 
 ## Area
 
-`lib/aoi.py` is the only definition. Snowline is bbox `(-112.6, 44.55, -109.6, 46.35)`
+`lib/aoi.py` is the only definition. Snowline is bbox `(-112.6, 44.55, -109.0, 46.35)`
 (west, south, east, north, EPSG:4326) and 12 MGRS tiles:
 `12TUQ 12TUR 12TUS 12TVQ 12TVR 12TVS 12TWQ 12TWR 12TWS 12TXQ 12TXR 12TXS`.
-Changed 2026-10-14 from `(-112.2, 44.9, -109.0, 46.5)`, which had the same 12 tiles.
-All 12 are needed: the east edge at -109.6 runs into the X column in every row.
+Changed 2026-10-14 from `(-112.2, 44.9, -109.0, 46.5)`, which had the same 12 tiles;
+east edge widened from -109.6 to -109.0 on 2026-10-16 (Red Lodge, Beartooth front), same tiles.
+All 12 are needed: the east edge runs into the X column in every row.
 Dropping `12TX*` leaves a strip on the east side unimaged. Pipeline code reads
 the box and tiles from `lib/aoi.py`; SNOTEL boxes are the AOI plus 0.15°
 (`pad_bbox`). Old maps keep the old grid; composites only mix passes on the same grid.

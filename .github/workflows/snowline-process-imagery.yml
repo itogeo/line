@@ -149,12 +149,24 @@ jobs:
           done < /tmp/dates_to_process.txt
           # Latest view: newest clear look per pixel over the last 10 days,
           # for every recent date (a new pass also improves the days after it).
-          if ! python snowline/pipeline/build_composite.py --recent 12 --upload; then
+          # A forced reprocess (new classifier or area) rebuilds the composite
+          # for every date back to "since", not just the last 12 days.
+          RECENT=12
+          if [[ "${{ github.event.inputs.force }}" == "true" && -n "${{ github.event.inputs.since }}" ]]; then
+            RECENT=$(python3 -c "from datetime import date; print((date.today() - date.fromisoformat('${{ github.event.inputs.since }}')).days + 1)")
+          fi
+          if ! python snowline/pipeline/build_composite.py --recent "$RECENT" --upload; then
             echo "::error::latest view: some dates not uploaded"
             echo "latest view (build_composite --upload)" >> /tmp/failed_steps.txt
           fi
           # Snow cover by elevation and slope direction, for every date not
           # summarised yet (new passes from disk, older ones from the site).
+          # Forced: the reprocessed dates' stats are stale, redo them first.
+          if [[ "${{ github.event.inputs.force }}" == "true" ]]; then
+            while read -r dt; do
+              [[ -n "$dt" ]] && python snowline/pipeline/build_terrain_stats.py --date="$dt" --fetch || echo "::warning::terrain stats $dt"
+            done < /tmp/dates_to_process.txt
+          fi
           if ! python snowline/pipeline/build_terrain_stats.py --missing --fetch; then
             echo "::error::terrain stats failed"
             echo "terrain stats (build_terrain_stats)" >> /tmp/failed_steps.txt

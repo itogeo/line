@@ -27,7 +27,10 @@ class AOI:
 
 
 # SW Montana: Bozeman, Tobacco Roots, Madisons, Gallatins, Absarokas to
-# Yellowstone's north edge, Cooke City. Changed 2026-10-14 (Ian approved).
+# Yellowstone's north edge, Cooke City, east to Red Lodge and the Beartooth
+# front. Changed 2026-10-14 (Ian approved); east edge -109.6 -> -109.0 on
+# 2026-10-16 (Ian: don't cut the Beartooths off). The X column reaches
+# -108.24..-108.33, so the wider box needs no new tiles.
 # Old box (through 2026-10-13): (-112.2, 44.9, -109.0, 46.5), same 12 tiles.
 # All 12 tiles are needed for the new box. The W column ends at -109.82
 # (12TWQ), -109.58 (12TWR) and -109.56 (12TWS), so the east edge at -109.6
@@ -36,7 +39,7 @@ class AOI:
 # the X column would leave a ~0.13 deg wide strip unimaged on the east side.
 SNOWLINE = AOI(
     name="snowline",
-    bbox=(-112.6, 44.55, -109.6, 46.35),
+    bbox=(-112.6, 44.55, -109.0, 46.35),
     tiles=(
         "12TUQ", "12TUR", "12TUS",
         "12TVQ", "12TVR", "12TVS",
