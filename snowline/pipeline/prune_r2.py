@@ -24,6 +24,9 @@ from pathlib import Path
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # repo root, for `lib`
+from lib.aoi import in_season  # noqa: E402
+
 
 BUCKET = "snowline-tiles"
 DATA_10M = Path(__file__).parent.parent / "site" / "data_10m"
@@ -131,10 +134,20 @@ def main():
     sorted_dates = sorted(by_date.keys(), reverse=True)
     log(f"Dates in R2: {len(sorted_dates)}")
 
+    # Off-season dates (June 1 to Sept 30) are never kept: every object goes.
+    off = [d for d in sorted_dates if len(d) == 10 and not in_season(d)]
+    deleted = 0
+    for date in off:
+        keys = by_date[date]["snow"] + by_date[date]["truecolor"]
+        for key in keys:
+            delete_r2_object(key, account_id, token)
+            deleted += 1
+        log(f"  {date}: off-season, deleted {len(keys)} objects")
+    sorted_dates = [d for d in sorted_dates if d not in off]
+
     # Prune snow tiles beyond keep window
     # 0 = keep every snow tile (they are the open-data archive; ~5 MB/date)
     snow_prune_dates = sorted_dates[args.keep_snow:] if args.keep_snow > 0 else []
-    deleted = 0
     for date in snow_prune_dates:
         keys = by_date[date]["snow"]
         if not keys:

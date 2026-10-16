@@ -92,6 +92,9 @@ jobs:
                       break
                   if r["dt"] in existing and not force:
                       continue
+                  # Season is Oct 1 to May 31 (lib/aoi.py in_season)
+                  if 6 <= int(r["dt"][5:7]) <= 9:
+                      continue
                   # Every pass, cloudy or clear, so its imagery is on the map.
                   # Skip orbit-edge slivers that barely touch the area.
                   cover = r.get("aoi_cover_pct")
