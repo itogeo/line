@@ -387,6 +387,11 @@
   },
   {
    "rel": "item",
+   "href": "./2026-09-13/2026-09-13.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
    "href": "./2026-09-16/2026-09-16.json",
    "type": "application/geo+json"
   },
