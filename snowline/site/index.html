@@ -324,6 +324,26 @@
   .bm-outdoor { background: linear-gradient(160deg, #c8d8c0, #a0b898 50%, #88a878); }
 
   /* ── Legend ── */
+  .wind-control { position: absolute; left: 50%; transform: translateX(-50%); bottom: 96px; z-index: 6;
+    display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px; background: var(--panel);
+    border: 1px solid var(--border); font-size: 11px; color: var(--text); box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
+  .wind-control b { font-weight: 600; white-space: nowrap; }
+  .wind-control input { width: 180px; }
+  .wind-control button { background: none; border: 1px solid var(--border); color: var(--text); border-radius: 5px; width: 26px; height: 22px; cursor: pointer; }
+  .wind-src { font-size: 9px; color: var(--text-dim); white-space: nowrap; }
+  @media (max-width: 768px) { .wind-control { left: 8px; right: 8px; transform: none; top: calc(var(--nav-h) + 92px); bottom: auto; }
+    .wind-control input { flex: 1; width: auto; } .wind-src { display: none; } }
+  .wind-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 11px; cursor: pointer; border-bottom: 1px solid var(--border); }
+  .wind-row:hover .wr-name { color: var(--text); }
+  .wind-head { cursor: default; font-family: var(--mono); font-size: 8px; color: var(--text-dim); text-transform: uppercase; }
+  .wr-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); }
+  .wr-spark { width: 60px; height: 15px; flex: none; }
+  .wr-g { width: 34px; text-align: right; font-family: var(--mono); font-weight: 600; flex: none; }
+  .wr-dim { color: var(--text-dim); font-weight: 400; }
+  .wind-more summary { font-size: 10px; color: var(--text-dim); cursor: pointer; padding: 4px 0; }
+  .wind-pop .wind-h { font-family: var(--mono); font-size: 8px; text-transform: uppercase; color: var(--text-dim); margin: 8px 0 2px; }
+  .wind-pop .wind-h span { text-transform: none; }
+  .wind-pop .wind-h i { display: inline-block; width: 8px; height: 3px; vertical-align: middle; margin: 0 2px; }
   .legend {
     position: absolute; bottom: 60px; left: 12px;
     background: var(--panel);
@@ -626,6 +646,7 @@
 <script src="/snow/shared/freshness.js"></script>
 <script src="/snow/season.js"></script>
 <script src="/snow/cams.js"></script>
+<script src="/snow/wind.js"></script>
 </head>
 <body>
 
@@ -698,6 +719,16 @@
     <div id="range-depths"></div>
   </div>
 
+  <!-- Wind (wind.js; data from fetch_wind.py, hourly) -->
+  <div class="section-label">Wind (Montana Mesonet stations)</div>
+  <div class="card">
+    <h3>Wind, last 48 hours and 7 days</h3>
+    <div style="font-size:8px;color:var(--text-dim);margin:-4px 0 6px;font-family:var(--mono)">
+      Highest gust in mph; arrow = latest direction (points downwind). Valley and foothill stations. <span id="wind-note"></span>
+    </div>
+    <div id="wind-stations"></div>
+  </div>
+
   <!-- Details: one click away, closed by default (Sam's "dial it in", issue #1) -->
   <details class="more" data-key="coverage"><summary>Snow cover &amp; recent change</summary>
   <!-- Surface coverage section -->
@@ -768,6 +799,7 @@
     <label class="layer-row"><input type="checkbox" id="tog-s2" checked><div class="sw"></div><span class="layer-label" title="Sentinel-2 true-colour photo from this pass">Satellite photo</span></label>
     <div class="opacity-wrap" id="opacity-s2"><label>Opacity</label><input type="range" min="0" max="100" value="90" id="slider-s2"></div>
     <label class="layer-row"><input type="checkbox" id="tog-snotel" checked><div class="sw"></div><span class="layer-label" title="NRCS SNOTEL ground stations: measured snow depth">Snow stations</span></label>
+    <label class="layer-row"><input type="checkbox" id="tog-wind"><div class="sw"></div><span class="layer-label" title="Wind for the last 48 hours: NOAA's hourly wind map (2.5 km) and Montana Mesonet stations">Wind</span></label>
     <label class="layer-row"><input type="checkbox" id="tog-webcams" checked><div class="sw"></div><span class="layer-label">Webcams</span></label>
     <label class="layer-row" title="Outline of the strip the satellite imaged on this date"><input type="checkbox" id="tog-pass" checked><div class="sw"></div><span class="layer-label">Strip edge</span></label>
     <details class="layers-more" id="layers-more"><summary>More</summary>
@@ -783,6 +815,12 @@
 </div>
 
 <!-- Legend -->
+<div class="wind-control" id="wind-control" style="display:none">
+  <button type="button" id="wind-play" aria-label="Play the last 48 hours">▶</button>
+  <span>Wind <b id="wind-time"></b></span>
+  <input type="range" id="wind-hour" min="0" max="47" value="47" aria-label="Hour">
+  <span class="wind-src">NOAA RTMA, 2.5 km</span>
+</div>
 <div class="legend" id="legend" style="display:none">
   <div class="legend-item"><div class="legend-swatch" style="background:rgb(100,210,255)"></div><span class="legend-text">Snow</span></div>
   <div class="legend-item"><div class="legend-swatch" style="background:rgb(120,120,130)"></div><span class="legend-text">Cloud</span></div>
@@ -1263,6 +1301,7 @@ function onMapReady() {
   document.getElementById('timeline').classList.remove('hidden');
   // Load SNOTEL range data in background — don't block map display
   setTimeout(() => loadRangeDepths(), 100);
+  Wind.init(map).then(bringSnotelToTop);
   // Speed-up B: warm the browser cache with the most recent dates' snow
   // tiles so timeline navigation feels instant. Fires 1.5s after the
   // initial render so it doesn't compete with the visible date's load.
@@ -1908,6 +1947,7 @@ function addOverlayLayers() {
 
   // ── Webcams ──
   addWebcamLayer();
+  Wind.addLayers(map);
   updatePassFootprint();
   updateCompositeRegions();
   updateAreaLayer();
@@ -2184,7 +2224,7 @@ async function onSpotClick(e) {
     const { lng, lat } = e.lngLat, [w, s, ea, n] = AOI_BBOX;
     if (lng < w || lng > ea || lat < s || lat > n) return;
   }
-  if (map.queryRenderedFeatures(e.point, { layers: ['snotel-circles', 'webcam-icons'].filter(id => map.getLayer(id)) }).length) return;
+  if (map.queryRenderedFeatures(e.point, { layers: ['snotel-circles', 'webcam-icons', ...Wind.layers].filter(id => map.getLayer(id)) }).length) return;
   const { lng, lat } = e.lngLat;
   const dates = DATES.filter(d => d !== TODAY_VIRTUAL && d >= SEASON.start && d <= SEASON.end);
   if (!dates.length) return;
@@ -3407,7 +3447,7 @@ function bringSnotelToTop() {
   } catch (e) {}
 
   // Then: our own interactive layers on top of everything
-  ['snotel-circles', 'snotel-depth', 'snotel-labels', 'webcam-icons', 'webcam-labels'].forEach(id => {
+  [...Wind.top, 'snotel-circles', 'snotel-depth', 'snotel-labels', 'webcam-icons', 'webcam-labels'].forEach(id => {
     if (map.getLayer(id)) {
       try { map.moveLayer(id); } catch (e) {}
     }
