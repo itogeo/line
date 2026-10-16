@@ -63,8 +63,32 @@ def loose_forest(b):
     return np.where((out == GROUND) & (ndsi(b) >= 0.2) & (b["red"] > 0.08), SNOW, out)
 
 
+def forest_dark(b):
+    """dark_cloud_rescue, plus snow under canopy: 'ground' with NDSI >= -0.1 and
+    B11 <= 0.10 (snow under trees is dark but still absorbs SWIR). Applied only to
+    forest pixels near or above the day's snow line (see GATED)."""
+    out = dark_cloud_rescue(b)
+    return np.where((out == GROUND) & (ndsi(b) >= -0.1) & (b["swir16"] <= 0.10), SNOW, out)
+
+
 RULES = {"v1": v1, "bright_bare_is_cloud": bright_bare_is_cloud,
-         "dark_cloud_rescue": dark_cloud_rescue, "loose_forest": loose_forest}
+         "dark_cloud_rescue": dark_cloud_rescue, "loose_forest": loose_forest,
+         "forest_dark_gated": forest_dark}
+# Rules used only on forest (>30 % trees) within GATE_M below the day's snow line
+# (terrain_stats.json snowline_m, from open ground); elsewhere dark_cloud_rescue.
+GATED = {"forest_dark_gated"}
+GATE_M = 300
+STATS = ROOT / "snowline" / "site" / "data" / "terrain_stats.json"
+SNOWLINE_M = {d: v.get("snowline_m") for d, v in json.loads(STATS.read_text())["dates"].items()} if STATS.exists() else {}
+
+
+def rule_for(name, r):
+    if name not in GATED:
+        return RULES[name]
+    sl = SNOWLINE_M.get(r["date"])
+    if (r["forest_pct"] or 0) > 30 and sl is not None and (r["elev_ft"] or 0) * 0.3048 >= sl - GATE_M:
+        return RULES[name]
+    return dark_cloud_rescue
 
 
 def call(rule, bands):
@@ -73,10 +97,10 @@ def call(rule, bands):
     return c.most_common(1)[0][0]
 
 
-def score(rows, rule):
+def score(rows, name):
     t = Counter()
     for r in rows:
-        t[(r["truth"], call(rule, r["bands"]))] += 1
+        t[(r["truth"], call(rule_for(name, r), r["bands"]))] += 1
     seen = t[("snow", SNOW)] + t[("snow", GROUND)] + t[("bare", SNOW)] + t[("bare", GROUND)]
     right = t[("snow", SNOW)] + t[("bare", GROUND)]
     return {"n": len(rows), "called": seen, "cloud": t[("snow", CLOUD)] + t[("bare", CLOUD)],
@@ -108,12 +132,12 @@ def main():
         if not rs:
             continue
         print(g)
-        for name, rule in RULES.items():
-            print(f"  {name:22} {fmt(score(rs, rule))}")
+        for name in RULES:
+            print(f"  {name:22} {fmt(score(rs, name))}")
     if args.rows:
         print()
         for r in rows:
-            calls = " ".join(f"{call(rule, r['bands']):6}" for rule in RULES.values())
+            calls = " ".join(f"{call(rule_for(n, r), r['bands']):6}" for n in RULES)
             print(f"{r['date']} {r['name'][:18]:18} {r['truth']:4} {calls}")
     return 0
 
