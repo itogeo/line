@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-The "latest view": for every pixel, the most recent clear look.
+The composite views: for every pixel, the most recent clear look ("latest",
+shown as "Most recent clear composite") and the most recent look of any kind,
+cloud included ("recent", shown as "Most recent composite").
 
 A single Sentinel-2 pass rarely covers the whole Snowline area. Each orbit
 images a strip, and clouds take bites out of it, so a one-day map is often
@@ -12,6 +14,7 @@ window stay cloud (if the last look was cloudy) or no data.
 Per date it writes, next to the single-pass files:
 
   data_10m/{D}/latest_r{row}c{col}.webp   map tile, same colours as snow_*.webp
+  data_10m/{D}/recent_r{row}c{col}.webp   newest look per pixel, cloud included
   data_10m/{D}/latest_r{row}c{col}.tif    COG, band 1 class (0 ground, 1 snow,
                                            2 cloud, 3 nodata), band 2 age in
                                            days (255 = no clear look)
@@ -116,7 +119,8 @@ def build(target, maps):
     sources = sorted((s for s in maps if t - timedelta(days=WINDOW) < d(s) <= t), reverse=True)
     skipped = set()   # (source date, chunk, reason): logged once per target
     chunks_out, totals = [], {"px": 0, "valid": 0, "snow": 0}
-    age_px = {}
+    recent_out, rtot = [], {"seen": 0, "cloud": 0, "snow": 0}
+    age_px, rage_px = {}, {}
     for ch in meta["chunks"]:
         cid = ch["chunk_id"]
         ref = read_class(target, ch, None)
@@ -124,6 +128,8 @@ def build(target, maps):
         cls = np.full(shape, NODATA, np.uint8)
         age = np.full(shape, 255, np.uint8)
         seen_cloud = np.zeros(shape, bool)
+        rcls = np.full(shape, NODATA, np.uint8)     # newest look, cloud included
+        rage = np.full(shape, 255, np.uint8)
         for s in sources:
             # Only passes cut on the same grid: same chunk id AND same bounds
             # (an AOI change keeps ids r0c0..r1c2 but moves the edges).
@@ -135,12 +141,15 @@ def build(target, maps):
             if src.shape != shape:
                 skipped.add((s, cid, f"shape {src.shape} != {shape}"))
                 continue
+            looked = (src <= CLOUD) & (rage == 255)
+            rcls[looked] = src[looked]
+            rage[looked] = (t - d(s)).days
             clear = (src == SNOW) | (src == GROUND)
             take = clear & (age == 255)
             cls[take] = src[take]
             age[take] = (t - d(s)).days
             seen_cloud |= (src == CLOUD) & (age == 255)
-            if not (age == 255).any():
+            if not (age == 255).any() and not (rage == 255).any():
                 break
         cls[(age == 255) & seen_cloud] = CLOUD
 
@@ -166,6 +175,15 @@ def build(target, maps):
         for a, n in zip(*np.unique(age[valid], return_counts=True)):
             age_px[int(a)] = age_px.get(int(a), 0) + int(n)
         chunks_out.append({"chunk_id": cid, "snow_file": f"{stem}.webp", "class_file": f"{stem}.tif", "bounds": b})
+        rstem = f"recent_{cid}"
+        Image.fromarray(encode_rgba(rcls)).save(DATA_10M / target / f"{rstem}.webp", "WEBP", lossless=True, method=4)
+        seen = rcls <= CLOUD
+        rtot["seen"] += int(seen.sum())
+        rtot["cloud"] += int((rcls == CLOUD).sum())
+        rtot["snow"] += int((rcls == SNOW).sum())
+        for a, n in zip(*np.unique(rage[seen], return_counts=True)):
+            rage_px[int(a)] = rage_px.get(int(a), 0) + int(n)
+        recent_out.append({"chunk_id": cid, "snow_file": f"{rstem}.webp", "bounds": b})
 
     for sd, cid, why in sorted(skipped):
         log(f"  {target}: skipped {sd} chunk {cid} ({why})")
@@ -179,13 +197,25 @@ def build(target, maps):
         "snow_cover_pct": round(totals["snow"] / max(1, totals["valid"]) * 100, 1),
         "method": f"newest clear observation per pixel from passes in the {WINDOW} days up to {target}",
     }
+    rused = sorted({(t - timedelta(days=a)).isoformat() for a in rage_px}, reverse=True)
+    meta["recent"] = {
+        "window_days": WINDOW,
+        "chunks": recent_out,
+        "sources": [{"date": s, "pct_of_seen": round(rage_px[(t - d(s)).days] / max(1, rtot["seen"]) * 100, 1)}
+                    for s in rused],
+        "imaged_pct": round(rtot["seen"] / max(1, totals["px"]) * 100, 1),
+        "cloud_pct": round(rtot["cloud"] / max(1, rtot["seen"]) * 100, 1),
+        "coverage_pct": round((rtot["seen"] - rtot["cloud"]) / max(1, totals["px"]) * 100, 1),
+        "snow_cover_pct": round(rtot["snow"] / max(1, rtot["seen"] - rtot["cloud"]) * 100, 1),
+        "method": f"newest observation per pixel, cloud included, from passes in the {WINDOW} days up to {target}",
+    }
     log(f"{target}: {meta['coverage_pct']}% → {meta['latest']['coverage_pct']}% of the area seen "
         f"(from {len(used)} pass{'es' if len(used) != 1 else ''}), {meta['latest']['snow_cover_pct']}% snow")
     return meta
 
 
 def upload(target, meta):
-    """Put this date's latest-view files in R2. True when all made it."""
+    """Put this date's composite files in R2. True when all made it."""
     import os
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import sync_r2
@@ -193,13 +223,14 @@ def upload(target, meta):
     if not acct or not token:
         log("  CF_ACCOUNT_ID / CF_API_TOKEN not set — can't upload")
         return False
-    for c in meta["latest"]["chunks"]:
-        for f in (c["snow_file"], c["class_file"]):
-            try:
-                sync_r2.put(acct, token, f"tiles/{target}/{f}", DATA_10M / target / f)
-            except Exception as e:  # noqa: BLE001
-                log(f"  upload failed {target}/{f}: {e}")
-                return False
+    files = [f for c in meta["latest"]["chunks"] for f in (c["snow_file"], c["class_file"])]
+    files += [c["snow_file"] for c in meta.get("recent", {}).get("chunks", [])]
+    for f in files:
+        try:
+            sync_r2.put(acct, token, f"tiles/{target}/{f}", DATA_10M / target / f)
+        except Exception as e:  # noqa: BLE001
+            log(f"  upload failed {target}/{f}: {e}")
+            return False
     return True
 
 

@@ -5,7 +5,7 @@ Phase 1 of the snowline imagery pipeline: download band windows.
 For one date, finds every Sentinel-2 Collection 1 L2A scene over the AOI
 in the Taylor Geospatial S2 STAC GeoParquet index (lib/s2index.py — one
 DuckDB query, no STAC API), then for each tile downloads the AOI window of
-5 bands (green, red, blue, swir16, scl) and writes them as small GeoTIFFs
+6 bands (green, red, blue, swir16, nir08, scl) and writes them as small GeoTIFFs
 to a cache directory:
 
     cache/{date}/{tile_id}/{band}.tif
@@ -62,12 +62,12 @@ from rasterio.crs import CRS
 REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO_ROOT.parent))  # repo root, for `lib`
 from lib import s2index  # noqa: E402
-from lib.aoi import SNOWLINE  # noqa: E402
+from lib.aoi import SNOWLINE, in_season  # noqa: E402
 
 CACHE_ROOT = REPO_ROOT / "cache"
 BBOX = SNOWLINE.bbox_list
-BANDS = ["green", "red", "blue", "swir16", "scl"]
-REFLECTANCE_BANDS = {"green", "red", "blue", "swir16"}
+BANDS = ["green", "red", "blue", "swir16", "nir08", "scl"]   # nir08 = B8A, for the forest snow index
+REFLECTANCE_BANDS = {"green", "red", "blue", "swir16", "nir08"}
 
 # Sequential by default. The previous defaults (4 tiles x 4 bands = 16
 # simultaneous S3 connections) were too aggressive for residential
@@ -267,6 +267,9 @@ def main():
                         help="Comma-separated subset of tiles, e.g. 12TVR,12TWR (default: all AOI tiles)")
     args = parser.parse_args()
 
+    if not in_season(args.date):
+        log(f"{args.date} is outside the season (Oct 1 to May 31): not mapped")
+        return NO_SCENES_EXIT
     date_dir = CACHE_ROOT / args.date
     log(f"Cache dir: {date_dir}")
     log(f"Searching the S2 GeoParquet index for {args.date}...")
