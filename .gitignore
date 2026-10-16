@@ -37,3 +37,6 @@ riverline/data/
 .wrangler/
 **/cache/
 riverline/raw/
+
+# Local wind build (fetch_wind.py); the live copy is in R2 wind/
+snowline/site/data/wind/

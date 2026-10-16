@@ -1,5 +1,5 @@
-// Snowline — wind: a 48-hour wind map (NOAA RTMA, 2.5 km) and Montana Mesonet
-// station wind for the last 7 days. Data from fetch_wind.py (hourly), served
+// Snowline — wind: a 48-hour wind map (NOAA RTMA, 2.5 km) and station wind for
+// the last 7 days (Montana Mesonet, SNOTEL, NWS mountain stations). Data from fetch_wind.py (hourly), served
 // from R2 at /snow/api/wind/. The map page calls Wind.init(map) once the map
 // is ready and Wind.addLayers(map) whenever the basemap style is (re)loaded.
 
@@ -7,6 +7,9 @@ const Wind = (() => {
   const API = '/snow/api/wind';
   const TZ = 'America/Denver';
   let MAP = null, GRID = null, STATIONS = null, HOUR = null, playTimer = null, popup = null;
+  // Which arrows show: the RTMA grid, the stations, or both. Remembered per browser.
+  let SHOW = 'both';
+  try { SHOW = localStorage.getItem('snowline-wind-show') || 'both'; } catch (e) { /* default */ }
 
   // Speed colours (mph): calm grey to strong red. Blue stays reserved for snow.
   const STOPS = [[0, '#c9cdd2'], [5, '#e9e2a8'], [10, '#ffd166'], [15, '#ffb74d'], [25, '#ff7043'], [40, '#d84315']];
@@ -57,7 +60,7 @@ const Wind = (() => {
     return { type: 'FeatureCollection', features: (STATIONS?.stations || []).map(s => {
       const last = s.obs[s.obs.length - 1];
       return { type: 'Feature', geometry: { type: 'Point', coordinates: [s.lon, s.lat] },
-        properties: { id: s.id, name: s.name, spd: last[1] || 0, dir: last[3] == null ? 0 : last[3], hasdir: last[3] != null } };
+        properties: { id: s.id, name: s.name, elev: s.elevation_ft, spd: last[1] || 0, dir: last[3] == null ? 0 : last[3], hasdir: last[3] != null } };
     }) };
   }
 
@@ -70,14 +73,17 @@ const Wind = (() => {
     if (!MAP.getLayer('wind-grid')) {
       MAP.addLayer({ id: 'wind-grid', type: 'symbol', source: 'wind-grid', layout: {
         visibility: vis, 'icon-image': 'wind-arrow', 'icon-rotate': ['+', ['get', 'dir'], 180],
-        'icon-rotation-alignment': 'map', 'icon-allow-overlap': false, 'icon-padding': 1,
-        'icon-size': ['interpolate', ['linear'], ['get', 'spd'], 0, 0.3, 10, 0.5, 30, 0.8] },
-        paint: { 'icon-color': colorExpr, 'icon-opacity': 0.85 } });
+        'icon-rotation-alignment': 'map', 'icon-allow-overlap': false, 'icon-ignore-placement': false,
+        // Wide padding thins the grid: Mapbox drops arrows that would collide, so
+        // zoomed out shows roughly one per 40 px and zooming in fills in detail.
+        'icon-padding': 14, 'symbol-sort-key': ['-', 0, ['get', 'spd']],
+        'icon-size': ['interpolate', ['linear'], ['get', 'spd'], 0, 0.35, 10, 0.5, 30, 0.75] },
+        paint: { 'icon-color': colorExpr, 'icon-opacity': 0.7 } });
     }
     if (!MAP.getSource('wind-stations')) MAP.addSource('wind-stations', { type: 'geojson', data: stationFeatures() });
     if (!MAP.getLayer('wind-station-dots')) {
       MAP.addLayer({ id: 'wind-station-dots', type: 'circle', source: 'wind-stations', layout: { visibility: vis },
-        paint: { 'circle-radius': 7, 'circle-color': '#17171a', 'circle-stroke-width': 2, 'circle-stroke-color': colorExpr } });
+        paint: { 'circle-radius': ['interpolate', ['linear'], ['get', 'elev'], 4500, 5, 9000, 8], 'circle-color': '#17171a', 'circle-stroke-width': 2, 'circle-stroke-color': colorExpr } });
       MAP.addLayer({ id: 'wind-station-arrows', type: 'symbol', source: 'wind-stations', filter: ['get', 'hasdir'], layout: {
         visibility: vis, 'icon-image': 'wind-arrow', 'icon-size': 0.42, 'icon-allow-overlap': true,
         'icon-rotate': ['+', ['get', 'dir'], 180], 'icon-rotation-alignment': 'map' },
@@ -89,9 +95,11 @@ const Wind = (() => {
   }
 
   function setVisible(v) {
-    ['wind-grid', 'wind-station-dots', 'wind-station-arrows'].forEach(id => {
-      if (MAP?.getLayer(id)) MAP.setLayoutProperty(id, 'visibility', v ? 'visible' : 'none');
+    const want = { 'wind-grid': SHOW !== 'stations', 'wind-station-dots': SHOW !== 'grid', 'wind-station-arrows': SHOW !== 'grid' };
+    Object.entries(want).forEach(([id, w]) => {
+      if (MAP?.getLayer(id)) MAP.setLayoutProperty(id, 'visibility', v && w ? 'visible' : 'none');
     });
+    document.querySelectorAll('#wind-show button').forEach(b => b.classList.toggle('on', b.dataset.show === SHOW));
     document.getElementById('wind-control').style.display = v && GRID?.hours.length ? '' : 'none';
     if (!v) return stop();
     // Above the imagery and shading added since; the page then lifts its own pins over these.
@@ -172,7 +180,7 @@ const Wind = (() => {
     const line = (lab, sm) => sm ? `<div><b>${lab}</b>: highest gust ${sm.gmax ? Math.round(sm.gmax[1]) + ' mph (' + fmtHour(sm.gmax[0]) + ')' : '–'}, `
       + `average ${Math.round(sm.mean)} mph${sm.prevailing ? ', mostly from the ' + sm.prevailing : ''}</div>` : '';
     return `<div class="wind-pop"><div class="popup-name">${s.name}</div>
-      <div style="font-size:10px;color:var(--text-dim);margin-bottom:5px">${s.elevation_ft.toLocaleString('en-US')} ft &middot; sensor ${s.sensor_height || ''} &middot; Montana Mesonet</div>
+      <div style="font-size:10px;color:var(--text-dim);margin-bottom:5px">${s.elevation_ft.toLocaleString('en-US')} ft &middot; ${s.sensor_height ? 'sensor ' + s.sensor_height + ' &middot; ' : ''}${s.source || 'Montana Mesonet'}</div>
       <div style="font-size:10px;line-height:1.5">${line('Last 48 h', a)}${line('Last 7 days', w)}</div>
       <div class="wind-h">Last 48 hours <span>speed <i style="background:#ffd166"></i> gusts <i style="background:#ff7043"></i> arrows point downwind</span></div>${chart48(s)}
       <div class="wind-h">Last 7 days <span>daily high gust (light) and high speed (solid), mph</span></div>${chart7d(s)}</div>`;
@@ -224,6 +232,11 @@ const Wind = (() => {
     }
     MAP.getSource('wind-stations')?.setData(stationFeatures());
     document.getElementById('tog-wind').addEventListener('change', e => setVisible(e.target.checked));
+    document.querySelectorAll('#wind-show button').forEach(b => b.onclick = () => {
+      SHOW = b.dataset.show;
+      try { localStorage.setItem('snowline-wind-show', SHOW); } catch (e) { /* not kept */ }
+      setVisible(on());
+    });
     setVisible(on());
     renderPanel();
     const note = document.getElementById('wind-note');

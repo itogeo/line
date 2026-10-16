@@ -10,10 +10,16 @@ Wind for the Snowline area: a 48-hour wind map and 7 days of station wind.
    (true north); speed and gust in mph. Keeps the newest 48 hours: each run
    reads the published file back, adds the hours it lacks, drops older ones.
 
-2. Stations (stations_7d.json): Montana Mesonet hourly wind speed, gust and
-   direction for every station in the area, last 7 days (open API, no key).
-   Sensors sit at 10 m on some stations and 8 ft on others; each station
-   records which.
+2. Stations (stations_7d.json): hourly wind speed, gust and direction for the
+   last 7 days from three free, keyless sources, merged (a station within
+   500 m of one already taken is skipped, in this order):
+     - Montana Mesonet (Montana Climate Office): valley and foothill stations,
+       sensors at 10 m or 8 ft.
+     - NRCS SNOTEL/SCAN (AWDB REST API): the SNOTEL sites with a wind sensor.
+     - NWS (api.weather.gov): every station at or above 1,700 m that reported
+       wind in the last day: fire-weather RAWS, ski-area and road-weather
+       stations relayed through the NWS. Readings are 5-60 min; kept as the
+       last reading in each hour with the hour's highest gust.
 
 Writes both to snowline/site/data/wind/ and, with --upload, to R2 under
 wind/ (served at /snow/api/wind/<file>). Run hourly by snowline-wind.yml.
@@ -31,7 +37,9 @@ import base64
 import json
 import os
 import sys
+import math
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -46,6 +54,10 @@ OUT = ROOT / "snowline" / "site" / "data" / "wind"
 LIVE = "https://line.itogeospatial.com/snow/api/wind"
 RTMA = "https://noaa-rtma-pds.s3.amazonaws.com"
 MESONET = "https://mesonet.climate.umt.edu/api/v2"
+AWDB = "https://wcc.sc.egov.usda.gov/awdbRestApi/services/v1"
+NWS = "https://api.weather.gov"
+NWS_MIN_ELEV_M = 1700                    # mountain stations; the Mesonet covers the valleys
+KMH_TO_MPH = 0.621371
 HEADERS = {"User-Agent": "snowline (line.itogeospatial.com/snow; itogeospatial@gmail.com)"}
 FIELDS = ("WDIR", "WIND", "GUST")       # 10 m above ground
 HOURS = 48
@@ -157,12 +169,11 @@ def build_grid():
     }
 
 
-def build_stations():
+def mesonet_stations(start):
     w, s, e, n = SNOWLINE.bbox
     sts = requests.get(f"{MESONET}/stations/", params={"type": "json"}, headers=HEADERS, timeout=60).json()
     here = [x for x in sts if w <= x["longitude"] <= e and s <= x["latitude"] <= n]
     end = datetime.now(timezone.utc)
-    start = end - timedelta(days=STATION_DAYS)
     out, failed = [], 0
     for st in here:
         try:
@@ -197,12 +208,140 @@ def build_stations():
         if obs:
             out.append({"id": st["station"], "name": st["name"], "lat": st["latitude"], "lon": st["longitude"],
                         "elevation_ft": round(st["elevation"] * 3.28084), "sensor_height": height,
-                        "obs": sorted(obs)})
-    log(f"stations: {len(here)} in the area, {len(out)} with wind, {failed} not reached")
+                        "source": "Montana Mesonet", "obs": sorted(obs)})
+    log(f"Mesonet: {len(here)} stations in the area, {len(out)} with wind, {failed} not reached")
+    return out
+
+
+def snotel_stations(start):
+    """SNOTEL/SCAN sites in the area with hourly wind (WSPDV average, WSPDX max, WDIRV; mph)."""
+    w, s, e, n = SNOWLINE.bbox
+    sts = requests.get(f"{AWDB}/stations", timeout=60, params={
+        "stateCds": "MT,WY", "networkCds": "SNTL,SCAN", "elements": "WSPDV"}).json()
+    here = {x["stationTriplet"]: x for x in sts if w <= x["longitude"] <= e and s <= x["latitude"] <= n}
+    if not here:
+        return []
+    end = datetime.now(timezone.utc) + timedelta(days=1)
+    data = requests.get(f"{AWDB}/data", timeout=120, params={
+        "stationTriplets": ",".join(here), "elements": "WSPDV,WSPDX,WDIRV", "duration": "HOURLY",
+        "beginDate": start.strftime("%Y-%m-%d %H:00"), "endDate": end.strftime("%Y-%m-%d %H:00")}).json()
+    out = []
+    for d in data:
+        st = here[d["stationTriplet"]]
+        # AWDB hourly times are in the station's dataTimeZone (NRCS keeps PST, -8, year round).
+        tz = timezone(timedelta(hours=st.get("dataTimeZone", -8)))
+        by = {}
+        for el in d.get("data", []):
+            code = el["stationElement"]["elementCode"]
+            for v in el.get("values", []):
+                if v.get("value") is None:
+                    continue
+                t = datetime.strptime(v["date"], "%Y-%m-%d %H:%M").replace(tzinfo=tz).astimezone(timezone.utc)
+                by.setdefault(t, {})[code] = v["value"]
+        obs = [[t.strftime("%Y-%m-%dT%H:00Z"), round(v["WSPDV"], 1),
+                None if v.get("WSPDX") is None else round(v["WSPDX"], 1),
+                None if v.get("WDIRV") is None else round(v["WDIRV"])]
+               for t, v in sorted(by.items()) if t >= start and "WSPDV" in v]
+        if obs:
+            out.append({"id": st["stationTriplet"], "name": f"{st['name']} SNOTEL", "lat": st["latitude"],
+                        "lon": st["longitude"], "elevation_ft": round(st["elevation"]), "sensor_height": None,
+                        "source": "NRCS SNOTEL", "obs": obs})
+    log(f"SNOTEL: {len(here)} sites list wind, {len(out)} with readings")
+    return out
+
+
+def nws_obs(sid, start):
+    """Hourly [time, mph, gust mph, dir] from api.weather.gov, following the cursor pages."""
+    h = {**HEADERS, "Accept": "application/geo+json"}
+    url, params, feats = f"{NWS}/stations/{sid}/observations", {"start": start.strftime("%Y-%m-%dT%H:%M:%SZ")}, []
+    for _ in range(20):
+        j = requests.get(url, params=params, headers=h, timeout=60).json()
+        page = j.get("features", [])
+        feats += page
+        url, params = (j.get("pagination") or {}).get("next"), None
+        if not page or not url:
+            break
+
+    def mph(q):
+        if not q or q.get("value") is None:
+            return None
+        return q["value"] * (KMH_TO_MPH if q["unitCode"].endswith("km_h-1") else MS_TO_MPH)
+
+    hours = {}
+    for f in sorted(feats, key=lambda f: f["properties"]["timestamp"]):
+        p = f["properties"]
+        spd = mph(p.get("windSpeed"))
+        if spd is None:
+            continue
+        key = p["timestamp"][:13] + ":00Z"
+        gst = mph(p.get("windGust"))
+        prev = hours.get(key)
+        g = max([x for x in (gst, prev and prev[2]) if x is not None], default=None)
+        dr = (p.get("windDirection") or {}).get("value")
+        hours[key] = [key, round(spd, 1), None if g is None else round(g, 1), None if dr is None else round(dr)]
+    return [hours[k] for k in sorted(hours)]
+
+
+def nws_stations(start):
+    w, s, e, n = SNOWLINE.bbox
+    h = {**HEADERS, "Accept": "application/geo+json"}
+    cands = []
+    for state in ("MT", "WY"):
+        url = f"{NWS}/stations?state={state}&limit=500"
+        while url:
+            j = requests.get(url, headers=h, timeout=60).json()
+            fs = j.get("features", [])
+            for f in fs:
+                lon, lat = f["geometry"]["coordinates"][:2]
+                p = f["properties"]
+                el = (p.get("elevation") or {}).get("value") or 0
+                if w <= lon <= e and s <= lat <= n and el >= NWS_MIN_ELEV_M:
+                    name = p["name"].strip()
+                    cands.append({"id": p["stationIdentifier"], "name": name.title() if name.isupper() else name, "lat": lat, "lon": lon,
+                                  "elevation_ft": round(el * 3.28084)})
+            url = (j.get("pagination") or {}).get("next") if fs else None
+
+    def one(st):
+        try:
+            return st, nws_obs(st["id"], start)
+        except (requests.RequestException, ValueError, KeyError):
+            return st, None
+
+    out, failed = [], 0
+    recent = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%dT%H")
+    with ThreadPoolExecutor(6) as ex:
+        for st, obs in ex.map(one, cands):
+            if obs is None:
+                failed += 1
+            elif obs and obs[-1][0] >= recent:
+                out.append({**st, "sensor_height": None, "source": "NWS", "obs": obs})
+    log(f"NWS: {len(cands)} stations at {NWS_MIN_ELEV_M}+ m, {len(out)} with wind in the last day, {failed} not reached")
+    return out
+
+
+def km_apart(a, b):
+    k = math.cos(math.radians(a["lat"]))
+    return 111.2 * math.hypot(a["lat"] - b["lat"], (a["lon"] - b["lon"]) * k)
+
+
+def build_stations():
+    start = datetime.now(timezone.utc) - timedelta(days=STATION_DAYS)
+    out = []
+    for name, fn in (("Mesonet", mesonet_stations), ("SNOTEL", snotel_stations), ("NWS", nws_stations)):
+        try:
+            got = fn(start)
+        except (requests.RequestException, ValueError) as ex:
+            log(f"{name}: {ex.__class__.__name__}: {ex}")
+            continue
+        for st in got:
+            if all(km_apart(st, o) > 0.5 for o in out):
+                out.append(st)
+    log(f"stations: {len(out)} with wind")
     return {
         "columns": ["time (UTC, hour)", "speed mph", "gust mph", "direction deg (from, true)"],
         "stations": out,
-        "source": "Montana Mesonet, Montana Climate Office, University of Montana (climate.umt.edu/mesonet)",
+        "source": ("Montana Mesonet (Montana Climate Office, University of Montana); NRCS SNOTEL (AWDB); "
+                   "NWS observations (api.weather.gov): RAWS, ski-area and road-weather stations"),
         "generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
 

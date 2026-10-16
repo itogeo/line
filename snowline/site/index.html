@@ -330,9 +330,13 @@
   .wind-control b { font-weight: 600; white-space: nowrap; }
   .wind-control input { width: 180px; }
   .wind-control button { background: none; border: 1px solid var(--border); color: var(--text); border-radius: 5px; width: 26px; height: 22px; cursor: pointer; }
+  .wind-control .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 5px; overflow: hidden; }
+  .wind-control .seg button { border: 0; border-radius: 0; width: auto; padding: 0 7px; font-size: 10px; color: var(--text-dim); }
+  .wind-control .seg button.on { background: var(--border); color: var(--text); }
   .wind-src { font-size: 9px; color: var(--text-dim); white-space: nowrap; }
   @media (max-width: 768px) { .wind-control { left: 8px; right: 8px; transform: none; top: calc(var(--nav-h) + 92px); bottom: auto; }
-    .wind-control input { flex: 1; width: auto; } .wind-src { display: none; } }
+    .wind-control input { flex: 1; width: auto; min-width: 50px; } .wind-src { display: none; }
+    .wind-control .seg { flex-shrink: 0; } .wind-control .seg button { padding: 0 5px; } }
   .wind-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 11px; cursor: pointer; border-bottom: 1px solid var(--border); }
   .wind-row:hover .wr-name { color: var(--text); }
   .wind-head { cursor: default; font-family: var(--mono); font-size: 8px; color: var(--text-dim); text-transform: uppercase; }
@@ -720,11 +724,11 @@
   </div>
 
   <!-- Wind (wind.js; data from fetch_wind.py, hourly) -->
-  <div class="section-label">Wind (Montana Mesonet stations)</div>
+  <div class="section-label">Wind (Mesonet, SNOTEL and mountain stations)</div>
   <div class="card">
     <h3>Wind, last 48 hours and 7 days</h3>
     <div style="font-size:8px;color:var(--text-dim);margin:-4px 0 6px;font-family:var(--mono)">
-      Highest gust in mph; arrow = latest direction (points downwind). Valley and foothill stations. <span id="wind-note"></span>
+      Highest gust in mph; arrow = latest direction (points downwind). Mesonet valley and foothill stations, SNOTEL, and NWS ridge, ski-area and pass stations. <span id="wind-note"></span>
     </div>
     <div id="wind-stations"></div>
   </div>
@@ -799,7 +803,7 @@
     <label class="layer-row"><input type="checkbox" id="tog-s2" checked><div class="sw"></div><span class="layer-label" title="Sentinel-2 true-colour photo from this pass">Satellite photo</span></label>
     <div class="opacity-wrap" id="opacity-s2"><label>Opacity</label><input type="range" min="0" max="100" value="90" id="slider-s2"></div>
     <label class="layer-row"><input type="checkbox" id="tog-snotel" checked><div class="sw"></div><span class="layer-label" title="NRCS SNOTEL ground stations: measured snow depth">Snow stations</span></label>
-    <label class="layer-row"><input type="checkbox" id="tog-wind"><div class="sw"></div><span class="layer-label" title="Wind for the last 48 hours: NOAA's hourly wind map (2.5 km) and Montana Mesonet stations">Wind</span></label>
+    <label class="layer-row"><input type="checkbox" id="tog-wind"><div class="sw"></div><span class="layer-label" title="Wind for the last 48 hours: NOAA's hourly wind map (2.5 km) and measured station wind: Montana Mesonet, SNOTEL, and NWS mountain stations (RAWS, ski areas, passes)">Wind</span></label>
     <label class="layer-row"><input type="checkbox" id="tog-webcams" checked><div class="sw"></div><span class="layer-label">Webcams</span></label>
     <label class="layer-row" title="Outline of the strip the satellite imaged on this date"><input type="checkbox" id="tog-pass" checked><div class="sw"></div><span class="layer-label">Strip edge</span></label>
     <details class="layers-more" id="layers-more"><summary>More</summary>
@@ -819,6 +823,7 @@
   <button type="button" id="wind-play" aria-label="Play the last 48 hours">▶</button>
   <span>Wind <b id="wind-time"></b></span>
   <input type="range" id="wind-hour" min="0" max="47" value="47" aria-label="Hour">
+  <span class="seg" id="wind-show" role="group" aria-label="Which wind arrows"><button type="button" data-show="grid" title="NOAA's 2.5 km wind map only">Map</button><button type="button" data-show="stations" title="Measured station wind only">Stations</button><button type="button" data-show="both">Both</button></span>
   <span class="wind-src">NOAA RTMA, 2.5 km</span>
 </div>
 <div class="legend" id="legend" style="display:none">
