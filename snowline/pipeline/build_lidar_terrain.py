@@ -55,6 +55,8 @@ CACHE = REPO_ROOT / "cache" / "lidar"
 INDEX = CACHE / "index.json"
 OUT = REPO_ROOT / "site" / "terrain" / "shade"
 TNM = "https://tnmaccess.nationalmap.gov/api/v1/products"
+S3 = "https://prd-tnm.s3.amazonaws.com"
+S3_PREFIX = "StagedProducts/Elevation/1m/Projects/"
 DATASET = "Digital Elevation Model (DEM) 1 meter"
 OVERVIEW = 1            # index into the COG's overviews: [2, 4, 8, 16, 32] → 4 m
 MAX_Z, MIN_Z = 13, 8
@@ -78,7 +80,8 @@ def log(msg):
 
 
 # ── list ────────────────────────────────────────────────────────────────────
-def cmd_list(_args):
+def tnm_items():
+    """Every 1 m DEM product over the area from the National Map API."""
     w, s, e, n = SNOWLINE.bbox
     items, offset = [], 0
     while True:
@@ -86,11 +89,100 @@ def cmd_list(_args):
                                     "max": 500, "offset": offset, "outputFormat": "JSON"})
         with urllib.request.urlopen(f"{TNM}?{q}", timeout=120) as r:
             page = json.load(r)
+        if page.get("error"):
+            raise RuntimeError(f"TNM API error: {page['error']}")
         batch = page.get("items", [])
         items.extend(batch)
         offset += len(batch)
         if not batch or offset >= page.get("total", 0):
             break
+    return items
+
+
+def s3_items():
+    """Same products, listed straight from the public USGS bucket (prd-tnm),
+    for when the TNM API is down. Footprints come from the tile names:
+    USGS_1M_{zone}_x{E}y{N}_... is the 10 km UTM square with its top-left
+    corner at E*10 km, N*10 km (plus a few metres of overlap). Older tiles
+    (USGS_one_meter_x{E}y{N}_...) carry no zone: if one lands in the area
+    as UTM 12 (where the area is), its real bounds are read from its header."""
+    import re
+    import xml.etree.ElementTree as ET
+    from pyproj import Transformer
+    w, s, e, n = SNOWLINE.bbox
+    ns = {"s": "http://s3.amazonaws.com/doc/2006-03-01/"}
+
+    def listing(prefix, delimiter=None):
+        token = None
+        while True:
+            q = {"list-type": "2", "prefix": prefix}
+            if delimiter:
+                q["delimiter"] = delimiter
+            if token:
+                q["continuation-token"] = token
+            for attempt in range(5):   # the bucket resets connections now and then
+                try:
+                    with urllib.request.urlopen(f"{S3}/?{urllib.parse.urlencode(q)}", timeout=120) as r:
+                        root = ET.fromstring(r.read())
+                    break
+                except OSError:
+                    if attempt == 4:
+                        raise
+                    time.sleep(2 * (attempt + 1))
+            yield root
+            token = root.findtext("s:NextContinuationToken", namespaces=ns)
+            if not token:
+                return
+
+    projects = [p.text for st in ("MT_", "WY_", "ID_") for root in listing(f"{S3_PREFIX}{st}", "/")
+                for p in root.findall("s:CommonPrefixes/s:Prefix", ns)]
+    tf = {}
+    items = []
+    pat = re.compile(r"USGS_(?:1M_(\d+)|one_meter)_x(\d+)y(\d+)_.*\.tif$")
+    for proj in projects:
+        for root in listing(proj + "TIFF/"):
+            for c in root.findall("s:Contents", ns):
+                key = c.findtext("s:Key", namespaces=ns)
+                m = pat.search(key.rsplit("/", 1)[-1])
+                if not m:
+                    continue
+                zone, x, y = int(m.group(1) or 12), int(m.group(2)), int(m.group(3))
+                guessed = m.group(1) is None
+                t = tf.setdefault(zone, Transformer.from_crs(f"EPSG:{26900 + zone}", "EPSG:4326", always_xy=True))
+                xs, ys = [x * 1e4 - 10, x * 1e4 + 1e4 + 10], [y * 1e4 - 1e4 - 10, y * 1e4 + 10]
+                lons, lats = t.transform([xs[0], xs[0], xs[1], xs[1]], [ys[0], ys[1], ys[0], ys[1]])
+                bb = [min(lons), min(lats), max(lons), max(lats)]
+                if bb[0] < e and bb[2] > w and bb[1] < n and bb[3] > s:
+                    if guessed:
+                        bb = header_bounds(f"{S3}/{key}")
+                        if not (bb and bb[0] < e and bb[2] > w and bb[1] < n and bb[3] > s):
+                            continue
+                    items.append({"title": key.rsplit("/", 1)[-1], "downloadURL": f"{S3}/{key}",
+                                  "publicationDate": (c.findtext("s:LastModified", namespaces=ns) or "")[:10],
+                                  "boundingBox": dict(zip(("minX", "minY", "maxX", "maxY"), bb)),
+                                  "sizeInBytes": int(c.findtext("s:Size", namespaces=ns) or 0)})
+    return items
+
+
+def header_bounds(url):
+    """Lon/lat bounds of a remote GeoTIFF from its header (a few KB read)."""
+    import rasterio
+    from rasterio.warp import transform_bounds
+    try:
+        with rasterio.Env(GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR"), rasterio.open(url) as src:
+            return list(transform_bounds(src.crs, "EPSG:4326", *src.bounds))
+    except Exception:
+        return None
+
+
+def cmd_list(_args):
+    try:
+        items = tnm_items()
+    except Exception as ex:
+        log(f"TNM API failed ({ex.__class__.__name__}: {ex}); listing the USGS S3 bucket instead")
+        items = []
+    if not items:
+        items = s3_items()
     rows = [{
         "title": i["title"],
         "url": i["downloadURL"],
@@ -104,6 +196,9 @@ def cmd_list(_args):
     for r in rows:
         p = r["url"].split("/Projects/")[1].split("/")[0]
         projects.setdefault(p, [0, r["published"]])[0] += 1
+    if not rows:
+        log("ERROR: no 1 m lidar tiles found for the area; stopping")
+        return 1
     log(f"{len(rows)} tiles, {sum(r['bytes'] or 0 for r in rows) / 1e9:.0f} GB at 1 m")
     for p, (k, d) in sorted(projects.items(), key=lambda x: -x[1][0]):
         log(f"  {p}: {k} tiles, published {d}")
@@ -335,6 +430,9 @@ def cmd_tiles(args):
             if i % 200 == 0:
                 log(f"  z{MAX_Z}: {i}/{len(jobs)} ({time.time() - t0:.0f}s)")
     log(f"z{MAX_Z}: {made} tiles")
+    if not made and not args.only:
+        log("ERROR: no z13 tiles made (no fetched lidar under cache/lidar/4m?); stopping")
+        return 1
     if args.only:
         return 0
 
