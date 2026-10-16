@@ -71,13 +71,22 @@ def forest_dark(b):
     return np.where((out == GROUND) & (ndsi(b) >= -0.1) & (b["swir16"] <= 0.10), SNOW, out)
 
 
+def ndfsi_forest(b):
+    """dark_cloud_rescue, plus the published forest snow index: NDFSI =
+    (NIR - B11) / (NIR + B11) >= 0.39 (Wang et al. 2015, Remote Sens. 7:15882;
+    Sentinel-2 woodland thresholds 0.28-0.39, ISPRS Archives XLIII-B3-2022-771).
+    The bench stores B08, standing in for B8A. Forest above the snow line only."""
+    out = dark_cloud_rescue(b)
+    v = (b["nir"] - b["swir16"]) / np.maximum(b["nir"] + b["swir16"], 1e-6)
+    return np.where((out == GROUND) & (v >= 0.39), SNOW, out)
+
+
 RULES = {"v1": v1, "bright_bare_is_cloud": bright_bare_is_cloud,
          "dark_cloud_rescue": dark_cloud_rescue, "loose_forest": loose_forest,
-         "forest_dark_gated": forest_dark}
-# Rules used only on forest (>30 % trees) within GATE_M below the day's snow line
+         "forest_dark_gated": forest_dark, "ndfsi_forest_gated": ndfsi_forest}
+# Rules used only on forest (>30 % trees) within GATED[name] m below the day's snow line
 # (terrain_stats.json snowline_m, from open ground); elsewhere dark_cloud_rescue.
-GATED = {"forest_dark_gated"}
-GATE_M = 300
+GATED = {"forest_dark_gated": 300, "ndfsi_forest_gated": 0}   # rule: metres below the snow line it may reach
 STATS = ROOT / "snowline" / "site" / "data" / "terrain_stats.json"
 SNOWLINE_M = {d: v.get("snowline_m") for d, v in json.loads(STATS.read_text())["dates"].items()} if STATS.exists() else {}
 
@@ -86,7 +95,7 @@ def rule_for(name, r):
     if name not in GATED:
         return RULES[name]
     sl = SNOWLINE_M.get(r["date"])
-    if (r["forest_pct"] or 0) > 30 and sl is not None and (r["elev_ft"] or 0) * 0.3048 >= sl - GATE_M:
+    if (r["forest_pct"] or 0) > 30 and sl is not None and (r["elev_ft"] or 0) * 0.3048 >= sl - GATED[name]:
         return RULES[name]
     return dark_cloud_rescue
 

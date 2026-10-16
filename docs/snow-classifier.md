@@ -109,3 +109,26 @@ Next: implement in process_tiles.py as classifier v2 (two passes per date:
 v1, then the snow line from open ground, then the forest rule using the
 terrain grid's elevation and tree cover), check a few dates by eye, then a
 season reprocess (Ian triggers).
+
+## Published methods scored (2026-10-16)
+
+Research brief: simple, open, per-pixel Sentinel-2 methods for snow under
+forest. No published Sentinel-2 method was found validated in Rockies conifer
+forest; no ready-made 20 m Sentinel-2 snow product covers Montana (HR-S&I is
+European, Theia covers the Alps/Pyrenees and a few other sites; USGS Landsat
+Level-3 fSCA at 30 m does cover the western US). Same 1,398 station-days:
+
+| method | acc | missed | false | notes |
+|---|---|---|---|---|
+| v1 (map today) | 83 % | 143 | 21 | |
+| LIS two-pass (Gascoin et al. 2019, ESSD 11:493) | 79 % | 193 | 16 | red > 0.20 in pass 1 drops dark snow; built for open ground |
+| LIS + Klein NDSI-NDVI forest rule (MOD10) | 79 % | 193 | 16 | its NDSI floor (~0.16 at NDVI 0.5) is above our misses (~0.07) |
+| v1 + NDFSI >= 0.39, forest above snow line | 90 % | 66 | 28 | Wang et al. 2015; S2 thresholds ISPRS 2022; threshold not tuned here |
+| v1 + forest_dark_gated (ours, tuned) | 91 % | 57 | 31 | |
+
+NDFSI = (NIR - B11) / (NIR + B11) is the one published forest snow index, and
+with its published threshold it gets most of what our tuned rule gets
+(missed 66 vs 57). Recommended v2: v1 + dark-cloud rescue + NDFSI >= 0.39 on
+forest pixels above the day's snow line. The bench used B08 for B8A; use B8A
+(20 m) in production. LIS's code is AGPL-3.0; the rules here are written from
+the papers, no code copied.
