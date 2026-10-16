@@ -83,3 +83,29 @@ were Sen2Cor cloud, so the dark-cloud rescue never triggered:
 their B11 was 0.2-0.6, which is real cloud or snow under cloud, not dark
 cloud. The loose forest rule added two false snows. One date is not
 evidence; judge on the full run.
+
+## Result: last season + this one (measured 2026-10-16)
+
+1,398 station-days with a truth label over 61 dates (2025-10-03 to 2026-10-13),
+40 SNOTEL and Mesonet stations; `classifier_eval.py`.
+
+| rule | accuracy (called) | missed snow | false snow | called cloud |
+|---|---|---|---|---|
+| v1 (map today) | 83 % | 143 | 21 | 439 |
+| dark_cloud_rescue | 83 % | 142 | 22 | 415 |
+| loose_forest (NDSI 0.2 + red) | 86 % | 112 | 27 | 416 |
+| forest_dark_gated | 91 % | 57 | 31 | 415 |
+
+v1's main error is snow under forest called ground: those pixels are dark
+(red ~0.06), NDSI ~0.07, but B11 stays low (~0.05) where bare forest floor
+reads ~0.11. `forest_dark_gated`: on forest pixels within 300 m below the
+day's open-ground snow line or above, ground with NDSI >= -0.1 and
+B11 <= 0.10 is snow. Thresholds hold on both alternate-date halves
+(missed 23/34, false 16/15). Without the snow-line gate: missed 47, false 37.
+The 9 added false snows are all October dates (Oct 2025 x8, Oct 13 2026 x1),
+where a station clearing at 0 in can sit in lightly snowed forest.
+
+Next: implement in process_tiles.py as classifier v2 (two passes per date:
+v1, then the snow line from open ground, then the forest rule using the
+terrain grid's elevation and tree cover), check a few dates by eye, then a
+season reprocess (Ian triggers).
