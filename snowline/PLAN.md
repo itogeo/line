@@ -68,6 +68,14 @@ were never set up, so no snow layer has shown since the monorepo move.
 
 ---
 
+## 2026-10-16 state (next agent read this)
+- Classifier v2 in process_tiles.py (two passes; NDFSI forest rule above the day's snow line; B8A fetched). Bench: build_station_pixels.py + classifier_eval.py, results in docs/snow-classifier.md.
+- Season is Oct 1 to May 31 (lib/aoi.in_season); off-season dates are never fetched, listed or kept in R2.
+- Area (-112.6, 44.55, -109.0, 46.35), same 12 tiles. Needs the forced reprocess since 2026-10-01 (Ian runs it); it also rebuilds composites and terrain stats for those dates.
+- Composites: latest_* (newest clear) and recent_* (newest look, cloud included); dates.json carries per-pass [imaged %, clear %].
+- Wind: snowline-wind.yml hourly -> fetch_wind.py -> R2 wind/grid_48h.json + stations_7d.json, served at /snow/api/wind/; site/wind.js draws it.
+- Branch agent/charcoal-theme: charcoal frame + Mapbox hillshade instead of hosted lidar tiles; waiting on Ian.
+
 ## Open / deferred
 
 - **R2 one-time setup**: docs/cloudflare-setup.md (Ian). Blocks the launch.
