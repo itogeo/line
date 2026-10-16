@@ -129,16 +129,19 @@
   .scene-meta { font-family: var(--mono); font-size: 9px; color: var(--text-dim); margin: 3px 0 10px; line-height: 1.5; }
   .view-toggle { margin: 8px 0; }
   .view-tabs { display: flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
-  .view-tabs button { flex: 1; font-family: 'Inter', sans-serif; font-size: 12px; padding: 6px 8px;
+  .view-tabs button { flex: 1; font-family: 'Inter', sans-serif; font-size: 11.5px; line-height: 1.25; padding: 6px 6px;
     background: transparent; color: var(--text-muted); border: 0; cursor: pointer; }
   .view-tabs button + button { border-left: 1px solid var(--border); }
   .view-tabs button:hover { color: var(--text); }
+  .view-tabs button:disabled { opacity: 0.4; cursor: not-allowed; }
   .view-tabs button.active { background: rgba(139,189,217,0.18); color: var(--accent); font-weight: 600; }
   .view-links { margin-top: 5px; font-size: 11px; color: var(--text-dim); }
   .view-links button { font: inherit; background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer;
     text-decoration: underline; text-decoration-color: rgba(139,189,217,0.35); text-underline-offset: 2px; }
   .view-links button.active { color: var(--text); font-weight: 600; text-decoration: none; }
   .view-links button:disabled { color: var(--text-dim); text-decoration: none; cursor: not-allowed; }
+  .view-links select { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--border);
+    border-radius: 5px; padding: 1px 4px; max-width: 170px; cursor: pointer; }
   .layer-btns { display: flex; gap: 8px; margin-top: 10px; }
   #next-pass .pass-chip { display: inline-block; margin: 0 4px 4px 0; padding: 2px 7px; border-radius: 5px; border: 1px solid var(--border);
     color: var(--text); text-decoration: none; white-space: nowrap; }
@@ -668,10 +671,12 @@
   <div class="view-toggle" id="view-toggle" role="group" aria-label="Which imagery the map shows">
     <div class="view-tabs">
       <button type="button" data-view="pass" title="The newest satellite pass, on its own">Most recent pass</button>
-      <button type="button" data-view="latest" title="Newest pass on top; passes from the last 10 days fill what it missed">Most recent composite</button>
+      <button type="button" data-view="recent" title="What the satellite saw last at each spot, cloud included, from the last 10 days of passes">Most recent composite</button>
+      <button type="button" data-view="latest" title="The newest clear look at each spot (snow or ground) from the last 10 days of passes">Most recent clear composite</button>
     </div>
     <div class="view-links">Jump to
       <button type="button" data-jump="full" title="The newest single pass that imaged (almost) the whole area">Last full day</button>
+      &middot; <select id="pass-pick" aria-label="Open any satellite pass"><option value="">Any pass&hellip;</option></select>
     </div>
   </div>
   <div class="next-pass" id="next-pass" style="display:none"></div>
@@ -912,6 +917,7 @@ map.addControl(new mapboxgl.ScaleControl({ maxWidth: 150 }), 'bottom-right');
 
 // ── State ──
 let DATES = [];
+let DATE_STATS = {};        // {date: [imaged %, clear %]} from dates.json, for the pass picker
 // If today's date is appended to DATES as a "live" position with no
 // processed imagery, it's stored here so other code can detect it.
 let TODAY_VIRTUAL = null;
@@ -988,29 +994,32 @@ let CURRENT_DATE = null;
 let CURRENT_DATA = null;
 let SAT_META = null;
 let SAT_ROWS = [];          // every Sentinel-2 pass (data/sat_availability.json)
-// 'latest': every pixel shows its newest clear look from the last ~10 days
-// of passes (build_composite.py), so the map isn't half-hatched by one
-// orbit's swath. 'pass': just this one satellite pass.
-// Opens on the newest single pass; the composite is one click away.
-let VIEW_MODE = new URLSearchParams(location.hash.replace(/^#/, '')).get('view') === 'latest' ? 'latest' : 'pass';
+// Views (build_composite.py), each from the last ~10 days of passes:
+// 'recent': every pixel shows the newest look, cloud included.
+// 'latest': every pixel shows its newest clear look (snow or ground).
+// 'pass': just this one satellite pass. Opens on the newest single pass.
+const VIEWS = ['pass', 'recent', 'latest'];
+let VIEW_MODE = (v => VIEWS.includes(v) ? v : 'pass')(new URLSearchParams(location.hash.replace(/^#/, '')).get('view'));
 function applyView(raw) {
-  if (!raw || raw.no_imagery || !raw.latest || VIEW_MODE !== 'latest') return raw ? { ...raw, view: 'pass' } : raw;
+  const comp = raw && !raw.no_imagery && VIEW_MODE !== 'pass' ? raw[VIEW_MODE] : null;
+  if (!comp || !comp.chunks) return raw ? { ...raw, view: 'pass', comp: null } : raw;
   const tc = Object.fromEntries((raw.chunks || []).map(c => [c.chunk_id, c.truecolor_file]));
   return {
     ...raw,
-    view: 'latest',
+    view: VIEW_MODE,
+    comp,
     pass_coverage_pct: raw.coverage_pct,
     pass_snow_cover_pct: raw.snow_cover_pct,
-    coverage_pct: raw.latest.coverage_pct,
-    snow_cover_pct: raw.latest.snow_cover_pct,
-    chunks: raw.latest.chunks.map(c => ({ ...c, truecolor_file: tc[c.chunk_id] })),
+    coverage_pct: comp.coverage_pct,
+    snow_cover_pct: comp.snow_cover_pct,
+    chunks: comp.chunks.map(c => ({ ...c, truecolor_file: tc[c.chunk_id] })),
   };
 }
 function jumpTo(mode, date) {
   if (mode !== VIEW_MODE) {
     VIEW_MODE = mode;
     for (const k of Object.keys(SNOWLINE_CACHE)) delete SNOWLINE_CACHE[k];
-    writeHash({ view: mode === 'latest' ? 'latest' : null });
+    writeHash({ view: mode === 'pass' ? null : mode });
   }
   loadDate(date);
 }
@@ -1023,13 +1032,16 @@ let playInterval = null;
 // callout to compute week-over-week deltas without re-fetching). Keyed
 // by date string. Each entry is the parsed JSON or null on failure.
 const SNOWLINE_CACHE = {};
+const SNOWLINE_RAW = {};      // the same files before applyView, for which views exist
 
 async function fetchSnowlineMeta(dateStr) {
   if (SNOWLINE_CACHE[dateStr] !== undefined) return SNOWLINE_CACHE[dateStr];
   try {
     const r = await fetch(`data_10m/${dateStr}/snowline.json`);
     if (!r.ok) throw new Error('not ok');
-    SNOWLINE_CACHE[dateStr] = applyView(await r.json());
+    const raw = await r.json();
+    SNOWLINE_RAW[dateStr] = raw;
+    SNOWLINE_CACHE[dateStr] = applyView(raw);
   } catch (e) {
     SNOWLINE_CACHE[dateStr] = null;
   }
@@ -1171,6 +1183,7 @@ async function init() {
     if (!r.ok) throw new Error('dates.json not found');
     const idx = await r.json();
     DATES = (idx.dates || []).sort();
+    DATE_STATS = idx.stats || {};
   } catch (e) {
     document.querySelector('.loader-text').textContent = 'Error loading data. Run the pipeline first.';
     return;
@@ -1320,7 +1333,7 @@ async function loadDate(dateStr) {
     // Per-tile is the only pipeline now — fetch directly from data_10m/.
     try {
       const resp = await fetch(`data_10m/${dateStr}/snowline.json`);
-      if (resp.ok) data = applyView(await resp.json());
+      if (resp.ok) { const raw = await resp.json(); SNOWLINE_RAW[dateStr] = raw; data = applyView(raw); }
     } catch (e) { /* ignore */ }
     if (!data) return;
   }
@@ -1468,8 +1481,8 @@ function renderPanel() {
   }
 
   const coverage = d.coverage_pct != null ? d.coverage_pct : 100;
-  const seenPct = Math.round(d.view === 'latest' && d.pass_coverage_pct != null ? d.pass_coverage_pct : coverage);
-  const coverageNote = d.view === 'latest' && d.pass_coverage_pct != null && d.pass_coverage_pct < coverage
+  const seenPct = Math.round(d.comp && d.pass_coverage_pct != null ? d.pass_coverage_pct : coverage);
+  const coverageNote = d.comp && d.pass_coverage_pct != null && d.pass_coverage_pct < coverage
     ? ` &middot; satellite saw ${seenPct}% of the area that day; recent passes fill it to ${Math.round(coverage)}%`
     : ` &middot; <span style="${coverage < 80 ? 'color:#FFB74D' : ''}">satellite saw ${seenPct}% of the area</span>`;
   // When viewing the latest processed date: show "imagery from X · SNOTEL live"
@@ -1494,14 +1507,14 @@ function renderPanel() {
   // AOI coverage. In the latest view the bars show what this day's pass
   // actually saw; the rest of the map comes from earlier passes, which can
   // predate new snow, so it is named separately rather than counted as seen.
-  const fill = d.view === 'latest' && d.pass_coverage_pct != null && d.coverage_pct - d.pass_coverage_pct >= 1;
+  const fill = !!d.comp && d.pass_coverage_pct != null && d.coverage_pct - d.pass_coverage_pct >= 1;
   const coveragePct = fill ? d.pass_coverage_pct : (d.coverage_pct != null ? d.coverage_pct : null);
   const snowPct = fill ? d.pass_snow_cover_pct : d.snow_cover_pct;
   document.getElementById('coverage-label').textContent = fill ? 'Seen this day' : 'AOI Coverage';
   const note = document.getElementById('coverage-note');
   if (fill) {
     const fmt = s => new Date(s + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
-    const older = (d.latest.sources || []).filter(x => x.date !== d.scene_date && x.pct_of_seen >= 0.5).map(x => x.date).sort();
+    const older = (d.comp.sources || []).filter(x => x.date !== d.scene_date && x.pct_of_seen >= 0.5).map(x => x.date).sort();
     const span = older.length ? (older.length > 1 ? `${fmt(older[0])}–${fmt(older[older.length - 1])}` : fmt(older[0])) : 'earlier passes';
     note.innerHTML = `The map fills the other ${Math.round(d.coverage_pct - d.pass_coverage_pct)}% from ${span}, `
       + `<span style="color:#FFB74D">which may be older than recent snow</span>. Click a spot to see when it was last seen.`;
@@ -2483,16 +2496,19 @@ function renderSource() {
   document.querySelectorAll('#view-toggle button').forEach(b => {
     if (b.dataset.jump) return;
     b.classList.toggle('active', b.dataset.view === d.view && CURRENT_DATE === newest);
+    // A composite tab works once that composite is built for the newest pass.
+    const nm = SNOWLINE_RAW[newest];
+    b.disabled = b.dataset.view !== 'pass' && !!nm && !(nm[b.dataset.view] && nm[b.dataset.view].chunks);
     b.onclick = () => jumpTo(b.dataset.view, newest);
   });
   const n = (d.scenes || []).length;
   let what = n ? `${n} Sentinel-2 scene${n === 1 ? '' : 's'}` : 'Sentinel-2 L2A';
-  if (d.view === 'latest' && d.latest) {
-    const src = d.latest.sources || [];
+  if (d.comp) {
+    const src = d.comp.sources || [];
     const fmt = s => new Date(s + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
     const own = src.find(x => x.date === d.scene_date);
     what = src.length > 1
-      ? `newest clear look per pixel from ${src.length} passes, ${fmt(src[src.length - 1].date)}–${fmt(src[0].date)} (${own ? Math.round(own.pct_of_seen) : 0}% from this day)`
+      ? `newest ${d.view === 'latest' ? 'clear look' : 'look (cloud included)'} per pixel from ${src.length} passes, ${fmt(src[src.length - 1].date)}–${fmt(src[0].date)} (${own ? Math.round(own.pct_of_seen) : 0}% from this day)`
       : `this pass (${n} scene${n === 1 ? '' : 's'})`;
   }
   const agAll = AGREEMENT && AGREEMENT[d.scene_date];
@@ -2533,6 +2549,28 @@ function renderLastFullDay() {
   b.title = 'The newest pass whose strip covered the whole area (clouds can still hide parts of it)';
   b.classList.toggle('active', !!found && found === CURRENT_DATE && VIEW_MODE === 'pass');
   b.onclick = () => { if (found) jumpTo('pass', found); };
+  renderPassPick();
+}
+
+// "Any pass…": every mapped pass in this season, newest first, with the share
+// of the area the satellite saw clearly (not cloud). Opens that pass alone.
+function renderPassPick() {
+  const sel = document.getElementById('pass-pick');
+  if (!sel) return;
+  const season = seasonOf(CURRENT_DATE || DATES[DATES.length - 1]).label;
+  const dates = DATES.filter(x => x !== TODAY_VIRTUAL && seasonOf(x).label === season).reverse();
+  const fmt = d => new Date(d + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+  const key = season + dates.length;
+  if (sel.dataset.key !== key) {
+    sel.innerHTML = '<option value="">Any pass&hellip;</option>' + dates.map(d => {
+      const st = DATE_STATS[d];
+      const clear = st && st[1] != null ? ` · ${Math.round(st[1])}% clear` : '';
+      return `<option value="${d}">${fmt(d)}${clear}</option>`;
+    }).join('');
+    sel.dataset.key = key;
+    sel.onchange = () => { if (sel.value) jumpTo('pass', sel.value); };
+  }
+  sel.value = VIEW_MODE === 'pass' && dates.includes(CURRENT_DATE) ? CURRENT_DATE : '';
 }
 
 // ── Snow line, linking to the terrain page ──
@@ -2743,7 +2781,7 @@ function updatePassFootprint() {
     // The mapped area, for reference.
     features.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: [[w, s], [e, s], [e, n], [w, n], [w, s]] },
       properties: { label: 'Snowline area', color: '#ffffff', sel: false } });
-  } else if (show && CURRENT_DATA && CURRENT_DATA.view !== 'latest') {
+  } else if (show && CURRENT_DATA && !CURRENT_DATA.comp) {
     // (In the composite the dated regions already show each pass's strip.)
     const row = SAT_ROWS.find(r => r.dt === CURRENT_DATA.scene_date);
     if (row) add(row.footprint, { label: `Edge of the ${fmt(row.dt)} pass`, color: '#FF4FD8', sel: false });
@@ -2873,8 +2911,8 @@ async function updateCompositeRegions() {
       'text-field': ['get', 'label'], 'text-size': 13, 'text-font': ['DIN Pro Bold', 'Arial Unicode MS Bold'],
       'text-allow-overlap': true }, paint: { 'text-color': ['get', 'color'], 'text-halo-color': 'rgba(0,0,0,0.8)', 'text-halo-width': 1.6 } });
   };
-  const srcs = d && d.view === 'latest' && d.latest
-    ? (d.latest.sources || []).filter(x => x.pct_of_seen > 0).map(x => x.date).sort().reverse() : [];
+  const srcs = d && d.comp
+    ? (d.comp.sources || []).filter(x => x.pct_of_seen > 0).map(x => x.date).sort().reverse() : [];
   const rows = srcs.map(dt => SAT_ROWS.find(r => r.dt === dt && r.footprint)).filter(Boolean);
   if (rows.length < 2) { if (map.getLayer('pass-fill')) set(empty); return; }
   try { await loadPolyClip(); } catch (e) { return; }
@@ -3494,7 +3532,7 @@ function updateTileLayers(data, basePath) {
         img.src = `${basePath}/${e.file}`;
       });
     }
-    if (data.view === 'latest' && data.latest) stackCompositeImagery(data);
+    if (data.comp) stackCompositeImagery(data);
 
     for (const chunk of data.chunks) {
       const b = chunk.bounds;
@@ -3591,7 +3629,7 @@ function addTruecolorLayers() {
 // only where it has no image (outside its strip). Clouds in a newer pass do
 // cover older imagery; the snow layer is the per-pixel clear-look composite.
 async function stackCompositeImagery(data) {
-  const dates = (data.latest.sources || []).filter(x => x.pct_of_seen > 0).map(x => x.date).sort();
+  const dates = (data.comp.sources || []).filter(x => x.pct_of_seen > 0).map(x => x.date).sort();
   if (dates.length < 2) return;
   const entries = [];
   for (const d of dates) {

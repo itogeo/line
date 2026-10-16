@@ -45,10 +45,12 @@ def main():
             gone.add(d.name)
 
     dp = DATA_10M / "dates.json"
-    dates = json.loads(dp.read_text())["dates"]
+    idx = json.loads(dp.read_text())
+    dates = idx["dates"]
     keep = [d for d in dates if in_season(d)]
     gone |= set(dates) - set(keep)
-    dp.write_text(json.dumps({"dates": keep, "latest": keep[-1]}))
+    idx.update(dates=keep, latest=keep[-1], stats={d: v for d, v in idx.get("stats", {}).items() if d in keep})
+    dp.write_text(json.dumps(idx))
 
     col = STAC / "collection.json"
     c = json.loads(col.read_text())

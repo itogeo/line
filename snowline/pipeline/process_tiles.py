@@ -353,10 +353,11 @@ def main():
         json.dump(out_meta, f)
 
     dates_path = SITE_DIR / "dates.json"
-    existing_dates = []
+    existing_dates, stats = [], {}
     if dates_path.exists():
         try:
-            existing_dates = json.load(open(dates_path)).get("dates", [])
+            idx = json.load(open(dates_path))
+            existing_dates, stats = idx.get("dates", []), idx.get("stats", {})
         except Exception:
             pass
     # A pass that imaged almost none of the area (an orbit edge) clutters the
@@ -368,8 +369,11 @@ def main():
     elif args.date not in existing_dates:
         existing_dates.append(args.date)
     existing_dates = sorted(set(existing_dates))
+    # Per pass, for the imagery picker: % of the area imaged and % seen clear.
+    stats[args.date] = [imaged_pct, coverage_pct]
+    stats = {d: v for d, v in sorted(stats.items()) if d in existing_dates}
     with open(dates_path, "w") as f:
-        json.dump({"dates": existing_dates, "latest": existing_dates[-1]}, f)
+        json.dump({"dates": existing_dates, "latest": existing_dates[-1], "stats": stats}, f)
 
     elapsed = int(time.time() - started)
     log(f"Done in {elapsed}s. {snow_pct}% snow, {coverage_pct}% AOI coverage")

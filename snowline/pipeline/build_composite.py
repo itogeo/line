@@ -119,7 +119,7 @@ def build(target, maps):
     sources = sorted((s for s in maps if t - timedelta(days=WINDOW) < d(s) <= t), reverse=True)
     skipped = set()   # (source date, chunk, reason): logged once per target
     chunks_out, totals = [], {"px": 0, "valid": 0, "snow": 0}
-    recent_out, rtot = [], {"seen": 0, "cloud": 0}
+    recent_out, rtot = [], {"seen": 0, "cloud": 0, "snow": 0}
     age_px, rage_px = {}, {}
     for ch in meta["chunks"]:
         cid = ch["chunk_id"]
@@ -180,6 +180,7 @@ def build(target, maps):
         seen = rcls <= CLOUD
         rtot["seen"] += int(seen.sum())
         rtot["cloud"] += int((rcls == CLOUD).sum())
+        rtot["snow"] += int((rcls == SNOW).sum())
         for a, n in zip(*np.unique(rage[seen], return_counts=True)):
             rage_px[int(a)] = rage_px.get(int(a), 0) + int(n)
         recent_out.append({"chunk_id": cid, "snow_file": f"{rstem}.webp", "bounds": b})
@@ -204,6 +205,8 @@ def build(target, maps):
                     for s in rused],
         "imaged_pct": round(rtot["seen"] / max(1, totals["px"]) * 100, 1),
         "cloud_pct": round(rtot["cloud"] / max(1, rtot["seen"]) * 100, 1),
+        "coverage_pct": round((rtot["seen"] - rtot["cloud"]) / max(1, totals["px"]) * 100, 1),
+        "snow_cover_pct": round(rtot["snow"] / max(1, rtot["seen"] - rtot["cloud"]) * 100, 1),
         "method": f"newest observation per pixel, cloud included, from passes in the {WINDOW} days up to {target}",
     }
     log(f"{target}: {meta['coverage_pct']}% → {meta['latest']['coverage_pct']}% of the area seen "
