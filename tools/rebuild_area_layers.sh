@@ -57,7 +57,7 @@ step() { echo ""; echo "══ $1 ══"; echo "   started $(date '+%H:%M:%S')"
 done_step() { echo "   done in $(( ($(date +%s) - STEP_T0) / 60 )) min"; touch "$MARK/$1"; }
 wanted() { [[ -z "$ONLY" || "$ONLY" == "$1" ]] && [[ ! -f "$MARK/$1" ]]; }
 
-BBOX_JSON='[-112.6, 44.55, -109.6, 46.35]'
+BBOX_JSON='[-112.6, 44.55, -109.0, 46.35]'
 
 # ── historical ─────────────────────────────────────────────────────────────
 if wanted historical; then
