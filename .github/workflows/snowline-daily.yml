@@ -58,6 +58,10 @@ jobs:
         # annotation, without blocking the SNOTEL commit below.
         run: python snowline/pipeline/fetch_mesonet_snow.py || echo "::error::Mesonet snow depth fetch failed; kept the previous mesonet_snow.json"
 
+      - name: 2a2. SNOTEL 20-year depth medians for any new station
+        # Usually a no-op; refetches only when a station in the area hasn't been checked.
+        run: python snowline/pipeline/build_snotel_normals.py --if-missing || echo "::error::SNOTEL normals update failed; kept the previous snotel_normals.json"
+
       - name: 2b. Rebuild snow timeline (Mondays or manual)
         run: |
           if [ "$(date -u +%u)" = "1" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
