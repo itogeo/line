@@ -110,6 +110,20 @@ export default {
         return new Response(fb.body, { status: fb.status, headers: h });
       }
 
+      // Wind (fetch_wind.py, hourly): R2 key wind/{file}.json. Short cache,
+      // the files are replaced every hour.
+      if (effectivePath.startsWith('/api/wind/')) {
+        const rel = effectivePath.slice('/api/'.length);            // wind/grid_48h.json
+        if (!/^wind\/[a-z0-9_]+\.json$/.test(rel)) return new Response('bad wind path', { status: 400 });
+        const obj = env.SNOWLINE_BUCKET ? await env.SNOWLINE_BUCKET.get(rel) : null;
+        if (!obj) return new Response('not found', { status: 404, headers: { 'Access-Control-Allow-Origin': '*' } });
+        return new Response(obj.body, { headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, max-age=600',
+          'Access-Control-Allow-Origin': '*',
+        } });
+      }
+
       // Lidar terrain tiles: R2 key terrain/{layer}/{z}/{x}/{y}.webp, with the
       // static assets as a local-dev fallback. Outside the coverage a tile
       // simply doesn't exist; answer 204 so the map shows nothing there.

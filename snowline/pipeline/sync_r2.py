@@ -73,7 +73,8 @@ def list_keys(acct, token, prefix="tiles/"):
     return keys
 
 
-CONTENT_TYPES = {".webp": "image/webp", ".tif": "image/tiff; application=geotiff; profile=cloud-optimized"}
+CONTENT_TYPES = {".webp": "image/webp", ".tif": "image/tiff; application=geotiff; profile=cloud-optimized",
+                 ".json": "application/json"}
 
 
 def put(acct, token, key, path):
