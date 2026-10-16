@@ -54,6 +54,16 @@ RIVERLINE = AOI(
 
 ALL = {a.name: a for a in (SNOWLINE, RIVERLINE)}
 
+# Snowline's season: Oct 1 to May 31 (Ian, 2026-10-16). Passes from June 1 to
+# Sept 30 are not processed, listed or stored.
+SEASON_START_MONTH, SEASON_END_MONTH = 10, 5
+
+
+def in_season(date_str: str) -> bool:
+    """True for YYYY-MM-DD dates from Oct 1 to May 31."""
+    m = int(date_str[5:7])
+    return m >= SEASON_START_MONTH or m <= SEASON_END_MONTH
+
 
 if __name__ == "__main__":
     for a in ALL.values():
