@@ -1,0 +1,35 @@
+name: Snowline — Wind (hourly)
+
+# 48 hours of NOAA RTMA wind over the area + 7 days of Montana Mesonet station
+# wind, written to R2 (wind/grid_48h.json, wind/stations_7d.json) and served at
+# /snow/api/wind/<file>. Nothing is committed to git. See fetch_wind.py.
+# Free: GitHub-hosted runners cost nothing on a public repo.
+
+on:
+  schedule:
+    - cron: '25 * * * *'   # RTMA posts each hour ~45-50 min after the hour
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: snowline-wind
+  cancel-in-progress: false
+
+jobs:
+  wind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40     # a cold start reads all 48 hours (~20 min)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install pygrib numpy requests
+      - name: Wind map + station wind to R2
+        run: python snowline/pipeline/fetch_wind.py --upload
+        env:
+          CF_ACCOUNT_ID: 3b134bb7dc7ac46e5a2ffe71302f8d69
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
