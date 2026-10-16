@@ -15,14 +15,14 @@
 <style>
   *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
   :root {
-    --bg: #0b0f1a;
-    --panel: rgba(11, 15, 26, 0.95);
-    --border: rgba(79, 195, 247, 0.10);
-    --accent: #4FC3F7;
-    --accent-dim: rgba(79, 195, 247, 0.08);
-    --text: #e0e4ec;
-    --text-muted: #8a94a8;
-    --text-dim: #5d677c;
+    --bg: #0e0e0f;
+    --panel: rgba(23,23,25,0.95);
+    --border: rgba(255,255,255,0.07);
+    --accent: #f1efea; --snow: #4FC3F7;
+    --accent-dim: rgba(255,255,255,0.056);
+    --text: #dcdad5;
+    --text-muted: #a29f98;
+    --text-dim: #75726c;
     --sel: #FFD54F;
     --mono: 'JetBrains Mono', monospace;
     --sans: 'DM Sans', -apple-system, sans-serif;
@@ -39,7 +39,7 @@
   .nav-links a { font-family: var(--mono); font-size: 10px; font-weight: 600; padding: 4px 10px; border-radius: 4px;
     text-decoration: none; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; }
   .nav-links a:hover { background: var(--accent-dim); color: var(--accent); }
-  .nav-links a.active { background: rgba(79,195,247,0.12); color: var(--accent); }
+  .nav-links a.active { background: rgba(255,255,255,0.084); color: var(--accent); }
 
   .layout { display: flex; height: calc(100% - var(--nav-h)); }
   #map { flex: 1 1 58%; min-width: 0; position: relative; }
@@ -64,20 +64,20 @@
   .rings { display: flex; flex-direction: column; gap: 3px; }
   .rings button, .clear-btn { font: inherit; font-size: 12px; text-align: left; background: transparent; color: var(--text-muted);
     border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; cursor: pointer; }
-  .rings button:hover, .clear-btn:hover { color: var(--text); border-color: rgba(79,195,247,0.3); }
+  .rings button:hover, .clear-btn:hover { color: var(--text); border-color: rgba(255,255,255,0.21); }
   .rings button.on { color: #111; background: var(--sel); border-color: var(--sel); font-weight: 600; }
   .sel-line { font-size: 13px; line-height: 1.5; margin-top: 8px; min-height: 20px; }
   .sel-line b { color: var(--sel); }
   .chips { display: flex; flex-wrap: wrap; gap: 4px; }
   .chips button { font: inherit; font-size: 12px; background: transparent; color: var(--text-muted); border: 1px solid var(--border);
     border-radius: 14px; padding: 3px 10px; cursor: pointer; }
-  .chips button:hover { color: var(--text); border-color: rgba(79,195,247,0.3); }
+  .chips button:hover { color: var(--text); border-color: rgba(255,255,255,0.21); }
   .chips button.on { color: #111; background: var(--sel); border-color: var(--sel); font-weight: 600; }
   .charts2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
-  .mapboxgl-popup-content { background: #111827 !important; color: var(--text) !important; border: 1px solid rgba(79,195,247,0.18);
+  .mapboxgl-popup-content { background: #171719 !important; color: var(--text) !important; border: 1px solid rgba(255,255,255,0.13);
     border-radius: 8px !important; padding: 8px 10px !important; font-size: 12px; }
-  .mapboxgl-popup-tip { border-top-color: #111827 !important; border-bottom-color: #111827 !important; }
+  .mapboxgl-popup-tip { border-top-color: #171719 !important; border-bottom-color: #171719 !important; }
   .map-key { position: absolute; left: 10px; bottom: 28px; z-index: 5; background: var(--panel); border: 1px solid var(--border);
     border-radius: 8px; padding: 6px 10px; font-size: 11px; color: var(--text-muted); display: flex; gap: 10px; flex-wrap: wrap; max-width: calc(100% - 20px); }
   .map-key span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
@@ -371,7 +371,7 @@ function renderRose() {
       const on = SEL.cells.has(cellKey(k, ri));
       const fill = f == null ? 'rgba(255,255,255,0.04)' : `rgba(100,210,255,${(0.08 + 0.92 * f).toFixed(2)})`;
       svg += `<path class="cell" data-k="${k}" data-r="${ri}" d="${arc(r0, r1, a - Math.PI / 8, a + Math.PI / 8)}" fill="${fill}"`
-        + ` stroke="${on ? 'var(--sel)' : 'rgba(10,15,26,0.9)'}" stroke-width="${on ? 2.2 : 0.8}">`
+        + ` stroke="${on ? 'var(--sel)' : 'rgba(14,14,15,0.9)'}" stroke-width="${on ? 2.2 : 0.8}">`
         + `<title>${ASPECT_NAME[ASPECTS[k]]}-facing, ${ringName(rg)}: ${f == null ? (SNOW ? 'not enough clear open ground' : 'loading') : Math.round(f * 100) + '% snow'}</title></path>`;
     }
   });

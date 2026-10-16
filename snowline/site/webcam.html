@@ -16,12 +16,12 @@
   *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
   :root {
-    --bg: #0b0f1a;
-    --panel: rgba(11, 15, 26, 0.95);
-    --border: rgba(79, 195, 247, 0.10);
-    --accent: #4FC3F7;
-    --accent-dim: rgba(79, 195, 247, 0.08);
-    --text: #e0e4ec;
+    --bg: #0e0e0f;
+    --panel: rgba(23,23,25,0.95);
+    --border: rgba(255,255,255,0.07);
+    --accent: #f1efea; --snow: #4FC3F7;
+    --accent-dim: rgba(255,255,255,0.056);
+    --text: #dcdad5;
     --text-muted: #6b7689;
     --text-dim: #4a5468;
     --mono: 'JetBrains Mono', monospace;
@@ -52,7 +52,7 @@
     transition: background 0.15s, color 0.15s;
   }
   .nav-links a:hover { background: var(--accent-dim); color: var(--accent); }
-  .nav-links a.active { background: rgba(79,195,247,0.12); color: var(--accent); }
+  .nav-links a.active { background: rgba(255,255,255,0.084); color: var(--accent); }
   .nav-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
   .nav-count { font-family: var(--mono); font-size: 9px; color: var(--text-dim); }
   .refresh-pill {
@@ -72,8 +72,8 @@
 
   /* ── Mapbox popup ── */
   .mapboxgl-popup-content {
-    background: #111827 !important;
-    border: 1px solid rgba(79,195,247,0.18) !important;
+    background: #171719 !important;
+    border: 1px solid rgba(255,255,255,0.13) !important;
     border-radius: 10px !important;
     padding: 12px 14px 10px !important;
     box-shadow: 0 16px 48px rgba(0,0,0,0.7) !important;
@@ -82,16 +82,16 @@
     min-width: 220px;
   }
   .mapboxgl-popup-close-button { color: var(--text-muted) !important; font-size: 16px !important; right: 8px !important; top: 6px !important; }
-  .mapboxgl-popup-tip { border-top-color: rgba(79,195,247,0.18) !important; }
+  .mapboxgl-popup-tip { border-top-color: rgba(255,255,255,0.13) !important; }
   .pop-name { font-family: var(--mono); font-size: 10px; font-weight: 700; color: var(--accent); margin-bottom: 8px; padding-right: 20px; line-height: 1.3; }
-  .pop-img { width: 100%; border-radius: 6px; display: block; background: #1a2035; min-height: 80px; object-fit: cover; }
+  .pop-img { width: 100%; border-radius: 6px; display: block; background: #1f1f21; min-height: 80px; object-fit: cover; }
   .pop-meta { display: flex; align-items: center; justify-content: space-between; margin-top: 7px; }
   .pop-group { font-family: var(--mono); font-size: 8px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
   .pop-link { font-family: var(--mono); font-size: 8px; color: var(--accent); text-decoration: none; }
   .pop-link:hover { text-decoration: underline; }
   .pop-live-btn {
     display: block; text-align: center; padding: 10px 14px; margin-top: 4px;
-    background: linear-gradient(135deg,#4FC3F7,#26c6da); color: #0a1525;
+    background: var(--accent); color: #0e0e0f;
     border-radius: 6px; text-decoration: none;
     font-family: var(--mono); font-size: 10px; font-weight: 700;
     text-transform: uppercase; letter-spacing: 1px;
@@ -135,19 +135,19 @@
     transition: border-color 0.18s, transform 0.14s, box-shadow 0.18s;
   }
   .cam-card:hover {
-    border-color: rgba(79,195,247,0.28);
+    border-color: rgba(255,255,255,0.2);
     transform: translateY(-2px);
     box-shadow: 0 8px 24px rgba(0,0,0,0.4);
   }
 
-  .cam-img-wrap { position: relative; aspect-ratio: 16/9; background: #0d1220; overflow: hidden; }
+  .cam-img-wrap { position: relative; aspect-ratio: 16/9; background: #121213; overflow: hidden; }
   .cam-img   { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .cam-iframe { width: 100%; height: 100%; border: 0; display: block; background: #0d1220; }
+  .cam-iframe { width: 100%; height: 100%; border: 0; display: block; background: #121213; }
   .cam-placeholder {
     position: absolute; inset: 0;
     display: none; align-items: center; justify-content: center;
     font-family: var(--mono); font-size: 9px; color: var(--text-dim);
-    background: #0d1220;
+    background: #121213;
   }
   /* Live-only cards */
   .cam-live-wrap {
@@ -167,7 +167,7 @@
   }
   .cam-live-wrap a {
     position: relative;
-    background: linear-gradient(135deg,#4FC3F7,#26c6da); color: #0a1525;
+    background: var(--accent); color: #0e0e0f;
     border-radius: 5px; padding: 7px 16px; text-decoration: none;
     font-family: var(--mono); font-size: 10px; font-weight: 700;
     text-transform: uppercase; letter-spacing: 1px;
@@ -181,7 +181,7 @@
     font-family: var(--mono); font-size: 8px; font-weight: 700;
     padding: 2px 6px; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.5px;
   }
-  .b-resort { background: rgba(79,195,247,0.12); color: #4FC3F7; }
+  .b-resort { background: rgba(255,255,255,0.084); color: var(--accent); }
   .b-nps    { background: rgba(129,199,132,0.15); color: #81C784; }
   .b-mdt    { background: rgba(255,112,67,0.15);  color: #FF7043; }
   .b-town   { background: rgba(255,183,77,0.12);  color: #FFB74D; }
