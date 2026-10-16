@@ -770,7 +770,7 @@
     <details class="layers-more" id="layers-more"><summary>More</summary>
       <label class="layer-row"><input type="checkbox" id="tog-historical"><div class="sw"></div><span class="layer-label" title="Share of years 2000–2025 with snow here at this time of year (MODIS, 500 m)">Usual snow</span></label>
       <div class="opacity-wrap hidden" id="opacity-historical"><label>Opacity</label><input type="range" min="0" max="100" value="50" id="slider-historical"></div>
-      <label class="layer-row" title="Terrain shading from USGS 1 m lidar"><input type="checkbox" id="tog-lidar" checked><div class="sw"></div><span class="layer-label">Terrain shading</span></label>
+      <label class="layer-row" title="Terrain shading from Mapbox elevation"><input type="checkbox" id="tog-lidar" checked><div class="sw"></div><span class="layer-label">Terrain shading</span></label>
       <label class="layer-row"><input type="checkbox" id="tog-forest"><div class="sw"></div><span class="layer-label">Forest</span></label>
       <label class="layer-row"><input type="checkbox" id="tog-terrain"><div class="sw"></div><span class="layer-label">3D mountains</span></label>
       <label class="layer-row" title="The area Snowline maps now, and the larger area proposed"><input type="checkbox" id="tog-aoi"><div class="sw"></div><span class="layer-label">Map area</span></label>
@@ -1772,12 +1772,17 @@ function addOverlayLayers() {
   if (!map.getSource('mapbox-dem')) {
     map.addSource('mapbox-dem', { type: 'raster-dem', url: 'mapbox://mapbox.mapbox-terrain-dem-v1', tileSize: 512, maxzoom: 14 });
   }
-  // Hillshade layer — makes terrain visible even in dark mode / 2D
+  // Terrain shading, drawn in the browser from Mapbox's elevation tiles (nothing
+  // of ours to build or host). Slate-blue shadows only, under the snow layers,
+  // so shaded slopes read as winter light and snow stays bright.
   if (!map.getLayer('hillshade')) {
     map.addLayer({
       id: 'hillshade', type: 'hillshade', source: 'mapbox-dem',
-      paint: { 'hillshade-exaggeration': 0.3, 'hillshade-shadow-color': '#000', 'hillshade-highlight-color': '#fff', 'hillshade-accent-color': '#1f1f21' },
-    }, map.getStyle().layers.find(l => l.type === 'symbol')?.id);
+      layout: { visibility: document.getElementById('tog-lidar').checked ? 'visible' : 'none' },
+      paint: { 'hillshade-exaggeration': 0.9, 'hillshade-illumination-direction': 315,
+               'hillshade-shadow-color': 'rgb(20,32,56)', 'hillshade-highlight-color': 'rgba(255,255,255,0.12)',
+               'hillshade-accent-color': 'rgba(20,32,56,0.6)' },
+    }, currentTileLayerIds.find(id => map.getLayer(id)) || map.getStyle().layers.find(l => l.type === 'symbol')?.id);
   }
   if (document.getElementById('tog-terrain').checked) {
     map.setTerrain({ source: 'mapbox-dem', exaggeration: 1.3 });
@@ -1809,10 +1814,6 @@ function addOverlayLayers() {
       });
     }
   }
-
-  // Lidar terrain shading (USGS 3DEP 1 m lidar, shaded at 4 m). Added
-  // before the snow layers so snow always sits on top of it.
-  addLidarShade();
 
   // Snow overlay
   if (d.chunks || (d.tiles && d.tiles.length > 0)) {
@@ -3963,29 +3964,8 @@ function buildRangeSparkline(values, w, h, triplets) {
 }
 
 // ── Forest mask layer ──
-// ── Lidar terrain shading ──
-// Slate-blue tiles with alpha: they shade the shadowed slopes of whatever is below
-// and leave flat or sunlit ground untouched, so the snow above stays bright.
-function addLidarShade() {
-  if (!map.getSource('lidar-shade')) {
-    map.addSource('lidar-shade', {
-      type: 'raster',
-      tiles: [location.origin + '/snow/api/terrain/shade/{z}/{x}/{y}.webp'],
-      tileSize: 512, minzoom: 8, maxzoom: 13,
-      bounds: [-112.6, 44.55, -109.0, 46.5],   // old and new area; tiles missing outside the built area just don't draw
-      attribution: 'Terrain: USGS 3DEP lidar',
-    });
-  }
-  if (!map.getLayer('lidar-shade')) {
-    map.addLayer({
-      id: 'lidar-shade', type: 'raster', source: 'lidar-shade',
-      paint: { 'raster-opacity': 0.8, 'raster-fade-duration': 150 },
-      layout: { visibility: document.getElementById('tog-lidar').checked ? 'visible' : 'none' },
-    }, currentTileLayerIds.find(id => map.getLayer(id)));
-  }
-}
 document.getElementById('tog-lidar').addEventListener('change', function () {
-  if (map.getLayer('lidar-shade')) map.setLayoutProperty('lidar-shade', 'visibility', this.checked ? 'visible' : 'none');
+  if (map.getLayer('hillshade')) map.setLayoutProperty('hillshade', 'visibility', this.checked ? 'visible' : 'none');
 });
 
 async function addForestLayer() {
