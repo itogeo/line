@@ -646,6 +646,8 @@
   .mapboxgl-ctrl-group button + button { border-top: 1px solid var(--border) !important; }
   .mapboxgl-ctrl-group button .mapboxgl-ctrl-icon { filter: invert(1) brightness(0.7); }
   .mapboxgl-ctrl-attrib { display: none !important; }
+  /* Phones: the page links scroll sideways instead of running off screen. */
+  @media (max-width: 860px) { .top-nav { overflow-x: auto; scrollbar-width: none; } .top-nav::-webkit-scrollbar { display: none; } .top-nav .nav-links { flex: none; } }
 </style>
 <script src="/snow/shared/freshness.js"></script>
 <script src="/snow/season.js"></script>
@@ -663,6 +665,7 @@
   <span class="nav-sep">/</span>
   <div class="nav-links">
     <a href="/snow/" class="active">Map</a>
+    <a href="/snow/range.html">Ranges</a>
     <a href="/snow/terrain.html">Terrain</a>
     <a href="/snow/webcam.html">Webcams</a>
     <a href="/snow/metadata.html">Data</a>

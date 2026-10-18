@@ -159,7 +159,6 @@ RANGE_MIN_M = 1676    # 5,500 ft: below this is valley, not part of a range
 def range_grid(shape, elev10):
     """Range id per grid cell (nearest SNOTEL station's range), and the names."""
     import re
-    from scipy.spatial import cKDTree
     js = (ROOT / "snowline" / "site" / "season.js").read_text()
     block = js[js.index("const STATION_RANGE = {"):js.index("};", js.index("const STATION_RANGE = {"))]
     names, of = [], {}
@@ -169,14 +168,18 @@ def range_grid(shape, elev10):
             of[sid] = len(names)            # ids start at 1
     st = json.loads((ROOT / "snowline" / "site" / "data" / "snotel_season.json").read_text())["stations"]
     pts = [(s["lon"], s["lat"], of[s["id"]]) for s in st if s.get("id") in of and s.get("lat")]
+    # Nearest station per cell (plain numpy, no scipy, so CI can build it too).
     kx = 111.32 * math.cos(math.radians((NORTH + SOUTH) / 2))
-    tree = cKDTree([(x * kx, y * 110.574) for x, y, _ in pts])
-    lons = WEST + (np.arange(shape[1]) + 0.5) * RES
+    sx = np.array([x * kx for x, _, _ in pts])
+    sy = np.array([y * 110.574 for _, y, _ in pts])
+    sid = np.array([p[2] for p in pts], np.uint8)
+    cx = (WEST + (np.arange(shape[1]) + 0.5) * RES) * kx
     rid = np.zeros(shape, np.uint8)
     for i in range(shape[0]):
-        lat = NORTH - (i + 0.5) * RES
-        d, k = tree.query(np.column_stack([lons * kx, np.full(shape[1], lat * 110.574)]))
-        rid[i] = np.where(d <= RANGE_KM, np.array([p[2] for p in pts])[k], 0)
+        cy = (NORTH - (i + 0.5) * RES) * 110.574
+        d2 = (cx[:, None] - sx[None, :]) ** 2 + (cy - sy[None, :]) ** 2
+        k = d2.argmin(1)
+        rid[i] = np.where(d2[np.arange(len(k)), k] <= RANGE_KM ** 2, sid[k], 0)
     rid[elev10 * 10 < RANGE_MIN_M] = 0
     return rid, names
 

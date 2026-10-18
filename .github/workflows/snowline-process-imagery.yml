@@ -195,7 +195,7 @@ jobs:
         run: |
           git config user.name "snowline-bot"
           git config user.email "bot@snowline"
-          git add snowline/site/data_10m/dates.json snowline/site/data/snotel_agreement.json snowline/site/data/terrain_stats.json snowline/site/stac
+          git add snowline/site/data_10m/dates.json snowline/site/data/snotel_agreement.json snowline/site/data/terrain_stats.json snowline/site/data/range_stats.json snowline/site/stac
           git add 'snowline/site/data_10m/*/snowline.json' 2>/dev/null || true
           if git diff --staged --quiet; then
             echo "No changes to commit"

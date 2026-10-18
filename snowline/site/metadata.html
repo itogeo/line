@@ -136,6 +136,8 @@
   .pass-chip.on { border-color: #fff; color: #fff; }
   .pass-chip.future { color: #FFD54F; border-color: rgba(255,213,79,0.35); }
   .pass-chip.future.on { border-color: #FFD54F; background: rgba(255,213,79,0.12); }
+  /* Phones: the page links scroll sideways instead of running off screen. */
+  @media (max-width: 860px) { .top-nav { overflow-x: auto; scrollbar-width: none; } .top-nav::-webkit-scrollbar { display: none; } .top-nav .nav-links { flex: none; } }
 </style>
 </head>
 <body>
@@ -149,6 +151,7 @@
   <span class="nav-sep">/</span>
   <div class="nav-links">
     <a href="/snow/">Map</a>
+    <a href="/snow/range.html">Ranges</a>
     <a href="/snow/terrain.html">Terrain</a>
     <a href="/snow/webcam.html">Webcams</a>
     <a href="/snow/metadata.html" class="active">Data</a>

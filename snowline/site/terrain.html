@@ -94,6 +94,8 @@
     .data { flex: none; max-width: none; border-left: 0; overflow: visible; padding: 14px 16px 40px; }
     .rose-wrap { grid-template-columns: minmax(0, 1fr) 120px; }
   }
+  /* Phones: the page links scroll sideways instead of running off screen. */
+  @media (max-width: 860px) { .top-nav { overflow-x: auto; scrollbar-width: none; } .top-nav::-webkit-scrollbar { display: none; } .top-nav .nav-links { flex: none; } }
 </style>
 </head>
 <body>
@@ -107,6 +109,7 @@
   <span class="nav-sep">/</span>
   <div class="nav-links">
     <a href="/snow/">Map</a>
+    <a href="/snow/range.html">Ranges</a>
     <a href="/snow/terrain.html" class="active">Terrain</a>
     <a href="/snow/webcam.html">Webcams</a>
     <a href="/snow/metadata.html">Data</a>

@@ -44,6 +44,8 @@
   .muted { color:var(--text-muted); }
   .toc { font-family:var(--mono); font-size:12px; columns:2; column-gap:24px; margin:0 0 8px; padding-left:18px; }
   @media (max-width:560px) { .toc { columns:1; } h1 { font-size:23px; } main { padding:24px 16px 60px; } }
+  /* Phones: the page links scroll sideways instead of running off screen. */
+  @media (max-width: 860px) { .top-nav { overflow-x: auto; scrollbar-width: none; } .top-nav::-webkit-scrollbar { display: none; } .top-nav .nav-links { flex: none; } }
 </style>
 </head>
 <body>
@@ -56,6 +58,7 @@
   <span class="nav-sep">/</span>
   <div class="nav-links">
     <a href="/snow/">Map</a>
+    <a href="/snow/range.html">Ranges</a>
     <a href="/snow/terrain.html">Terrain</a>
     <a href="/snow/webcam.html">Webcams</a>
     <a href="/snow/metadata.html">Data</a>

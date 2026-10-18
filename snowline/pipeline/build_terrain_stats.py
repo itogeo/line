@@ -35,6 +35,13 @@ snow, 0 ground, 160/100 cloud, 120/60 no data), exactly what a visitor sees.
 
 Writes site/data/terrain_stats.json: {"dates": {date: {...}}, ...}.
 
+The same counts, split by mountain range, go to site/data/range_stats.json
+for the range page (this season's dates only). Ranges are those of the
+terrain page: ground at or above 5,500 ft, assigned to the range of its
+nearest SNOTEL station within 40 km (build_terrain_grid.range_grid). Each
+range also gets how much of it the pass imaged, saw clearly and lost to
+cloud, so the page can say how much of the range a number rests on.
+
 Usage:
     python snowline/pipeline/build_terrain_stats.py --date=2026-10-13
     python snowline/pipeline/build_terrain_stats.py --all            # every date with WebPs on disk
@@ -60,6 +67,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA_10M = REPO_ROOT / "site" / "data_10m"
 GRID = REPO_ROOT / "pipeline" / "data" / "terrain_grid.npz"
 OUT = REPO_ROOT / "site" / "data" / "terrain_stats.json"
+RANGE_OUT = REPO_ROOT / "site" / "data" / "range_stats.json"
 LIVE = "https://line.itogeospatial.com/snow/api/tile"
 
 BAND_M = 100
@@ -105,9 +113,13 @@ def snow_images(date, fetch):
         yield np.asarray(img.getchannel("A")), b
 
 
-def count(date, elev10, aspect, meta, fetch):
-    snow = np.zeros(NB * 18, dtype=np.int64)
-    clear = np.zeros(NB * 18, dtype=np.int64)
+def count(date, elev10, aspect, meta, fetch, rid=None, nr=1):
+    """Snow and clear pixels by [range][band][open/forested][aspect], plus
+    per-range totals: every pixel, imaged (not no-data) and cloud."""
+    size = nr * NB * 18
+    snow = np.zeros(size, dtype=np.int64)
+    clear = np.zeros(size, dtype=np.int64)
+    tot = {k: np.zeros(nr, dtype=np.int64) for k in ("all", "imaged", "cloud")}
     seen = 0
     for a, b in snow_images(date, fetch):
         seen += 1
@@ -124,10 +136,14 @@ def count(date, elev10, aspect, meta, fetch):
         is_clear = is_snow | (a == 0)
         e = elev10[gi[:, None], gj[None, :]].astype(np.int64) * 10
         band = np.clip((e - BAND_LO) // BAND_M, 0, NB - 1)
-        key = band * 18 + aspect[gi[:, None], gj[None, :]]
-        snow += np.bincount(key[is_snow], minlength=NB * 18)
-        clear += np.bincount(key[is_clear], minlength=NB * 18)
-    return snow.reshape(NB, 2, 9), clear.reshape(NB, 2, 9), seen
+        r = rid[gi[:, None], gj[None, :]].astype(np.int64) if rid is not None else np.zeros_like(band)
+        key = (r * NB + band) * 18 + aspect[gi[:, None], gj[None, :]]
+        snow += np.bincount(key[is_snow], minlength=size)
+        clear += np.bincount(key[is_clear], minlength=size)
+        tot["all"] += np.bincount(r.ravel(), minlength=nr)
+        tot["imaged"] += np.bincount(r[(a != 120) & (a != 60)], minlength=nr)
+        tot["cloud"] += np.bincount(r[(a == 160) | (a == 100)], minlength=nr)
+    return snow.reshape(nr, NB, 2, 9), clear.reshape(nr, NB, 2, 9), tot, seen
 
 
 def cell_counts(date, shape, meta, fetch):
@@ -223,6 +239,21 @@ def summarise(snow, clear):
     }
 
 
+def range_summary(snow, clear, tot):
+    """One range on one date: the terrain summary plus how much of it was seen."""
+    out = summarise(snow, clear)
+    out.update({"all_px": int(tot["all"]), "imaged_px": int(tot["imaged"]), "cloud_px": int(tot["cloud"]),
+                "seen_pct": round(100 * out["clear_px"] / max(1, int(tot["all"])), 1),
+                "cloud_pct": round(100 * int(tot["cloud"]) / max(1, int(tot["all"])), 1)})
+    return out
+
+
+def season_start(today=None):
+    """Oct 1 of the current snow season (lib/aoi.py: Oct 1 to May 31)."""
+    t = today or datetime.now(timezone.utc)
+    return f"{t.year if t.month >= 10 else t.year - 1}-10-01"
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--date")
@@ -233,13 +264,22 @@ def main():
     if not (args.date or args.all or args.missing):
         ap.error("--date, --all or --missing")
     elev10, aspect, meta = load_grid()
+    from build_terrain_grid import range_grid
+    rid, range_names = range_grid(elev10.shape, elev10)
+    nr = len(range_names) + 1
     data = json.loads(OUT.read_text()) if OUT.exists() else {"dates": {}}
+    rdata = json.loads(RANGE_OUT.read_text()) if RANGE_OUT.exists() else {"dates": {}}
+    if rdata.get("ranges") != range_names:      # range areas changed: start over
+        rdata = {"dates": {}}
+    start = season_start()
     if args.all or args.missing:
         dates = json.loads((DATA_10M / "dates.json").read_text())["dates"]
         dates = [d for d in dates if (DATA_10M / d / "snowline.json").exists()]
         if args.missing:
             # Also redo dates summarised before the change field existed.
-            dates = [d for d in dates if "change" not in data["dates"].get(d, {})]
+            # And this season's dates without range numbers yet.
+            dates = [d for d in dates if "change" not in data["dates"].get(d, {})
+                     or (d >= start and d not in rdata["dates"])]
         log(f"{len(dates)} dates to summarise")
     else:
         dates = [args.date]
@@ -249,13 +289,18 @@ def main():
             log(f"{d}: no snowline.json")
             failed += 1
             continue
-        snow, clear, seen = count(d, elev10, aspect, meta, args.fetch)
+        rsnow, rclear, tot, seen = count(d, elev10, aspect, meta, args.fetch, rid, nr)
+        snow, clear = rsnow.sum(0), rclear.sum(0)
         if not seen:
             log(f"{d}: no snow images {'found' if args.fetch else 'on disk (use --fetch)'}")
             if not args.all:
                 failed += 1
             continue
         data["dates"][d] = summarise(snow, clear)
+        if d >= start:
+            rdata["dates"][d] = {name: range_summary(rsnow[k], rclear[k], {x: v[k] for x, v in tot.items()})
+                                 for k, name in enumerate(range_names, 1) if tot["all"][k]}
+            log("  ranges: " + ", ".join(f"{n} {v['seen_pct']:.0f}% seen" for n, v in rdata["dates"][d].items()))
         s = data["dates"][d]
         listed = json.loads((DATA_10M / "dates.json").read_text())["dates"]
         s["change"] = change_since(d, [x for x in listed if x < d], elev10, aspect, meta, args.fetch)
@@ -271,6 +316,18 @@ def main():
     tmp = OUT.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, separators=(",", ":")))
     tmp.replace(OUT)
+    rdata["dates"] = {d: v for d, v in sorted(rdata["dates"].items()) if d >= start}
+    rdata.update({"generated": data["generated"], "season_start": start, "ranges": range_names,
+                  "range_rule": "ground at or above 5,500 ft, assigned to the range of its nearest SNOTEL "
+                                "station within 40 km (site/season.js STATION_RANGE)",
+                  "band_m": BAND_M, "min_band_px": MIN_BAND, "min_cell_px": MIN_CELL, "open_max_tree_pct": OPEN_MAX,
+                  "pixel_m2": round((0.0003 * 111320 * np.cos(np.radians(45.5))) * (0.0003 * 110574)),
+                  "columns": "snow_open/clear_open: [band][aspect] (aspects as listed), open ground; "
+                             "*_forest: [band]; all_px every pixel in the range, imaged_px not no-data, "
+                             "seen_pct clear (snow or ground) / all, cloud_pct cloud / all"})
+    tmp = RANGE_OUT.with_suffix(".tmp")
+    tmp.write_text(json.dumps(rdata, separators=(",", ":")))
+    tmp.replace(RANGE_OUT)
     return 1 if failed else 0
 
 

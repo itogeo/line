@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mountain Ranges</title>
+<meta name="description" content="One SW Montana mountain range at a time: the latest satellite photo, snow cover by elevation and slope, SNOTEL snow depth, mountain wind, and how well the satellite agrees with the ground.">
+<link rel="icon" href="/snow/img/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" href="/snow/img/favicon-32.png">
+<link rel="apple-touch-icon" href="/snow/img/apple-touch-icon.png">
+<script src="/snow/ito-loader.js"></script>
+<script src="/snow/season.js"></script>
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.js"></script>
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #0b0f1a;
+    --panel: rgba(11, 15, 26, 0.95);
+    --card: rgba(255, 255, 255, 0.025);
+    --border: rgba(79, 195, 247, 0.10);
+    --accent: #4FC3F7;
+    --accent-dim: rgba(79, 195, 247, 0.08);
+    --text: #e0e4ec;
+    --text-muted: #8a94a8;
+    --text-dim: #5d677c;
+    --snow: #64d2ff;
+    --bare: #c9a227;
+    --good: #81C784;
+    --bad: #ff8a65;
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'DM Sans', -apple-system, sans-serif;
+    --nav-h: 44px;
+    --chips-h: 42px;
+  }
+  html, body { height: 100%; }
+  body { font-family: var(--sans); background: var(--bg); color: var(--text); overflow: hidden; }
+
+  .top-nav { height: var(--nav-h); background: var(--panel); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; padding: 0 20px; gap: 10px; position: relative; z-index: 200; }
+  .nav-brand { font-size: 12px; font-weight: 500; color: var(--text-muted); letter-spacing: 0.05em; text-transform: lowercase; }
+  .nav-sep { color: var(--text-dim); font-size: 12px; }
+  .nav-links { display: flex; gap: 2px; margin-left: 8px; }
+  .nav-links a { font-family: var(--mono); font-size: 10px; font-weight: 600; padding: 4px 10px; border-radius: 4px;
+    text-decoration: none; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; }
+  .nav-links a:hover { background: var(--accent-dim); color: var(--accent); }
+  .nav-links a.active { background: rgba(79,195,247,0.12); color: var(--accent); }
+
+  .range-bar { height: var(--chips-h); display: flex; align-items: center; gap: 4px; padding: 0 16px; overflow-x: auto;
+    border-bottom: 1px solid var(--border); background: var(--panel); scrollbar-width: none; }
+  .range-bar::-webkit-scrollbar { display: none; }
+  .range-bar button { flex: none; font: inherit; font-size: 12px; background: transparent; color: var(--text-muted);
+    border: 1px solid var(--border); border-radius: 14px; padding: 4px 11px; cursor: pointer; white-space: nowrap; }
+  .range-bar button:hover { color: var(--text); border-color: rgba(79,195,247,0.3); }
+  .range-bar button.on { color: #0b0f1a; background: var(--accent); border-color: var(--accent); font-weight: 600; }
+
+  .layout { display: flex; height: calc(100% - var(--nav-h) - var(--chips-h)); }
+  .data { flex: 0 0 440px; overflow-y: auto; padding: 16px 18px 40px; border-right: 1px solid var(--border); }
+  #map { flex: 1 1 auto; min-width: 0; position: relative; }
+
+  h1 { font-size: 24px; font-weight: 700; line-height: 1.15; }
+  .sub { font-size: 12px; color: var(--text-muted); line-height: 1.5; margin: 4px 0 10px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  select { font: inherit; font-size: 12px; background: #121a2a; color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; max-width: 100%; }
+  .lead { font-size: 15px; line-height: 1.5; margin: 12px 0 4px; }
+  .lead b { color: #8bd3f7; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 12px 10px; margin-top: 12px; }
+  .card h2 { font-family: var(--mono); font-size: 10px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;
+    letter-spacing: 1.2px; margin-bottom: 8px; display: flex; justify-content: space-between; gap: 8px; }
+  .card h2 span { font-weight: 400; color: var(--text-dim); text-transform: none; letter-spacing: 0; }
+  .big { font-size: 13px; line-height: 1.5; margin-bottom: 6px; }
+  .big b { color: var(--text); }
+  .note { font-size: 10.5px; color: var(--text-dim); line-height: 1.5; margin-top: 6px; }
+  .note a, .src a { color: inherit; }
+  .src { font-family: var(--mono); font-size: 9px; color: var(--text-dim); margin-top: 8px; line-height: 1.5; }
+  svg { display: block; width: 100%; height: auto; }
+  svg text { font-family: var(--mono); fill: var(--text-dim); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+  th { font-family: var(--mono); font-size: 9px; font-weight: 500; color: var(--text-dim); text-align: right; padding: 3px 4px; white-space: nowrap; }
+  td { padding: 4px 4px; border-top: 1px solid var(--border); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  th:first-child, td:first-child { text-align: left; white-space: normal; padding-left: 0; }
+  td.dim, .dim { color: var(--text-dim); }
+  tr.click { cursor: pointer; }
+  tr.click:hover td { background: rgba(79,195,247,0.05); }
+  tr.on td { background: rgba(79,195,247,0.09); }
+  .up { color: var(--snow); } .down { color: var(--bare); }
+  .ok { color: var(--good); } .no { color: var(--bad); }
+  .tag { font-family: var(--mono); font-size: 8.5px; color: var(--text-dim); border: 1px solid var(--border); border-radius: 3px; padding: 0 3px; margin-left: 4px; }
+
+  .aspect-wrap { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px; align-items: center; margin-top: 6px; }
+
+  .map-key { position: absolute; left: 10px; bottom: 28px; z-index: 5; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 10px; font-size: 11px; color: var(--text-muted); display: flex; gap: 10px; flex-wrap: wrap; align-items: center; max-width: calc(100% - 20px); }
+  .map-key span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+  .map-key label { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; color: var(--text); }
+  .sw { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+  .map-date { position: absolute; left: 10px; top: 10px; z-index: 5; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 10px; font-size: 12px; line-height: 1.4; max-width: calc(100% - 70px); }
+  .map-date .dim { font-size: 10.5px; }
+  .mapboxgl-popup-content { background: #111827 !important; color: var(--text) !important; border: 1px solid rgba(79,195,247,0.18);
+    border-radius: 8px !important; padding: 8px 10px !important; font-size: 12px; }
+  .mapboxgl-popup-tip { border-top-color: #111827 !important; border-bottom-color: #111827 !important; }
+
+  @media (max-width: 860px) {
+    body { overflow: auto; }
+    .top-nav { padding: 0 10px; }
+    .nav-brand, .nav-sep { display: none; }
+    .nav-links { margin-left: 0; }
+    .nav-links a { padding: 4px 4px; font-size: 9px; letter-spacing: 0.3px; }
+    .range-bar { padding: 0 10px; }
+    .layout { flex-direction: column-reverse; height: auto; }
+    #map { flex: none; height: 46vh; }
+    .data { flex: none; border-right: 0; overflow: visible; padding: 14px 16px 40px; }
+  }
+  /* Phones: the page links scroll sideways instead of running off screen. */
+  @media (max-width: 860px) { .top-nav { overflow-x: auto; scrollbar-width: none; } .top-nav::-webkit-scrollbar { display: none; } .top-nav .nav-links { flex: none; } }
+</style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="nav-brand">itogeospatial</span>
+  <div class="nav-links">
+    <a href="https://line.itogeospatial.com/snow" class="active">Snow Cover</a>
+    <a href="https://line.itogeospatial.com/river">River</a>
+  </div>
+  <span class="nav-sep">/</span>
+  <div class="nav-links">
+    <a href="/snow/">Map</a>
+    <a href="/snow/range.html" class="active">Ranges</a>
+    <a href="/snow/terrain.html">Terrain</a>
+    <a href="/snow/webcam.html">Webcams</a>
+    <a href="/snow/metadata.html">Data</a>
+    <a href="/snow/methods.html">Methods</a>
+  </div>
+</nav>
+<div class="range-bar" id="range-bar"></div>
+
+<div class="layout">
+  <div class="data">
+    <h1 id="title">Mountain ranges</h1>
+    <div class="sub" id="sub"></div>
+    <div class="row"><select id="date-sel" aria-label="Satellite pass"></select></div>
+    <div class="lead" id="lead"></div>
+
+    <div class="card" id="card-snow">
+      <h2>Snow on the ground, from the satellite <span id="snow-when"></span></h2>
+      <div id="snow-body"></div>
+    </div>
+
+    <div class="card" id="card-depth">
+      <h2>Snow depth at ground stations <span id="depth-when"></span></h2>
+      <div id="depth-body"></div>
+    </div>
+
+    <div class="card" id="card-wind">
+      <h2>Wind <span id="wind-when"></span></h2>
+      <div id="wind-body"></div>
+    </div>
+
+    <div class="card" id="card-check">
+      <h2>How far to trust this</h2>
+      <div id="check-body"></div>
+    </div>
+
+    <div class="card" id="card-history">
+      <h2>Every pass this season</h2>
+      <div id="history-body"></div>
+    </div>
+
+    <p class="note" style="margin-top:14px" id="range-rule"></p>
+    <p class="note">Snow: Sentinel-2 (ESA Copernicus) via Snowline. Terrain: Copernicus DEM GLO-30, ESA WorldCover 2021. Depth: NRCS SNOTEL and the <a href="https://climate.umt.edu/mesonet/" target="_blank" rel="noopener">Montana Mesonet</a>. Wind: Montana Mesonet, NRCS SNOTEL, and NWS observations (api.weather.gov). <a href="/snow/methods.html">How it's made</a>.</p>
+  </div>
+  <div id="map">
+    <div class="map-date" id="map-date"></div>
+    <div class="map-key">
+      <label><input type="checkbox" id="tog-snow"> Snow map</label>
+      <span><i class="sw" style="background:#4FC3F7;border-radius:50%"></i>SNOTEL</span>
+      <span><i class="sw" style="background:#ffd166;border-radius:50%"></i>Wind station</span>
+    </div>
+  </div>
+</div>
+
+<script>
+mapboxgl.accessToken = 'pk.eyJ1IjoiaXRvZ2VvIiwiYSI6ImNta3ByYnA1bzBsYW0zZG9mMnMxdWZwMjUifQ.Q7pwAuAEKdBHD_dqaVBhvw';
+
+const TILE = '/snow/api/tile';
+const TZ = 'America/Denver';
+const ASPECTS = ['flat', 'N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+const ASPECT_NAME = { N: 'north', NE: 'northeast', E: 'east', SE: 'southeast', S: 'south', SW: 'southwest', W: 'west', NW: 'northwest' };
+const COMPASS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+// The usual names; the data calls each range by the short name.
+const FULL_NAME = { 'Gallatin': 'Gallatin Range', 'Bridger': 'Bridger Range', 'Madison': 'Madison Range', 'Gravelly': 'Gravelly Range',
+  'Tobacco Root': 'Tobacco Root Mountains', 'Crazy': 'Crazy Mountains', 'Absaroka': 'Absaroka Range', 'Beartooth': 'Beartooth Mountains',
+  'Yellowstone': 'Yellowstone (Montana side and plateau)', 'Henrys Lake': 'Henrys Lake Mountains', 'Centennial': 'Centennial Mountains',
+  'Elkhorn': 'Elkhorn Mountains', 'Big Belt': 'Big Belt Mountains', 'Castle': 'Castle Mountains' };
+const MIN_SEEN = 50;        // % of a range seen clearly for a pass to be the default
+const MIN_RANGE_PX = 400000; // pixels (~250 km2) of a range inside the mapped area to list it
+const RANGE_KM = 40;         // build_terrain_grid.RANGE_KM: a station belongs to the range of the nearest SNOTEL within this
+
+const FT = m => m * 3.28084;
+const fmtFt = m => (Math.round(FT(m) / 10) * 10).toLocaleString('en-US') + ' ft';
+const fmtInt = v => Math.round(v).toLocaleString('en-US');
+const fmtDay = (d, o = { month: 'short', day: 'numeric' }) => new Date(d + 'T12:00:00Z').toLocaleDateString('en-US', { ...o, timeZone: 'UTC' });
+const fmtStamp = t => new Date(t).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: TZ });
+const fmtHour = t => new Date(t).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', timeZone: TZ });
+const sum = a => a.reduce((x, y) => x + y, 0);
+const pct = (a, b) => b ? 100 * a / b : null;
+const compass = d => COMPASS[Math.round(((d % 360) + 360) % 360 / 45) % 8];
+const km = (a, b) => 111.2 * Math.hypot(a.lat - b.lat, (a.lon - b.lon) * Math.cos(a.lat * Math.PI / 180));
+const cleanName = n => n.replace(/ SNOTEL$/, '');
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+let RS = null, NORMALS = null, SNOTEL = null, MESONET = null, WIND = null, AGREE = null, CLASSES = null;
+let RANGE = null, DATE = null;
+const drawBoundsCache = {};   // range -> [w, s, e, n]
+
+const map = new mapboxgl.Map({ container: 'map', style: 'mapbox://styles/mapbox/outdoors-v12', center: [-110.8, 45.5], zoom: 7 });
+map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
+const mapReady = new Promise(ok => map.on('load', ok));
+
+async function getJSON(u) { const r = await fetch(u); if (!r.ok) throw new Error(u + ' ' + r.status); return r.json(); }
+async function windJSON() {
+  for (const u of ['/snow/api/wind/stations_7d.json', 'data/wind/stations_7d.json']) {
+    try { const r = await fetch(u); if (r.ok) return await r.json(); } catch (e) { /* next */ }
+  }
+  return null;
+}
+
+// ── Which range a station belongs to: the range of the nearest listed SNOTEL
+// station within 40 km, the same rule that draws the range areas. ──
+let RANGE_PTS = [];
+function rangeOfPoint(p) {
+  let best = null, bd = RANGE_KM;
+  for (const s of RANGE_PTS) { const d = km(p, s); if (d <= bd) { bd = d; best = s.range; } }
+  return best;
+}
+
+async function init() {
+  const [rs, normals, snotel, mesonet, wind, agree] = await Promise.all([
+    getJSON('data/range_stats.json'), getJSON('data/snotel_normals.json').catch(() => null),
+    getJSON('data/snotel_season.json'), getJSON('data/mesonet_snow.json').catch(() => null),
+    windJSON(), getJSON('data/snotel_agreement.json').catch(() => null)]);
+  RS = rs; NORMALS = normals; SNOTEL = snotel; MESONET = mesonet; WIND = wind; AGREE = agree;
+  RANGE_PTS = SNOTEL.stations.filter(s => RANGE_OF_STATION[s.id] && s.lat).map(s => ({ lat: s.lat, lon: s.lon, range: RANGE_OF_STATION[s.id] }));
+  const dates = Object.keys(RS.dates).sort();
+  const last = RS.dates[dates[dates.length - 1]] || {};
+  const listed = RS.ranges.filter(n => (last[n]?.all_px || 0) >= MIN_RANGE_PX);
+  const bar = document.getElementById('range-bar');
+  bar.innerHTML = listed.map(n => `<button type="button" data-r="${esc(n)}">${esc(n)}</button>`).join('');
+  bar.querySelectorAll('button').forEach(b => b.onclick = () => setRange(b.dataset.r));
+  document.getElementById('range-rule').textContent = `What counts as a range: ${RS.range_rule}. Range edges are approximate. `
+    + `Snow cover counts open ground only (tree cover at most ${RS.open_max_tree_pct}%), because the satellite sees treetops, not the snow under them.`;
+  document.getElementById('tog-snow').onchange = e => showSnow(e.target.checked);
+  const h = new URLSearchParams(location.hash.slice(1));
+  await loadClasses();
+  setRange(listed.includes(h.get('range')) ? h.get('range') : (listed.includes('Bridger') ? 'Bridger' : listed[0]), h.get('date'));
+}
+
+// ── Range areas from the terrain grid (same image the Terrain page uses) ──
+async function loadClasses() {
+  const meta = await getJSON('data/terrain_classes.json');
+  const img = new Image();
+  img.src = 'data/terrain_classes.webp';
+  await img.decode();
+  const W = meta.width, H = meta.height, cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0);
+  const px = ctx.getImageData(0, 0, W, H).data, rid = new Uint8Array(W * H);
+  for (let i = 0, j = 2; i < rid.length; i++, j += 4) rid[i] = px[j] >> 4;
+  const [[w, nth], [e], [, sth]] = meta.coordinates;
+  const merc = l => Math.log(Math.tan(Math.PI / 4 + l * Math.PI / 360));
+  const y0 = merc(nth), y1 = merc(sth);
+  const lon = x => w + (x + 0.5) * (e - w) / W;
+  const lat = y => (2 * Math.atan(Math.exp(y0 + (y + 0.5) / H * (y1 - y0))) - Math.PI / 2) * 180 / Math.PI;
+  const out = document.createElement('canvas');
+  out.width = W; out.height = H;
+  CLASSES = { meta, W, H, rid, lon, lat, out };
+  await mapReady;
+  map.addSource('mask', { type: 'canvas', canvas: out, coordinates: meta.coordinates, animate: false });
+  map.addLayer({ id: 'mask', type: 'raster', source: 'mask', paint: { 'raster-opacity': 1, 'raster-fade-duration': 0, 'raster-resampling': 'nearest' } });
+}
+
+// Dim everything outside the range and outline its edge; return its bounds.
+function drawMask(name) {
+  const { meta, W, H, rid, lon, lat, out } = CLASSES, id = meta.ranges.indexOf(name);
+  const ctx = out.getContext('2d'), im = ctx.createImageData(W, H), d = im.data;
+  let x0 = W, x1 = -1, y0 = H, y1 = -1;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x, j = i * 4, inside = rid[i] === id;
+    if (inside) {
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+      const edge = (x > 0 && rid[i - 1] !== id) || (x < W - 1 && rid[i + 1] !== id) || (y > 0 && rid[i - W] !== id) || (y < H - 1 && rid[i + W] !== id);
+      if (edge) { d[j] = 255; d[j + 1] = 255; d[j + 2] = 255; d[j + 3] = 200; }
+    } else { d[j] = 11; d[j + 1] = 15; d[j + 2] = 26; d[j + 3] = 150; }
+  }
+  ctx.putImageData(im, 0, 0);
+  map.getSource('mask')?.play?.(); map.getSource('mask')?.pause?.();
+  return x1 < 0 ? null : [[lon(x0), lat(y1)], [lon(x1), lat(y0)]];
+}
+
+// ── Range ──
+function setRange(name, wantDate) {
+  RANGE = name;
+  document.querySelectorAll('#range-bar button').forEach(b => b.classList.toggle('on', b.dataset.r === name));
+  document.querySelector(`#range-bar button[data-r="${CSS.escape(name)}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  document.getElementById('title').textContent = FULL_NAME[name] || name;
+  document.title = `${FULL_NAME[name] || name} · Snowline`;
+  const passes = Object.keys(RS.dates).sort().reverse().filter(d => RS.dates[d][name] && RS.dates[d][name].clear_px > 0);
+  const sel = document.getElementById('date-sel');
+  sel.innerHTML = passes.map(d => { const r = RS.dates[d][name];
+    return `<option value="${d}">${fmtDay(d, { weekday: 'short', month: 'short', day: 'numeric' })} · saw ${Math.round(r.seen_pct)}% of the range</option>`; }).join('')
+    || '<option>No clear passes yet this season</option>';
+  const good = passes.find(d => RS.dates[d][name].seen_pct >= MIN_SEEN)
+    || passes.slice().sort((a, b) => RS.dates[b][name].seen_pct - RS.dates[a][name].seen_pct)[0];
+  sel.onchange = () => setDate(sel.value);
+  const d = passes.includes(wantDate) ? wantDate : good;
+  if (d) sel.value = d;
+  renderDepth(); renderWind();
+  mapReady.then(() => {
+    const bb = drawMask(name);
+    if (bb) { drawBoundsCache[name] = [bb[0][0], bb[0][1], bb[1][0], bb[1][1]]; map.fitBounds(bb, { padding: 30, duration: 600 }); }
+    stationLayers();
+  });
+  setDate(d);
+}
+
+function setDate(d) {
+  DATE = d;
+  history.replaceState(null, '', `#range=${encodeURIComponent(RANGE)}${d ? '&date=' + d : ''}`);
+  renderLead(); renderSnow(); renderCheck(); renderHistory();
+  mapReady.then(() => showImagery(d));
+}
+
+// ── Lead ──
+function renderLead() {
+  const r = DATE && RS.dates[DATE][RANGE], el = document.getElementById('lead'), sub = document.getElementById('sub');
+  const dep = depthRows().filter(x => x.src === 'SNOTEL' && x.depth != null);
+  const avg = dep.length ? sum(dep.map(x => x.depth)) / dep.length : null;
+  sub.innerHTML = `${(r ? Math.round(r.all_px * RS.pixel_m2 / 1e6) : '–').toLocaleString('en-US')} km² of mountain ground · `
+    + `${dep.length} SNOTEL station${dep.length === 1 ? '' : 's'} · ${windRows().length} wind stations`;
+  const parts = [];
+  if (r && r.clear_px) {
+    const open = pct(r.open_snow_px, r.open_clear_px), rows = bandRows(r).filter(x => x.f != null);
+    parts.push(r.snowline_m ? `Snow line about <b>${fmtFt(r.snowline_m)}</b>`
+      : rows.length && rows[0].f >= 0.5 ? `Snow down to <b>${fmtFt(rows[0].z)}</b>, the lowest ground seen`
+      : rows.length && rows[rows.length - 1].f < 0.5 ? 'Mostly bare at every elevation seen' : 'Too little clear ground for a snow line');
+    parts.push(`snow on <b>${Math.round(open)}%</b> of open ground (${fmtDay(DATE)} pass)`);
+  } else parts.push('No clear satellite pass over this range yet this season');
+  if (avg != null) parts.push(`SNOTEL stations average <b>${avg.toFixed(0)}″</b> deep`);
+  const w = windRows();
+  if (w.length) { const t = w.slice().sort((p, q) => q.a.gmax[1] - p.a.gmax[1])[0];
+    parts.push(`strongest gust <b>${Math.round(t.a.gmax[1])} mph</b> in 48 h (${esc(cleanName(t.s.name))})`); }
+  el.innerHTML = parts.join(' · ') + '.';
+}
+
+function bandRows(r) {
+  return r.bands_m.map((z, i) => {
+    const co = sum(r.clear_open[i]), so = sum(r.snow_open[i]);
+    return { z, co, so, f: co >= RS.min_band_px ? so / co : null, fc: r.clear_forest[i], fs: r.snow_forest[i] };
+  });
+}
+function snowSentence(r) {
+  const when = fmtDay(DATE);
+  const rows = bandRows(r).filter(x => x.f != null);
+  const open = pct(r.open_snow_px, r.open_clear_px);
+  let s = `On ${when} the satellite saw <b>${Math.round(r.seen_pct)}%</b> of the range clearly; snow covered <b>${Math.round(open)}%</b> of the open ground it saw.`;
+  if (r.snowline_m) {
+    const n = r.by_aspect.N || r.by_aspect.NE || r.by_aspect.NW, so = r.by_aspect.S || r.by_aspect.SE || r.by_aspect.SW;
+    s += ` Snow line about <b>${fmtFt(r.snowline_m)}</b>` + (n && so ? `: ${fmtFt(n)} on north slopes, ${fmtFt(so)} on south.` : '.');
+  } else if (rows.length && rows[0].f >= 0.5) s += ` Snow reaches the lowest ground seen (${fmtFt(rows[0].z)}).`;
+  else if (rows.length && rows[rows.length - 1].f < 0.5) s += ` Mostly bare even at the top band seen (${fmtFt(rows[rows.length - 1].z + RS.band_m)}).`;
+  else if (!rows.length) s += ' Not enough clear ground to place a snow line.';
+  return s;
+}
+
+// ── Satellite card ──
+function renderSnow() {
+  const r = DATE && RS.dates[DATE][RANGE], el = document.getElementById('snow-body');
+  document.getElementById('snow-when').textContent = DATE ? fmtDay(DATE, { weekday: 'short', month: 'short', day: 'numeric' }) + ' pass' : '';
+  if (!r || !r.clear_px) { el.innerHTML = '<div class="dim">The satellite has not seen this range clearly yet this season.</div>'; return; }
+  const rows = bandRows(r).filter(x => x.co + x.fc > 0);
+  // Elevation profile: one bar per 100 m band, high at the top.
+  const H = 9, W = 300, L = 54, top = rows.length * H + 16;
+  const bars = rows.slice().reverse().map((x, i) => {
+    const y = 4 + i * H, w = W - L - 34;
+    const f = x.f, label = (x.z % 300 === 0) ? `<text x="${L - 4}" y="${y + 7}" font-size="7" text-anchor="end">${(Math.round(FT(x.z) / 10) * 10).toLocaleString('en-US')}</text>` : '';
+    if (f == null) return `${label}<rect x="${L}" y="${y}" width="${w}" height="${H - 2}" fill="rgba(255,255,255,0.03)"/>`;
+    const fw = x.fc >= RS.min_band_px ? x.fs / x.fc : null;
+    return `${label}<rect x="${L}" y="${y}" width="${w}" height="${H - 2}" fill="${'#c9a227'}" opacity="0.35"/>
+      <rect x="${L}" y="${y}" width="${(w * f).toFixed(1)}" height="${H - 2}" fill="#64d2ff"/>
+      ${fw != null ? `<circle cx="${(L + w * fw).toFixed(1)}" cy="${y + (H - 2) / 2}" r="2" fill="#81C784" stroke="#0b0f1a" stroke-width="0.8"/>` : ''}
+      <text x="${W - 30}" y="${y + 7}" font-size="7">${Math.round(100 * f)}%</text>`;
+  }).join('');
+  const sl = r.snowline_m ? (() => {
+    const idx = rows.slice().reverse().findIndex(x => x.z <= r.snowline_m && r.snowline_m < x.z + RS.band_m);
+    if (idx < 0) return '';
+    const frac = (r.snowline_m - rows.slice().reverse()[idx].z) / RS.band_m, y = 4 + idx * H + (1 - frac) * H;
+    return `<line x1="${L - 2}" x2="${W - 34}" y1="${y}" y2="${y}" stroke="#fff" stroke-dasharray="3 2" stroke-width="0.8"/>`;
+  })() : '';
+  const profile = `<svg viewBox="0 0 ${W} ${top}">${bars}${sl}<text x="2" y="${top - 2}" font-size="7">ft</text></svg>`;
+  // Slope direction: the snow line on each of 8 directions.
+  const R = 52, cx = 75, cy = 75;
+  const vals = COMPASS.map(k => r.by_aspect[k]);
+  const known = vals.filter(v => v != null), lo = known.length ? Math.min(...known) : 0, hi = known.length ? Math.max(...known) : 1;
+  const petals = COMPASS.map((k, i) => {
+    const v = vals[i], a = (i * 45 - 90) * Math.PI / 180;
+    const len = v == null ? 0 : 18 + (hi > lo ? (hi - v) / (hi - lo) : 0.5) * (R - 22);   // lower snow line = longer petal
+    const x = cx + Math.cos(a) * len, y = cy + Math.sin(a) * len, lx = cx + Math.cos(a) * (R + 12), ly = cy + Math.sin(a) * (R + 12);
+    return (v == null ? '' : `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="#64d2ff" stroke-width="7" stroke-linecap="round" opacity="0.8"/>`)
+      + `<text x="${lx.toFixed(1)}" y="${(ly + 3).toFixed(1)}" font-size="9" text-anchor="middle" fill="${v == null ? 'var(--text-dim)' : 'var(--text)'}">${k}</text>`;
+  }).join('');
+  const rose = `<svg viewBox="0 0 150 150"><circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="var(--border)"/>${petals}<circle cx="${cx}" cy="${cy}" r="3" fill="var(--text-dim)"/></svg>`;
+  const lines = COMPASS.map(k => r.by_aspect[k] != null ? `<tr><td>${ASPECT_NAME[k]}</td><td>${fmtFt(r.by_aspect[k])}</td></tr>` : '').join('');
+  // Change since the previous pass that saw this range.
+  const prev = Object.keys(RS.dates).sort().filter(d => d < DATE && (RS.dates[d][RANGE]?.seen_pct || 0) >= 25).pop();
+  let change = '';
+  if (prev) {
+    const p = RS.dates[prev][RANGE], a = pct(r.open_snow_px, r.open_clear_px), b = pct(p.open_snow_px, p.open_clear_px);
+    const dlt = a - b;
+    change = `<div class="note">Since ${fmtDay(prev)} (saw ${Math.round(p.seen_pct)}% of the range): snow on open ground <span class="${dlt >= 0 ? 'up' : 'down'}">${dlt >= 0 ? '+' : ''}${dlt.toFixed(0)} points</span>`
+      + `${p.snowline_m && r.snowline_m ? `, snow line ${r.snowline_m <= p.snowline_m ? 'down' : 'up'} ${fmtInt(Math.abs(FT(r.snowline_m - p.snowline_m)))} ft` : ''}. `
+      + `The two passes may not have seen the same parts of the range.</div>`;
+  }
+  el.innerHTML = `<div class="big">${snowSentence(r)}</div>
+    <div style="font-size:10px;color:var(--text-dim);margin:8px 0 2px">By elevation: <span style="color:#64d2ff">■</span> snow, <span style="color:#c9a227">■</span> bare, open ground; <span style="color:#81C784">●</span> forested ground (reads low: canopy hides snow); dashed = snow line</div>
+    ${profile}
+    <div class="aspect-wrap">${rose}<div><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px">Snow line by slope direction (longer = snow reaches lower)</div>
+      <table>${lines || '<tr><td class="dim">Not enough clear ground on any slope direction.</td></tr>'}</table></div></div>
+    ${change}
+    <div class="src">Sentinel-2 pass ${DATE} · a band counts with ${fmtInt(RS.min_band_px)}+ clear pixels (~${(RS.min_band_px * RS.pixel_m2 / 1e6).toFixed(1)} km²), a direction with ${fmtInt(RS.min_cell_px)}+</div>`;
+}
+
+// ── Snow depth card ──
+function depthRows() {
+  const today = SNOTEL.stations.flatMap(s => s.history?.length ? [s.history[s.history.length - 1].date] : []).sort().pop();
+  const rows = [];
+  for (const s of SNOTEL.stations) {
+    if (RANGE_OF_STATION[s.id] !== RANGE || !s.history?.length) continue;
+    const h = s.history, last = h[h.length - 1];
+    const wk = h.find(x => x.date >= addDays(last.date, -7));
+    const md = last.date.slice(5), med = NORMALS?.normals?.[s.id]?.[md]?.median;
+    rows.push({ src: 'SNOTEL', id: s.id, name: s.name, elev: s.elevation_ft, lat: s.lat, lon: s.lon, date: last.date,
+      depth: last.depth_in, swe: last.swe_in, d7: wk && last.depth_in != null && wk.depth_in != null ? last.depth_in - wk.depth_in : null, med, stale: last.date < today });
+  }
+  for (const s of MESONET?.stations || []) {
+    if (rangeOfPoint(s) !== RANGE || !s.history?.length) continue;
+    const h = s.history.filter(x => x.depth_in != null), last = h[h.length - 1];
+    if (!last) continue;
+    const wk = h.find(x => x.date >= addDays(last.date, -7));
+    rows.push({ src: 'Mesonet', id: s.id, name: s.name, elev: s.elevation_ft, lat: s.lat, lon: s.lon, date: last.date,
+      depth: last.depth_in, swe: null, d7: wk ? last.depth_in - wk.depth_in : null, med: null, stale: false });
+  }
+  return rows.sort((a, b) => b.elev - a.elev);
+}
+function addDays(d, n) { const t = new Date(d + 'T12:00:00Z'); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); }
+
+function renderDepth() {
+  const rows = depthRows(), el = document.getElementById('depth-body');
+  document.getElementById('depth-when').textContent = SNOTEL.generated_at ? 'updated ' + fmtStamp(SNOTEL.generated_at) : '';
+  if (!rows.length) { el.innerHTML = '<div class="dim">No snow-depth stations in this range.</div>'; return; }
+  const sn = rows.filter(r => r.src === 'SNOTEL' && r.depth != null);
+  const hiSt = sn[0];
+  const body = rows.map(r => {
+    const of = r.med != null && r.med >= 1 && r.depth != null ? Math.round(100 * r.depth / r.med) : null;
+    return `<tr class="click" data-lon="${r.lon}" data-lat="${r.lat}"><td>${esc(r.name)}${r.src === 'Mesonet' ? '<span class="tag">Mesonet</span>' : ''}</td>
+      <td class="dim">${fmtInt(r.elev)}</td><td><b>${r.depth == null ? '–' : Math.round(r.depth) + '″'}</b></td>
+      <td class="${r.d7 > 0 ? 'up' : r.d7 < 0 ? 'down' : 'dim'}">${r.d7 == null ? '–' : (r.d7 > 0 ? '+' : '') + Math.round(r.d7) + '″'}</td>
+      <td class="dim">${r.swe == null ? '–' : r.swe.toFixed(1) + '″'}</td>
+      <td class="dim">${of != null ? of + '%' : r.med != null ? 'median 0' : '–'}</td></tr>`;
+  }).join('');
+  const lastDate = rows.map(r => r.date).sort().pop();
+  el.innerHTML = `${hiSt ? `<div class="big">Deepest: <b>${Math.round(hiSt.depth)}″</b> at ${esc(hiSt.name)} (${fmtInt(hiSt.elev)} ft).</div>` : ''}
+    <table><tr><th>station</th><th>ft</th><th>depth</th><th>7 days</th><th>SWE</th><th>of median</th></tr>${body}</table>
+    <div class="src">Daily readings for ${fmtDay(lastDate)}. Median: 2005–2025 snow depth for the same day at that station (${(NORMALS?.years || []).join('–') || 'n/a'}). SWE: water in the snowpack. Click a row to find it on the map.</div>`;
+  el.querySelectorAll('tr.click').forEach(tr => tr.onclick = () => map.easeTo({ center: [+tr.dataset.lon, +tr.dataset.lat], zoom: Math.max(map.getZoom(), 10) }));
+}
+
+// ── Wind card ──
+function windRows() {
+  return (WIND?.stations || []).filter(s => rangeOfPoint(s) === RANGE).map(s => ({ s, a: windSummary(s, 48), w: windSummary(s, 24 * 7) }))
+    .filter(r => r.a).sort((p, q) => q.s.elevation_ft - p.s.elevation_ft);
+}
+function windSummary(s, hours) {
+  const cut = Date.now() - hours * 3600e3, rows = s.obs.filter(o => Date.parse(o[0]) >= cut);
+  if (!rows.length) return null;
+  let g = null, x = 0, y = 0;
+  for (const [t, spd, gst, dir] of rows) {
+    const v = gst ?? spd;
+    if (!g || v > g[1]) g = [t, v];
+    if (dir != null) { x += spd * Math.sin(dir * Math.PI / 180); y += spd * Math.cos(dir * Math.PI / 180); }
+  }
+  return { rows, gmax: g, mean: sum(rows.map(o => o[1])) / rows.length, prevailing: (x || y) ? compass(Math.atan2(x, y) * 180 / Math.PI) : null, last: rows[rows.length - 1] };
+}
+const windColor = v => v >= 40 ? '#d84315' : v >= 25 ? '#ff7043' : v >= 15 ? '#ffb74d' : v >= 10 ? '#ffd166' : v >= 5 ? '#e9e2a8' : '#c9cdd2';
+function renderWind() {
+  const rows = windRows(), el = document.getElementById('wind-body');
+  document.getElementById('wind-when').textContent = WIND?.generated ? 'updated ' + fmtStamp(WIND.generated) : '';
+  if (!rows.length) { el.innerHTML = '<div class="dim">No wind stations report in this range.</div>'; return; }
+  const top = rows.slice().sort((p, q) => q.a.gmax[1] - p.a.gmax[1])[0];
+  const ridge = rows.filter(r => r.s.elevation_ft >= 7000);
+  if (ridge.length < 2) ridge.length = 0;   // one sheltered gauge is not 'the ridges'
+  const ridgeP = ridge.length ? (() => { let x = 0, y = 0; ridge.forEach(r => r.a.rows.forEach(o => { if (o[3] != null) { x += o[1] * Math.sin(o[3] * Math.PI / 180); y += o[1] * Math.cos(o[3] * Math.PI / 180); } })); return (x || y) ? compass(Math.atan2(x, y) * 180 / Math.PI) : null; })() : null;
+  const body = rows.map(({ s, a, w }) => {
+    const l = a.last, arrow = l[3] == null ? '' : `<svg width="11" height="11" viewBox="-6 -6 12 12" style="display:inline;width:11px;vertical-align:-1px"><path d="M0,-5 L4,3 L0,1 L-4,3 Z" fill="${windColor(l[1])}" transform="rotate(${l[3] + 180})"/></svg>`;
+    const pts = a.rows.map(o => o[1]), mx = Math.max(10, ...pts);
+    const spark = pts.map((v, i) => `${i ? 'L' : 'M'}${(i / Math.max(1, pts.length - 1) * 50).toFixed(1)},${(13 - v / mx * 12).toFixed(1)}`).join('');
+    return `<tr class="click" data-lon="${s.lon}" data-lat="${s.lat}"><td>${esc(cleanName(s.name))}<span class="tag">${esc((s.source || 'Mesonet').replace('Montana ', '').replace('NRCS ', ''))}</span></td>
+      <td class="dim">${fmtInt(s.elevation_ft)}</td><td>${arrow} ${Math.round(l[1])}</td>
+      <td><svg viewBox="0 0 50 14" style="width:50px;display:inline"><path d="${spark}" fill="none" stroke="#ffd166" stroke-width="1"/></svg></td>
+      <td style="color:${windColor(a.gmax[1])}"><b>${Math.round(a.gmax[1])}</b></td><td class="dim">${w ? Math.round(w.gmax[1]) : '–'}</td></tr>`;
+  }).join('');
+  el.innerHTML = `<div class="big">Strongest gust in the last 48 hours: <b style="color:${windColor(top.a.gmax[1])}">${Math.round(top.a.gmax[1])} mph</b> at ${esc(cleanName(top.s.name))} (${fmtInt(top.s.elevation_ft)} ft), ${fmtHour(top.a.gmax[0])}.`
+    + `${ridgeP ? ` Stations above 7,000 ft have blown mostly from the <b>${ridgeP}</b>.` : ''}</div>
+    <table><tr><th>station</th><th>ft</th><th>now mph</th><th>48 h</th><th>gust 48 h</th><th>7 d</th></tr>${body}</table>
+    <div class="src">Hourly. Arrows point downwind. Gust = highest gust (or speed where no gust is reported). Sensors differ in height and exposure: a ridge station and a valley station are not comparable. The Map page has 48-hour and 7-day charts for each station.</div>`;
+  el.querySelectorAll('tr.click').forEach(tr => tr.onclick = () => map.easeTo({ center: [+tr.dataset.lon, +tr.dataset.lat], zoom: Math.max(map.getZoom(), 10) }));
+}
+
+// ── Checks: satellite vs SNOTEL, coverage, freshness ──
+function renderCheck() {
+  const el = document.getElementById('check-body'), r = DATE && RS.dates[DATE][RANGE];
+  const ids = new Set(STATION_RANGE[RANGE] || []);
+  const VERDICT = { snow_agree: ['agrees: snow', 'ok'], bare_agree: ['agrees: bare', 'ok'], miss: ['missed snow', 'no'], false_snow: ['snow where bare', 'no'],
+    cloud: ['cloud', 'dim'], skipped: ['too shallow to judge', 'dim'] };
+  const day = AGREE?.dates?.[DATE];
+  const rows = (day?.stations || []).filter(x => ids.has(x[0]));
+  let season = { n: 0, ok: 0 };
+  for (const [d, v] of Object.entries(AGREE?.dates || {})) {
+    if (d < RS.season_start) continue;
+    for (const x of v.stations || []) if (ids.has(x[0]) && /agree|miss|false/.test(x[4])) { season.n++; if (x[4].endsWith('agree')) season.ok++; }
+  }
+  const cov = r ? `On this pass the satellite imaged <b>${Math.round(100 * r.imaged_px / r.all_px)}%</b> of the range, saw <b>${Math.round(r.seen_pct)}%</b> clearly and lost <b>${Math.round(r.cloud_pct)}%</b> to cloud.`
+    + (r.imaged_px < 0.6 * r.all_px ? ' The pass did not cover the whole range: numbers above describe only the part it photographed.' : '')
+    + (r.seen_pct < MIN_SEEN ? ' Less than half the range was seen, so treat the snow numbers as partial.' : '') : '';
+  const tbl = rows.length ? `<table style="margin-top:8px"><tr><th>SNOTEL station</th><th>depth</th><th>satellite</th><th>result</th></tr>${rows.map(x => {
+    const [lab, cls] = VERDICT[x[4]] || [x[4], 'dim'];
+    return `<tr><td>${esc(x[1])}</td><td>${x[2] == null ? '–' : x[2] + '″'}</td><td class="dim">${x[3] || '–'}</td><td class="${cls}">${lab}</td></tr>`; }).join('')}</table>` : '';
+  el.innerHTML = `<div class="big">${cov}</div>
+    <div class="big" style="margin-top:8px">${rows.length ? `On ${fmtDay(DATE)} the snow map is checked against the ${rows.length} SNOTEL station${rows.length === 1 ? '' : 's'} in this range:` : 'No SNOTEL check for this pass in this range.'}</div>
+    ${tbl}
+    <div class="big" style="margin-top:8px">This season, at this range's stations: <b>${season.n ? `${season.ok} of ${season.n}` : 'no'}</b> judged readings agree${season.n ? ` (${Math.round(100 * season.ok / season.n)}%)` : ''}.</div>
+    <div class="note">How the check works: the map's class in a 3×3 pixel window at each station against that day's measured depth; ${AGREE?.method?.snow_depth_in ?? 2}″ or more counts as snow, 1″ is not judged, cloud is not judged. A station is one point: a miss can be a real miss, a drift or a shaded clearing. Across the whole area, the current snow classifier agreed with stations on 91% of 1,398 station-days (<a href="/snow/methods.html">methods</a>).</div>
+    <div class="src">Satellite numbers built ${RS.generated ? fmtStamp(RS.generated) : '–'} · SNOTEL ${SNOTEL.generated_at ? fmtStamp(SNOTEL.generated_at) : '–'} · Mesonet ${MESONET?.generated ? fmtStamp(MESONET.generated) : '–'} · wind ${WIND?.generated ? fmtStamp(WIND.generated) : '–'}</div>`;
+}
+
+// ── Season history for this range ──
+function renderHistory() {
+  const el = document.getElementById('history-body');
+  const ds = Object.keys(RS.dates).sort().reverse().filter(d => RS.dates[d][RANGE]?.imaged_px > 0);
+  el.innerHTML = `<table><tr><th>pass</th><th>imaged</th><th>seen clear</th><th>snow, open</th><th>snow line</th></tr>${ds.map(d => {
+    const r = RS.dates[d][RANGE], open = pct(r.open_snow_px, r.open_clear_px), weak = r.seen_pct < 10;
+    return `<tr class="click${d === DATE ? ' on' : ''}" data-d="${d}"><td>${fmtDay(d, { weekday: 'short', month: 'short', day: 'numeric' })}</td>
+      <td class="dim">${Math.round(100 * r.imaged_px / r.all_px)}%</td><td>${Math.round(r.seen_pct)}%</td>
+      <td class="${weak ? 'dim' : ''}">${open == null || r.open_clear_px < RS.min_band_px ? '–' : Math.round(open) + '%'}</td>
+      <td class="dim">${r.snowline_m ? fmtFt(r.snowline_m) : '–'}</td></tr>`; }).join('')}</table>
+    <div class="src">Passes that did not photograph the range are left out. Click a pass to see it. Passes that saw little of the range are listed for completeness; their numbers rest on a small area.</div>`;
+  el.querySelectorAll('tr.click').forEach(tr => tr.onclick = () => { document.getElementById('date-sel').value = tr.dataset.d; setDate(tr.dataset.d); });
+}
+
+// ── Map: the pass's photo over the range, snow map optional ──
+let imgIds = [];
+async function showImagery(d) {
+  imgIds.forEach(id => { if (map.getLayer(id)) map.removeLayer(id); if (map.getSource(id)) map.removeSource(id); });
+  imgIds = [];
+  const md = document.getElementById('map-date');
+  if (!d) { md.textContent = 'No clear pass yet'; return; }
+  let meta;
+  try { meta = await getJSON(`data_10m/${d}/snowline.json`); } catch (e) { md.textContent = 'Photo not available'; return; }
+  if (DATE !== d) return;
+  const r = RS.dates[d][RANGE];
+  md.innerHTML = `Sentinel-2 photo, ${fmtDay(d, { weekday: 'short', month: 'short', day: 'numeric' })}<div class="dim">saw ${Math.round(r.seen_pct)}% of the range clearly · ${Math.round(r.cloud_pct)}% cloud</div>`;
+  const b = map.getBounds(), view = [b.getWest() - 0.5, b.getSouth() - 0.5, b.getEast() + 0.5, b.getNorth() + 0.5];
+  const ex = drawBoundsCache[RANGE] || view;
+  const showSnowOn = document.getElementById('tog-snow').checked;
+  (meta.chunks || []).forEach((c, i) => {
+    const cb = c.bounds;
+    if (cb.east < ex[0] || cb.west > ex[2] || cb.north < ex[1] || cb.south > ex[3]) return;   // only chunks over the range
+    const coords = [[cb.west, cb.north], [cb.east, cb.north], [cb.east, cb.south], [cb.west, cb.south]];
+    if (c.truecolor_file) {
+      const id = `tc-${i}`;
+      map.addSource(id, { type: 'image', url: `${TILE}/${d}/${c.truecolor_file}`, coordinates: coords });
+      map.addLayer({ id, type: 'raster', source: id, paint: { 'raster-fade-duration': 0 } }, 'mask');
+      imgIds.push(id);
+    }
+    const sid = `sn-${i}`;
+    map.addSource(sid, { type: 'image', url: `${TILE}/${d}/${c.snow_file}`, coordinates: coords });
+    map.addLayer({ id: sid, type: 'raster', source: sid, layout: { visibility: showSnowOn ? 'visible' : 'none' },
+      paint: { 'raster-opacity': 0.75, 'raster-fade-duration': 0 } }, 'mask');
+    imgIds.push(sid);
+  });
+}
+function showSnow(on) { imgIds.filter(id => id.startsWith('sn-')).forEach(id => map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none')); }
+
+// Stations in the range: SNOTEL depth and wind.
+function stationLayers() {
+  const dep = depthRows().filter(r => r.src === 'SNOTEL');
+  const wnd = windRows();
+  const fc = { type: 'FeatureCollection', features: [
+    ...dep.map(r => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [r.lon, r.lat] },
+      properties: { kind: 'snotel', label: r.depth == null ? '' : Math.round(r.depth) + '″', html: `<b>${esc(r.name)}</b> SNOTEL<br>${fmtInt(r.elev)} ft · ${r.depth == null ? 'no reading' : Math.round(r.depth) + '″ deep'} (${fmtDay(r.date)})` } })),
+    ...wnd.map(({ s, a }) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [s.lon, s.lat] },
+      properties: { kind: 'wind', label: Math.round(a.gmax[1]) + '', html: `<b>${esc(s.name)}</b> ${esc(s.source || '')}<br>${fmtInt(s.elevation_ft)} ft · gust ${Math.round(a.gmax[1])} mph in 48 h${a.prevailing ? ', mostly from the ' + a.prevailing : ''}` } })),
+  ] };
+  if (map.getSource('st')) { map.getSource('st').setData(fc); return; }
+  map.addSource('st', { type: 'geojson', data: fc });
+  map.addLayer({ id: 'st-dot', type: 'circle', source: 'st', paint: { 'circle-radius': 6, 'circle-color': ['match', ['get', 'kind'], 'snotel', '#4FC3F7', '#ffd166'],
+    'circle-stroke-width': 1.5, 'circle-stroke-color': '#0b0f1a' } });
+  map.addLayer({ id: 'st-label', type: 'symbol', source: 'st', layout: { 'text-field': ['get', 'label'], 'text-size': 11, 'text-offset': [0, -1.3], 'text-font': ['DIN Pro Medium', 'Arial Unicode MS Regular'] },
+    paint: { 'text-color': '#fff', 'text-halo-color': '#0b0f1a', 'text-halo-width': 1.4 } });
+  map.on('click', 'st-dot', e => new mapboxgl.Popup({ offset: 10 }).setLngLat(e.features[0].geometry.coordinates).setHTML(e.features[0].properties.html).addTo(map));
+  map.on('mouseenter', 'st-dot', () => map.getCanvas().style.cursor = 'pointer');
+  map.on('mouseleave', 'st-dot', () => map.getCanvas().style.cursor = '');
+}
+
+init().catch(e => { document.getElementById('lead').textContent = 'Could not load the range data: ' + e.message; console.error(e); });
+</script>
+</body>
+</html>
