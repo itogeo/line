@@ -75,7 +75,7 @@ were never set up, so no snow layer has shown since the monorepo move.
 - Composites: latest_* (newest clear) and recent_* (newest look, cloud included); dates.json carries per-pass [imaged %, clear %].
 - Wind: snowline-wind.yml hourly -> fetch_wind.py -> R2 wind/grid_48h.json + stations_7d.json, served at /snow/api/wind/; site/wind.js draws it.
 - Wind stations (2026-10-16): Mesonet + SNOTEL (AWDB) + NWS api.weather.gov stations >= 1,700 m; Bridger/Lone Peak ridge stations only on Synoptic (token, not set up). GitHub fires the hourly cron about every 5 h.
-- Range page (2026-10-18): site/range.html. build_terrain_stats.py also writes data/range_stats.json (this season, per range: band x aspect counts, imaged/seen/cloud %), committed by the imagery job; --missing backfills. Ranges = terrain page rule (>= 5,500 ft, nearest SNOTEL within 40 km), so edges are straight-line approximations; real range polygons (GMBA inventory) would be the next accuracy step if Ian wants it.
+- Range page (2026-10-18): site/range.html. build_terrain_stats.py also writes data/range_stats.json (this season, per range: band x aspect counts, imaged/seen/cloud %), committed by the imagery job; --missing backfills. Ranges = GNFAC forecast zones since 2026-10-19 (site/data/gnfac_zones.geojson from api.avalanche.org map-layer; 7 zones inside the area, Island Park left out at 41% inside); range page, terrain page and range_stats all use them. The map page's 'Snow depth by range' panel still groups SNOTEL by season.js STATION_RANGE.
 - Branch agent/charcoal-theme: charcoal frame + Mapbox hillshade instead of hosted lidar tiles; waiting on Ian.
 
 ## Open / deferred

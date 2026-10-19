@@ -34,22 +34,14 @@
  ],
  "ranges": [
   "",
-  "Gallatin",
-  "Bridger",
-  "Madison",
-  "Gravelly",
-  "Tobacco Root",
-  "Crazy",
-  "Absaroka",
-  "Beartooth",
-  "Yellowstone",
-  "Henrys Lake",
-  "Centennial",
-  "Elkhorn",
-  "Big Belt",
-  "Castle"
+  "Bridger Range",
+  "Northern Gallatin Range",
+  "Northern Madison Range",
+  "Southern Gallatin Range",
+  "Southern Madison Range",
+  "Lionhead Area",
+  "Cooke City"
  ],
- "range_km": 40,
- "range_min_m": 1676,
- "encoding": "R band (0 = 1,000-1,100 m), G aspect, B = range id << 4 | tree cover / 10, rows even in Web Mercator"
+ "range_source": "GNFAC forecast zones (site/data/gnfac_zones.geojson)",
+ "encoding": "R band (0 = 1,000-1,100 m), G aspect, B = zone id << 4 | tree cover / 10, rows even in Web Mercator"
 }

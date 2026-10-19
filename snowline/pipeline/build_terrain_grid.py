@@ -32,10 +32,8 @@ a slope direction or elevation band can light up every matching place:
     snowline/site/data/terrain_classes.webp   lossless; R = 100 m elevation
         band from 1,000 m (0-29), G = aspect (0 flat, 1-8 N..NW),
         B = range id << 4 | tree cover in tens of % (0-10), A = 255.
-        Range: for terrain at or above RANGE_MIN_M, the mountain range of
-        the nearest SNOTEL station within RANGE_KM (station -> range from
-        site/season.js STATION_RANGE), so range areas are approximate;
-        0 = valley or no range. Rows are spaced evenly in
+        Range: the GNFAC avalanche forecast zone the cell falls in
+        (site/data/gnfac_zones.geojson, id 1-7); 0 = outside every zone. Rows are spaced evenly in
         Web Mercator (resampled from the lat/lon grid) so it can be laid on
         the map as one image without north-south drift.
     snowline/site/data/terrain_classes.json   corners + encoding
@@ -152,35 +150,17 @@ def slope_aspect(elev):
 
 
 IMG = ROOT / "snowline" / "site" / "data" / "terrain_classes.webp"
-RANGE_KM = 40
-RANGE_MIN_M = 1676    # 5,500 ft: below this is valley, not part of a range
+ZONES = ROOT / "snowline" / "site" / "data" / "gnfac_zones.geojson"
 
 
-def range_grid(shape, elev10):
-    """Range id per grid cell (nearest SNOTEL station's range), and the names."""
-    import re
-    js = (ROOT / "snowline" / "site" / "season.js").read_text()
-    block = js[js.index("const STATION_RANGE = {"):js.index("};", js.index("const STATION_RANGE = {"))]
-    names, of = [], {}
-    for name, ids in re.findall(r"'([^']+)':\s*\[([^\]]*)\]", block):
-        names.append(name)
-        for sid in re.findall(r"'([^']+)'", ids):
-            of[sid] = len(names)            # ids start at 1
-    st = json.loads((ROOT / "snowline" / "site" / "data" / "snotel_season.json").read_text())["stations"]
-    pts = [(s["lon"], s["lat"], of[s["id"]]) for s in st if s.get("id") in of and s.get("lat")]
-    # Nearest station per cell (plain numpy, no scipy, so CI can build it too).
-    kx = 111.32 * math.cos(math.radians((NORTH + SOUTH) / 2))
-    sx = np.array([x * kx for x, _, _ in pts])
-    sy = np.array([y * 110.574 for _, y, _ in pts])
-    sid = np.array([p[2] for p in pts], np.uint8)
-    cx = (WEST + (np.arange(shape[1]) + 0.5) * RES) * kx
-    rid = np.zeros(shape, np.uint8)
-    for i in range(shape[0]):
-        cy = (NORTH - (i + 0.5) * RES) * 110.574
-        d2 = (cx[:, None] - sx[None, :]) ** 2 + (cy - sy[None, :]) ** 2
-        k = d2.argmin(1)
-        rid[i] = np.where(d2[np.arange(len(k)), k] <= RANGE_KM ** 2, sid[k], 0)
-    rid[elev10 * 10 < RANGE_MIN_M] = 0
+def range_grid(shape, elev10=None):
+    """Zone id per grid cell (GNFAC forecast zones; 0 = outside), and the names."""
+    from rasterio.features import rasterize
+    from rasterio.transform import from_origin
+    fc = json.loads(ZONES.read_text())["features"]
+    rid = rasterize([(f["geometry"], f["properties"]["id"]) for f in fc], out_shape=shape,
+                    transform=from_origin(WEST, NORTH, RES, RES), fill=0, dtype="uint8")
+    names = [f["properties"]["name"] for f in sorted(fc, key=lambda f: f["properties"]["id"])]
     return rid, names
 
 
@@ -206,8 +186,8 @@ def write_image():
         "coordinates": [[WEST, NORTH], [EAST, NORTH], [EAST, SOUTH], [WEST, SOUTH]],
         "width": w, "height": rows, "band_m": 100, "band_lo_m": 1000,
         "aspects": ["flat", "N", "NE", "E", "SE", "S", "SW", "W", "NW"],
-        "ranges": [""] + range_names, "range_km": RANGE_KM, "range_min_m": RANGE_MIN_M,
-        "encoding": "R band (0 = 1,000-1,100 m), G aspect, B = range id << 4 | tree cover / 10, rows even in Web Mercator",
+        "ranges": [""] + range_names, "range_source": "GNFAC forecast zones (site/data/gnfac_zones.geojson)",
+        "encoding": "R band (0 = 1,000-1,100 m), G aspect, B = zone id << 4 | tree cover / 10, rows even in Web Mercator",
     }, indent=1))
     log(f"wrote {IMG.relative_to(ROOT)} ({IMG.stat().st_size / 1e6:.1f} MB, {w}x{rows})")
 

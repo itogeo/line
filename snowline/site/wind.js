@@ -9,6 +9,7 @@ const Wind = (() => {
   let MAP = null, GRID = null, STATIONS = null, HOUR = null, playTimer = null, popup = null;
   // Which arrows show: the RTMA grid, the stations, or both. Remembered per browser.
   let SHOW = 'both';
+  const STATION_LAYERS = ['wind-station-peak', 'wind-station-arrows', 'wind-station-calm', 'wind-station-label'];
   try { SHOW = localStorage.getItem('snowline-wind-show') || 'both'; } catch (e) { /* default */ }
 
   // Speed colours (mph): calm grey to strong red. Blue stays reserved for snow.
@@ -56,11 +57,17 @@ const Wind = (() => {
     return { type: 'FeatureCollection', features };
   }
 
+  // Live reading, and the strongest hour of the last 24 h (gust, or speed where
+  // no gust is reported) with its direction.
   function stationFeatures() {
+    const cut = Date.now() - 24 * 3600e3;
     return { type: 'FeatureCollection', features: (STATIONS?.stations || []).map(s => {
       const last = s.obs[s.obs.length - 1];
+      let pk = null;
+      for (const o of s.obs) if (Date.parse(o[0]) >= cut && o[3] != null && (!pk || (o[2] ?? o[1]) > (pk[2] ?? pk[1]))) pk = o;
       return { type: 'Feature', geometry: { type: 'Point', coordinates: [s.lon, s.lat] },
-        properties: { id: s.id, name: s.name, elev: s.elevation_ft, spd: last[1] || 0, dir: last[3] == null ? 0 : last[3], hasdir: last[3] != null } };
+        properties: { id: s.id, name: s.name, spd: last[1] || 0, dir: last[3] == null ? 0 : last[3], hasdir: last[3] != null,
+          label: Math.round(last[1] || 0) + '', pk: pk ? (pk[2] ?? pk[1]) : 0, pkdir: pk ? pk[3] : 0, haspk: !!pk } };
     }) };
   }
 
@@ -81,21 +88,35 @@ const Wind = (() => {
         paint: { 'icon-color': colorExpr, 'icon-opacity': 0.7 } });
     }
     if (!MAP.getSource('wind-stations')) MAP.addSource('wind-stations', { type: 'geojson', data: stationFeatures() });
-    if (!MAP.getLayer('wind-station-dots')) {
-      MAP.addLayer({ id: 'wind-station-dots', type: 'circle', source: 'wind-stations', layout: { visibility: vis },
-        paint: { 'circle-radius': ['interpolate', ['linear'], ['get', 'elev'], 4500, 5, 9000, 8], 'circle-color': '#17171a', 'circle-stroke-width': 2, 'circle-stroke-color': colorExpr } });
+    if (!MAP.getLayer('wind-station-arrows')) {
+      // Behind: a large pale arrow for the last 24 h's peak. In front: the live arrow.
+      // Both sized and coloured by speed; no round marker, so they don't read as snow stations.
+      MAP.addLayer({ id: 'wind-station-peak', type: 'symbol', source: 'wind-stations', filter: ['get', 'haspk'], layout: {
+        visibility: vis, 'icon-image': 'wind-arrow', 'icon-allow-overlap': true, 'icon-ignore-placement': true,
+        'icon-size': ['interpolate', ['linear'], ['get', 'pk'], 0, 0.95, 20, 1.3, 50, 1.7],
+        'icon-rotate': ['+', ['get', 'pkdir'], 180], 'icon-rotation-alignment': 'map' },
+        paint: { 'icon-color': ['interpolate', ['linear'], ['get', 'pk'], ...STOPS.flat()], 'icon-opacity': 0.5, 'icon-halo-color': 'rgba(11,15,26,0.9)', 'icon-halo-width': 1 } });
       MAP.addLayer({ id: 'wind-station-arrows', type: 'symbol', source: 'wind-stations', filter: ['get', 'hasdir'], layout: {
-        visibility: vis, 'icon-image': 'wind-arrow', 'icon-size': 0.42, 'icon-allow-overlap': true,
+        visibility: vis, 'icon-image': 'wind-arrow', 'icon-allow-overlap': true, 'icon-ignore-placement': true,
+        'icon-size': ['interpolate', ['linear'], ['get', 'spd'], 0, 0.6, 20, 0.85, 50, 1.1],
         'icon-rotate': ['+', ['get', 'dir'], 180], 'icon-rotation-alignment': 'map' },
-        paint: { 'icon-color': colorExpr } });
-      MAP.on('click', 'wind-station-dots', e => openStation(e.features[0].properties.id));
-      MAP.on('mouseenter', 'wind-station-dots', () => MAP.getCanvas().style.cursor = 'pointer');
-      MAP.on('mouseleave', 'wind-station-dots', () => MAP.getCanvas().style.cursor = '');
+        paint: { 'icon-color': colorExpr, 'icon-halo-color': '#0b0f1a', 'icon-halo-width': 1.6 } });
+      MAP.addLayer({ id: 'wind-station-calm', type: 'circle', source: 'wind-stations', filter: ['!', ['get', 'hasdir']], layout: { visibility: vis },
+        paint: { 'circle-radius': 3.5, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-width': 1.5, 'circle-stroke-color': colorExpr } });
+      MAP.addLayer({ id: 'wind-station-label', type: 'symbol', source: 'wind-stations', minzoom: 8, layout: {
+        visibility: vis, 'text-field': ['get', 'label'], 'text-size': 10, 'text-offset': [0.9, 0.9], 'text-anchor': 'top-left',
+        'text-allow-overlap': false, 'text-font': ['DIN Pro Medium', 'Arial Unicode MS Regular'] },
+        paint: { 'text-color': colorExpr, 'text-halo-color': '#0b0f1a', 'text-halo-width': 1.2 } });
+      for (const id of STATION_LAYERS) {
+        MAP.on('click', id, e => openStation(e.features[0].properties.id));
+        MAP.on('mouseenter', id, () => MAP.getCanvas().style.cursor = 'pointer');
+        MAP.on('mouseleave', id, () => MAP.getCanvas().style.cursor = '');
+      }
     }
   }
 
   function setVisible(v) {
-    const want = { 'wind-grid': SHOW !== 'stations', 'wind-station-dots': SHOW !== 'grid', 'wind-station-arrows': SHOW !== 'grid' };
+    const want = { 'wind-grid': SHOW !== 'stations', ...Object.fromEntries(STATION_LAYERS.map(id => [id, SHOW !== 'grid'])) };
     Object.entries(want).forEach(([id, w]) => {
       if (MAP?.getLayer(id)) MAP.setLayoutProperty(id, 'visibility', v && w ? 'visible' : 'none');
     });
@@ -103,7 +124,7 @@ const Wind = (() => {
     document.getElementById('wind-control').style.display = v && GRID?.hours.length ? '' : 'none';
     if (!v) return stop();
     // Above the imagery and shading added since; the page then lifts its own pins over these.
-    ['wind-grid', 'wind-station-dots', 'wind-station-arrows'].forEach(id => { if (MAP?.getLayer(id)) MAP.moveLayer(id); });
+    ['wind-grid', ...STATION_LAYERS].forEach(id => { if (MAP?.getLayer(id)) MAP.moveLayer(id); });
     if (typeof bringSnotelToTop === 'function') bringSnotelToTop();
   }
 
@@ -244,6 +265,5 @@ const Wind = (() => {
   }
 
   // layers: clickable (the map's spot-click skips them); top: kept above the imagery.
-  return { init, addLayers, openStation, layers: ['wind-station-dots', 'wind-station-arrows'],
-           top: ['wind-grid', 'wind-station-dots', 'wind-station-arrows'] };
+  return { init, addLayers, openStation, layers: STATION_LAYERS, top: ['wind-grid', ...STATION_LAYERS] };
 })();

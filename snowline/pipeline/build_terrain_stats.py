@@ -36,9 +36,9 @@ snow, 0 ground, 160/100 cloud, 120/60 no data), exactly what a visitor sees.
 Writes site/data/terrain_stats.json: {"dates": {date: {...}}, ...}.
 
 The same counts, split by mountain range, go to site/data/range_stats.json
-for the range page (this season's dates only). Ranges are those of the
-terrain page: ground at or above 5,500 ft, assigned to the range of its
-nearest SNOTEL station within 40 km (build_terrain_grid.range_grid). Each
+for the range page (this season's dates only). Ranges are the Gallatin
+National Forest Avalanche Center's forecast zones (site/data/gnfac_zones.geojson,
+build_terrain_grid.range_grid), the whole zone at every elevation. Each
 range also gets how much of it the pass imaged, saw clearly and lost to
 cloud, so the page can say how much of the range a number rests on.
 
@@ -318,8 +318,8 @@ def main():
     tmp.replace(OUT)
     rdata["dates"] = {d: v for d, v in sorted(rdata["dates"].items()) if d >= start}
     rdata.update({"generated": data["generated"], "season_start": start, "ranges": range_names,
-                  "range_rule": "ground at or above 5,500 ft, assigned to the range of its nearest SNOTEL "
-                                "station within 40 km (site/season.js STATION_RANGE)",
+                  "range_rule": "the Gallatin National Forest Avalanche Center's forecast zones (mtavalanche.com), "
+                                "every elevation inside each zone",
                   "band_m": BAND_M, "min_band_px": MIN_BAND, "min_cell_px": MIN_CELL, "open_max_tree_pct": OPEN_MAX,
                   "pixel_m2": round((0.0003 * 111320 * np.cos(np.radians(45.5))) * (0.0003 * 110574)),
                   "columns": "snow_open/clear_open: [band][aspect] (aspects as listed), open ground; "
