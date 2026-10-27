@@ -54,7 +54,7 @@
    "interval": [
     [
      "2025-10-03T00:00:00Z",
-     "2026-10-24T23:59:59Z"
+     "2026-10-26T23:59:59Z"
     ]
    ]
   }
@@ -463,6 +463,11 @@
   {
    "rel": "item",
    "href": "./2026-10-24/2026-10-24.json",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "item",
+   "href": "./2026-10-26/2026-10-26.json",
    "type": "application/geo+json"
   }
  ]
