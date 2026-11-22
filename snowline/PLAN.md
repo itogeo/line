@@ -61,20 +61,17 @@ of the deploy.
 
 Terrain shading on `main` is hosted lidar tiles: `index.html` `addLidarShade()`
 loads `/snow/api/terrain/shade/{z}/{x}/{y}.webp` from R2, and
-`release_check.py` requires them. The branch `agent/charcoal-theme` replaces
-them with Mapbox hillshade and a charcoal frame. It has not been merged and is
-a month behind `main`. Two files on `main` already describe the branch's state
-as if it had shipped: the header of `tools/rebuild_area_layers.sh` and the last
-line of `docs/release-log.md`.
+`release_check.py` requires them. They are built by hand with
+`build_lidar_terrain.py` and uploaded with `sync_r2.py --terrain`. A branch that
+swapped them for Mapbox hillshade and a charcoal frame (`agent/charcoal-theme`,
+last commit 59da58b) was dropped on 2026-11-21 (Ian): the site keeps its current
+look. The last line of `docs/release-log.md` predates that decision.
 
 ## Open work
 
 - **Phone crashes** (reported 2026-11-21; Mark is taking it). A code read of the
   likely causes is in `docs/phone-crash-notes.md`. Nothing there is measured on
   a device yet.
-- **`agent/charcoal-theme`**: merge or drop (Ian). If it merges, remove the
-  lidar route from `_worker.js`, the lidar checks in `release_check.py`,
-  `sync_r2.py --terrain`, `build_lidar_terrain.py` and the README terrain row.
 - **Wind cadence**: the hourly cron runs about every 5 hours. Undecided whether
   to move the trigger off GitHub.
 - **Ridge wind stations** (Bridger, Lone Peak) are only on Synoptic, which needs

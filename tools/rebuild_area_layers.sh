@@ -2,8 +2,8 @@
 # Rebuild Snowline's AOI-derived static layers after an AOI change
 # (lib/aoi.py). Run on Ian's Mac, never in CI. Safe to re-run.
 #
-# Layers, in order (terrain shading is no longer built: since 2026-10-16 the
-# map draws it in the browser from Mapbox's elevation tiles):
+# Layers, in order (lidar terrain shading is not rebuilt here; see
+# snowline/pipeline/build_lidar_terrain.py):
 #   historical  MODIS snow frequency, 2001-2025 -> site/data/historical/
 #   forest      ESA WorldCover 2021 tree mask -> site/data/forest_mask.*
 #   normals     SNOTEL 20-year medians -> site/data/snotel_normals.json
