@@ -1,8 +1,9 @@
 name: Snowline — Process Imagery
 
-# Manual workflow to process Sentinel-2 imagery for specific date(s).
+# Processes Sentinel-2 imagery into snow maps. Runs on a schedule (below), when
+# the daily job triggers it, and by hand for specific date(s).
 #
-# How to run:
+# How to run by hand:
 #   1. Go to Actions → Snowline — Process Imagery → Run workflow
 #   2. Optional: enter a date (YYYY-MM-DD) to process just that date
 #   3. Leave date blank to process EVERY unprocessed S2 pass from the

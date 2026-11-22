@@ -8,7 +8,8 @@ Open, reproducible outdoor-conditions maps for Montana, built from free public d
 
 | | |
 |---|---|
-| **Map** | [line.itogeospatial.com/snow](https://line.itogeospatial.com/snow): the **latest view** (every pixel's most recent clear look from the last 10 days of passes, so no half-covered days), every pass of the season on a timeline, and shareable links (`#date=2026-02-10&map=10/45.5/-111.0`) |
+| **Map** | [line.itogeospatial.com/snow](https://line.itogeospatial.com/snow): every pass of the season on a timeline, a **latest view** (every pixel's most recent clear look from the last 10 days of passes), wind, and shareable links (`#date=2026-02-10&map=10/45.5/-111.0`) |
+| **Ranges** | [/snow/range.html](https://line.itogeospatial.com/snow/range.html): one page per range (the Gallatin National Forest Avalanche Center's forecast zones) with imagery beside snow line, snow depth and wind |
 | **Data** | [/snow/metadata.html](https://line.itogeospatial.com/snow/metadata.html): every Sentinel-2 scene behind the map with links to the files, a *reproduce* button on each, and per-tile snow history since 2018 |
 | **Methods** | [/snow/methods.html](https://line.itogeospatial.com/snow/methods.html): the algorithm, the SNOTEL agreement score, and where it goes wrong |
 | **Terrain** | Shading from USGS 3DEP 1 m lidar under every snow map (newest survey wins) |
@@ -19,9 +20,9 @@ Open, reproducible outdoor-conditions maps for Montana, built from free public d
 ```mermaid
 flowchart LR
   idx["S2 STAC GeoParquet index<br/>(Source Cooperative)"] -- "DuckDB: one SQL query" --> find["lib/s2index.py<br/>scenes per tile per day"]
-  find --> fetch["fetch_bands.py<br/>green · red · blue · swir16 · SCL"]
+  find --> fetch["fetch_bands.py<br/>green · red · blue · swir16 · nir08 · SCL"]
   cog["Sentinel-2 C1 L2A COGs<br/>(AWS, public)"] -- "range reads" --> fetch
-  fetch --> proc["process_tiles.py<br/>NDSI ≥ 0.4 or SCL snow,<br/>SCL cloud mask"]
+  fetch --> proc["process_tiles.py<br/>NDSI ≥ 0.4 or SCL snow,<br/>forest rule (NDFSI), SCL cloud mask"]
   proc -- "WebP tiles" --> r2[("Cloudflare R2")]
   proc -- "snowline.json, dates.json" --> git[("this repo")]
   snotel["NRCS SNOTEL"] --> check["build_snotel_agreement.py"]
@@ -32,7 +33,7 @@ flowchart LR
 
 * **No API servers and no keys for the imagery.** Scene search is a DuckDB query against static Parquet files: the [S2 STAC GeoParquet index](https://research.taylorgeospatial.org/s2-stac-geoparquet/) by Taylor Geospatial / TGE Labs, which mirrors Element 84's Earth Search.
 * **Every number traces to a source.** Each map lists the scene ids it was made from. The Data page links each scene to its Cloud-Optimized GeoTIFF.
-* **Automated.** A GitHub Action rebuilds the pass list and SNOTEL data every morning. A second Action turns each new clear pass into a map.
+* **Automated.** Three GitHub Actions: one rebuilds the pass list and SNOTEL data every morning, one turns every new pass over 10% of the area into a map, and one refreshes wind.
 
 ## Reproduce it yourself
 
@@ -61,20 +62,32 @@ python snowline/pipeline/process_tiles.py --date=2026-04-19
 python tools/dev_server.py                                    # http://localhost:8787/snow/#date=2026-04-19
 ```
 
+The tiles are not in git, so the local preview only shows snow for dates you processed yourself.
+
 ## Repository
 
 | Path | What |
 |---|---|
 | `lib/` | Shared Python: `s2index.py` (scene search on the GeoParquet index), `aoi.py` (areas and tiles) |
-| `snowline/pipeline/` | Snowline's pipeline. Every script runs on its own and has a `--help`. |
-| `snowline/site/` | The static site: map, Data page, Methods, webcams |
-| `_worker.js` | Cloudflare edge worker: routes `/snow` and `/river`, serves tiles from R2, proxies webcams |
+| `snowline/pipeline/` | Snowline's pipeline. Every script runs on its own. |
+| `snowline/site/` | The static site: map, range pages, terrain, Data page, Methods, webcams |
+| `snowline/PLAN.md` | Snowline's current state and open work |
+| `_worker.js` | Cloudflare edge worker: routes `/snow` and `/river`, serves tiles and wind from R2, proxies webcams |
+| `_shared/` | Front-end code shared by the products |
+| `.github/workflows/` | The scheduled jobs |
 | `riverline/` | RiverLine: river gauges, forecasts and history (in progress) |
 | `skyline/` | SkyLine: mountain weather (planned) |
-| `tools/dev_server.py` | Local preview without Cloudflare |
+| `tools/` | `dev_server.py` (local preview without Cloudflare), `release_check.py` (checks the deployed site), maintainer scripts |
 | `docs/` | Setup notes and images |
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) to work on it and [AGENTS.md](AGENTS.md) if you are an AI agent.
+
+## Direction
+
+* Snowline is free and open source. It is not for sale and has no paid tier.
+* It shows conditions. It does not plan trips, and it is not an avalanche forecast.
+* It uses free public data, and a free hosted source before a layer we would have to build and host.
+* Building on Snowline or its data? Get in touch: itogeospatial@gmail.com.
 
 ## Licence and credits
 

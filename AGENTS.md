@@ -23,6 +23,8 @@ are separate products.
 | Imagery (input) | `https://e84-earth-search-sentinel-data.s3.us-west-2.amazonaws.com/sentinel-2-c1-l2a/...`, read through each scene's `assets` hrefs |
 | Published metadata | `snowline/site/data/*.json` and `snowline/site/data_10m/*/snowline.json` in this repository, served under `/snow/data/` and `/snow/data_10m/` |
 | Published tiles | `/snow/api/tile/{date}/{file}.webp` (from Cloudflare R2, key `tiles/{date}/{file}`) |
+| Published wind | `/snow/api/wind/grid_48h.json` and `/snow/api/wind/stations_7d.json` (R2 key `wind/{file}`, written by `fetch_wind.py`; not in git) |
+| Current state and open work | `snowline/PLAN.md` |
 
 ## Area
 
@@ -35,6 +37,9 @@ All 12 are needed: the east edge runs into the X column in every row.
 Dropping `12TX*` leaves a strip on the east side unimaged. Pipeline code reads
 the box and tiles from `lib/aoi.py`; SNOTEL boxes are the AOI plus 0.15°
 (`pad_bbox`). Old maps keep the old grid; composites only mix passes on the same grid.
+
+Season: Oct 1 to May 31 (`lib/aoi.py` `in_season`). Passes outside it are not
+processed, listed or stored.
 
 ## Finding scenes (`lib/s2index.py`)
 
@@ -70,7 +75,11 @@ the box and tiles from `lib/aoi.py`; SNOTEL boxes are the AOI plus 0.15°
   11 (snow), excluding SCL classes 0, 3, 8, 9, 10. The SCL term was added
   on 2026-10-06 after the SNOTEL check. On 14 dates, point-sampling SCL at
   the stations raised agreement from 191/253 to 219/253 station-days,
-  with no new false snow. Each map's `snowline.json` records its `method`. The grid is 0.0003° (3×2 chunks, `snow_r{row}c{col}.webp`).
+  with no new false snow. Since classifier v2 (`process_tiles.py`
+  `CLASSIFIER = "v2"`, 2026-10-16) a second pass also marks forest pixels
+  above the day's snow line as snow where `NDFSI = (B8A − B11)/(B8A + B11) ≥ 0.39`;
+  `fetch_bands.py` fetches `nir08` (B8A) for it. See `docs/snow-classifier.md`.
+  Each map's `snowline.json` records its `method`. The grid is 0.0003° (3×2 chunks, `snow_r{row}c{col}.webp`).
 * Until 2026-10-06 `fetch_bands.py` gave cached windows a transform that was
   off by up to half a source pixel (it used the fractional window while
   `read()` used the rounded one; found by an independent review). Maps
@@ -101,7 +110,7 @@ valid_pixels`), `scenes[]` (`id, tile, datetime, cloud, nodata,
 baseline`), `ndsi_threshold`, `source`. Maps made before 2026-10-05 by
 the older pipeline have `tiles[]` instead of `chunks[]` and no `scenes`.
 
-`snowline/site/data_10m/dates.json`: `{"dates": [...], "latest": ...}`.
+`snowline/site/data_10m/dates.json`: `{"dates": [...], "latest": ..., "stats": {date: [imaged %, clear %]}}`.
 A date is listed only after its tiles reached R2 (enforced in CI by
 `update_date.sh`), and only if the map covers at least 10% of the area.
 
@@ -153,6 +162,10 @@ the majority of snow vs. ground pixels in a 3×3 window. Cloud, nodata and
 
 ## Measured quality
 
+The figures in this section were measured on 2026-10-05 and 2026-10-06, before
+classifier v2 and before the 2026-27 season. Newer per-date figures are in
+`snowline/site/data/snotel_agreement.json`.
+
 On 2025-11-30, the older per-tile pipeline's map agreed with 4 of 23
 SNOTEL stations. The same date reprocessed with the current pipeline
 agreed with 20 of 23 (87%), and snow cover went from 58.2% to 85.5% of
@@ -160,8 +173,8 @@ imaged pixels (2026-10-05). The 2025–26 season was reprocessed for that
 reason, with the SCL snow term, on 2026-10-06, together with every other
 pass that had at least one clear tile (so the latest view has sources). As of
 2026-10-06: 64 listed maps (2025-10-03 to 2026-10-03). Each pass on its own
-agrees with SNOTEL on 720 of 848 station-days (85%). The latest view, the
-map's default, agrees on 1,160 of 1,379 (84%): about the same rate, but it
+agrees with SNOTEL on 720 of 848 station-days (85%). The latest view (the
+map's default at the time; the map now opens on the newest single pass) agrees on 1,160 of 1,379 (84%): about the same rate, but it
 checks 60% more station-days because it covers more of the area. Passes
 that imaged under 10% of the area are processed and feed the latest view,
 but aren't listed on the timeline.

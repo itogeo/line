@@ -1,106 +1,99 @@
-# Snowline — Plan
+# Snowline plan
 
-> Read this at the start of any Snowline session. Update end-of-session.
+The current state of Snowline and the open work. Read this first; update it when
+something here changes. Older history is in `git log` and `docs/release-log.md`.
 
-**Last updated:** 2026-10-05
+**Last checked against the code:** 2026-11-21.
 
----
+## What it is
 
-## Status: Live at [line.itogeospatial.com/snow](https://line.itogeospatial.com/snow). Open-source launch target 2026-10-10.
+A free, open-source daily snow-cover map of SW Montana, live at
+[line.itogeospatial.com/snow](https://line.itogeospatial.com/snow). Sentinel-2
+imagery in, a snow / ground / cloud map out, checked against SNOTEL every pass.
 
-Automated daily pipeline: Sentinel-2 NDSI → snow cover map → SNOTEL comparison. Deployed on Cloudflare Pages with GitHub Actions.
+Direction (Ian): free and not for sale; no trip-planning features; use a free
+hosted source before building or hosting a layer ourselves; not an avalanche
+forecast.
 
----
+## State on 2026-11-21
 
-## What's been built
+- All four workflows ran green for the previous four days. `tools/release_check.py`
+  passed 17 of 17 against production.
+- 90 maps listed (2025-10-03 to 2026-11-20), 33 of them this season.
+- This season the map agrees with SNOTEL on 264 of 314 station checks (84%):
+  40 missed snow, 10 false snow (summed from `site/data/snotel_agreement.json`).
+- Wind: 73 stations in `stations_7d.json`.
 
-### Core map (`site/index.html`)
-- Mapbox GL JS snow cover raster + SNOTEL gauge dots
-- Date picker cycling through available scenes
-- Partial coverage handled gracefully in UI
+## How it runs
 
-### Webcam page (`site/webcam.html`)
-Full-featured webcam dashboard:
-- **Mapbox GL JS** map with viewshed fan icons (bearing-rotated, anchor bottom)
-- **14 MDT RWIS cameras** via `/api/mdtcam` worker proxy (posId pattern: `564{station*10+cam}`)
-- **Non-MDT cams**: NPS Yellowstone (img/proxy), ipcamlive embeds, KBZK streams
-- **Timestamp system**: `stampLoad(i)` / `stampErr(i)` update `.cam-ts` spans on load/error; green flash for fresh images
-- **Auto-refresh**: 2-min cycle for img cams, timestamp reset on each refresh
-- **Mobile CSS**: breakpoints at 620/480/380px; single-col at 380px, count/refresh pill hidden at 480px
-- **`_worker.js`** edge worker: `/api/camproxy` (CORS image proxy), `/api/mdtcam` (MDT RWIS latest image), `/api/snotel`, `/api/feedback`
+| Workflow | Schedule (UTC) | Does | Writes |
+|---|---|---|---|
+| `snowline-daily.yml` | 11:00 | Pass list, SNOTEL season, Mesonet snow depth, snow timeline (Mondays), then triggers imagery, files site feedback as issues, runs `release_check.py` | Commits `snowline/site/data/` to `main` |
+| `snowline-process-imagery.yml` | 13:00, and when the daily job triggers it | Every unprocessed pass over 10% of the area in the last 10 days: `update_date.sh` (fetch, classify, COGs, R2 upload), SNOTEL agreement, composites, terrain and range stats, STAC, R2 prune | Tiles to R2. Commits `data_10m/dates.json`, `data_10m/*/snowline.json`, `data/snotel_agreement.json`, `data/terrain_stats.json`, `data/range_stats.json`, `stac/` to `main` |
+| `snowline-wind.yml` | hourly at :25 | `fetch_wind.py --upload`: RTMA wind grid and station wind | R2 `wind/` only, nothing in git |
 
-### MDT camera posId pattern
-`564{stationIndex * 10 + cameraIndex}` — e.g. Three Forks station 12 cam 0 = `564120`
+GitHub starts scheduled jobs late. The daily commit usually lands 17:00 to 19:30
+UTC, and the hourly wind job has been firing about every 5 hours.
 
----
+Cloudflare Pages deploys `main` on every push, bot commits included. Tiles and
+wind are read from R2 by `_worker.js` at the repository root and are not part
+of the deploy.
 
-## Architecture: Imagery in CF R2 (not git)
+- Season: Oct 1 to May 31 (`lib/aoi.py`). Off-season passes are not processed,
+  listed or stored.
+- Area: bbox `(-112.6, 44.55, -109.0, 46.35)`, 12 MGRS tiles (`lib/aoi.py`).
+- Classifier: v2 in `process_tiles.py`. NDSI >= 0.4 or SCL 11, then a second
+  pass adds forest pixels above the day's snow line with NDFSI >= 0.39. Bench
+  and reasoning: `docs/snow-classifier.md`.
+- R2 pruning: every snow map is kept; true colour is kept for this season
+  (`prune_r2.py` flags in the imagery workflow).
 
-As of 2026-06-17, WebP tiles are stored in Cloudflare R2, not committed to git.
-Git repo only commits: `site/data/snowline.json`, `site/data_10m/dates.json`, `site/data_10m/{date}/snowline.json`.
+## Site (`snowline/site/`)
 
-### Tile pipeline
-```
-pipeline/update_date.sh → process_tiles.py → WebPs in site/data_10m/{date}/ →
-  curl PUT to CF R2 bucket "snowline-tiles" at key "tiles/{date}/{filename}.webp"
-  (guarded: only runs when CF_ACCOUNT_ID + CF_R2_TOKEN env vars are set)
-```
+| Page | What |
+|---|---|
+| `index.html` | The map. One large file (about 4,300 lines) with its script inline. Views: single pass (default), recent, latest. Loads `season.js`, `cams.js`, `wind.js`, `/snow/shared/freshness.js`. |
+| `range.html` | One page per range: imagery beside snow, depth, wind and a trust panel. Ranges are the GNFAC forecast zones in `data/gnfac_zones.geojson`. |
+| `terrain.html` | Snow by elevation band and aspect, from `data/terrain_classes.webp` and `terrain_stats.json`. |
+| `metadata.html` | Data page: scenes, snow history, SNOTEL. Loads `season.js`, `data.js`. |
+| `methods.html` | How the map is made and where it goes wrong. |
+| `webcam.html` | Webcams (`cams.js`). |
 
-### Tile serving
-`site/_worker.js` handles `GET /api/tile/{date}/{filename}.webp`:
-1. Look up R2 key `tiles/{date}/{filename}.webp` via `env.SNOWLINE_BUCKET.get(key)`
-2. If found → return `image/webp` with `Cache-Control: max-age=86400`
-3. If not found (old date still in git) → rewrite to `/data_10m/{date}/{file}` and serve from Pages static assets
+Terrain shading on `main` is hosted lidar tiles: `index.html` `addLidarShade()`
+loads `/snow/api/terrain/shade/{z}/{x}/{y}.webp` from R2, and
+`release_check.py` requires them. The branch `agent/charcoal-theme` replaces
+them with Mapbox hillshade and a charcoal frame. It has not been merged and is
+a month behind `main`. Two files on `main` already describe the branch's state
+as if it had shipped: the header of `tools/rebuild_area_layers.sh` and the last
+line of `docs/release-log.md`.
 
-### Frontend URL
-Tile references in `site/index.html` use `/api/tile/{date}/snow_r0c0.webp` (not `/data_10m/`).
-JSON metadata (`dates.json`, per-date `snowline.json`) still fetched from `/data_10m/` — served from Pages static assets.
+## Open work
 
-### Pruning
-`pipeline/prune_r2.py` (replaces old `prune_truecolor.py`):
-- Lists R2 objects, groups by date and type (snow vs truecolor)
-- Deletes snow tiles beyond 30 dates, truecolor beyond 10 dates
-- Strips `truecolor_file`/`truecolor_files` from local `site/data_10m/{date}/snowline.json` for pruned dates
+- **Phone crashes** (reported 2026-11-21; Mark is taking it). A code read of the
+  likely causes is in `docs/phone-crash-notes.md`. Nothing there is measured on
+  a device yet.
+- **`agent/charcoal-theme`**: merge or drop (Ian). If it merges, remove the
+  lidar route from `_worker.js`, the lidar checks in `release_check.py`,
+  `sync_r2.py --terrain`, `build_lidar_terrain.py` and the README terrain row.
+- **Wind cadence**: the hourly cron runs about every 5 hours. Undecided whether
+  to move the trigger off GitHub.
+- **Ridge wind stations** (Bridger, Lone Peak) are only on Synoptic, which needs
+  a token. Not set up.
+- **Map panel "Snow depth by range"** still groups SNOTEL by `season.js`
+  `STATION_RANGE`, not by the GNFAC zones the range page uses.
+- **Push retry**: both committing workflows retry the push three times and then
+  report success even if all three failed (`snowline-daily.yml:82-87`,
+  `snowline-process-imagery.yml:204-209`).
+- **No tests and no checks on pull requests.** `tools/release_check.py` only
+  checks the deployed site.
+- **Forced reprocess since 2026-10-01** was requested on 2026-10-16 after the
+  area and classifier changed. Not confirmed done.
+- Failure-mode example images for `methods.html`: not done.
+- Lighthouse on a real phone: not measured.
+- HLS (Landsat + Sentinel-2) for more frequent coverage: deferred, not planned.
 
-### One-time CF setup: see docs/cloudflare-setup.md
-As of 2026-10-05 the live site returned 404 for every tile: R2 bucket/binding
-were never set up, so no snow layer has shown since the monorepo move.
+## Not in git
 
----
-
-## 2026-10-16 state (next agent read this)
-- Classifier v2 in process_tiles.py (two passes; NDFSI forest rule above the day's snow line; B8A fetched). Bench: build_station_pixels.py + classifier_eval.py, results in docs/snow-classifier.md.
-- Season is Oct 1 to May 31 (lib/aoi.in_season); off-season dates are never fetched, listed or kept in R2.
-- Area (-112.6, 44.55, -109.0, 46.35), same 12 tiles. Needs the forced reprocess since 2026-10-01 (Ian runs it); it also rebuilds composites and terrain stats for those dates.
-- Composites: latest_* (newest clear) and recent_* (newest look, cloud included); dates.json carries per-pass [imaged %, clear %].
-- Wind: snowline-wind.yml hourly -> fetch_wind.py -> R2 wind/grid_48h.json + stations_7d.json, served at /snow/api/wind/; site/wind.js draws it.
-- Wind stations (2026-10-16): Mesonet + SNOTEL (AWDB) + NWS api.weather.gov stations >= 1,700 m; Bridger/Lone Peak ridge stations only on Synoptic (token, not set up). GitHub fires the hourly cron about every 5 h.
-- Range page (2026-10-18): site/range.html. build_terrain_stats.py also writes data/range_stats.json (this season, per range: band x aspect counts, imaged/seen/cloud %), committed by the imagery job; --missing backfills. Ranges = GNFAC forecast zones since 2026-10-19 (site/data/gnfac_zones.geojson from api.avalanche.org map-layer; 7 zones inside the area, Island Park left out at 41% inside); range page, terrain page and range_stats all use them. The map page's 'Snow depth by range' panel still groups SNOTEL by season.js STATION_RANGE.
-- Branch agent/charcoal-theme: charcoal frame + Mapbox hillshade instead of hosted lidar tiles; waiting on Ian.
-
-## Open / deferred
-
-- **R2 one-time setup**: docs/cloudflare-setup.md (Ian). Blocks the launch.
-- **Failure-mode example images** for methods.html (GUIDE 3.5) — not done.
-- **Lighthouse ≥ 90 mobile** (GUIDE 3.4) — not measured in a real browser yet.
-- **Livingston city cams**: No embeddable URLs found. American Bank cam page is JS-rendered. No KBZK feed for Livingston. May need ipcamlive search or another source.
-- **HLS coverage upgrade**: Replace S2 with NASA HLS for 90%+ daily coverage — DEFERRED, not urgent. See memory.
-- **Iteris CDN**: `mt.cdn.iteris-atis.com/rwis_images/{posId}-00-01.jpg` serves MDT cam images directly (no CORS needed for `<img>`). Could switch `mdt` type to direct `img` to reduce worker hops — not implemented.
-
----
-
-## Session log
-
-- **2026-10-05** — Open-source prep (GUIDE.md phases 0–3).
-  - Scene search moved to the S2 STAC GeoParquet index (`lib/s2index.py`, DuckDB). Collection 1 offset removed at download; pixel-identical to the old source on 12TVR 2026-04-19.
-  - `build_sat_availability.py`: S2 only, rolling 400 days (the old fixed range ended 2026-06-01, which is why no new pass was ever processed). Writes `scenes.json`.
-  - New: `build_snow_timeline.py`, `build_snotel_agreement.py`, `sync_r2.py`, `tools/dev_server.py`, `season.js`, `data.js`, `methods.html`.
-  - Map: seasons are dynamic (were hard-coded 2025-26), URL hash state, scene provenance + SNOTEL ground check in the panel, pass ticks (clear/partial/cloudy) on the timeline, next-pass chip, readable contrast.
-  - Data page: Scenes table with COG links + DuckDB reproduce, Snow history charts, SNOTEL tab picks its season.
-  - SNOTEL check showed the old per-tile maps missed most snow Nov–Mar (2025-11-30: 4/23 → 22/23 now). Snow = NDSI ≥ 0.4 **or SCL 11** (2026-10-06). Whole 2025–26 season reprocessed: 39 listed maps, 530/643 station-days agree (82%).
-  - Open data: class COGs per map (`export_cogs.py`) + static STAC (`build_stac.py`), served from R2 with Range.
-  - Open question for Ian: on the Topo basemap the snow layer is desaturated to white at 45% opacity and sits under the S2 imagery, so the snow classification is hard to see by default. Consider a higher default opacity or snow above imagery.
-
-- **2026-06-17** — Imagery migrated from git to CF R2. Added `prune_r2.py`, updated `update_date.sh` with R2 upload loop, updated `_worker.js` with `/api/tile/` route + Pages fallback, updated `index.html` tile URLs. One-time CF setup (bucket + binding + secrets) still needed from user.
-- **2026-04-22** — Webcam page fully built. MDT posId bug fixed (10x off). Timestamps added. Mobile CSS. Golf cams (Cottonwood Hills, Valley View) removed — went offline. MDT GPS coords corrected to road-precise positions. All pushed and live.
-- **2026-04-07** — Network plan created, Snowline noted as live and stable.
+Tiles (`*.webp`, `*.tif`) live in R2 bucket `snowline-tiles`. The imagery cache
+is `snowline/cache/`. Both are git-ignored. A fresh clone has metadata for every
+map but no pixels; see CONTRIBUTING.md for the local preview.

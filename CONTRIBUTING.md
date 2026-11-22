@@ -2,9 +2,11 @@
 
 Thanks for looking. Issues and pull requests are welcome: bug reports, a snow map that looks wrong somewhere you know well, new webcams, better methods.
 
+Current state and open work: [snowline/PLAN.md](snowline/PLAN.md).
+
 ## Setup
 
-Python 3.10+ and nothing else.
+Python 3.10+ and nothing else. CI runs 3.12.
 
 ```bash
 git clone https://github.com/itogeo/line.git && cd line
@@ -43,7 +45,20 @@ delete `snowline/cache/<date>` yourself. Use `--tiles` while developing.
 python tools/dev_server.py        # http://localhost:8787/snow/
 ```
 
-This serves the pages and the tiles in `snowline/site/data_10m/` the way the Cloudflare worker does in production. Webcam proxies and feedback only work in production.
+This serves the pages and the tiles in `snowline/site/data_10m/` the way the Cloudflare worker does in production. Tiles are not in git, so a fresh clone shows the map with no snow layer until you run `fetch_bands.py` and `process_tiles.py` for a date. Wind, webcam proxies and feedback only work in production.
+
+The pages carry a public Mapbox token. If the basemap does not load on `localhost`, the token is restricted to the live domain: put your own public token in its place while you work, and don't commit it.
+
+## How changes reach the site
+
+* **`main` is the live site.** Cloudflare Pages deploys `main` on every push, in a minute or two. There is no staging site.
+* **Work on a branch and open a pull request** against `main`.
+* **Bots commit to `main` several times a day.** The daily job commits `snowline/site/data/`. The imagery job commits `snowline/site/data_10m/dates.json`, `snowline/site/data_10m/*/snowline.json`, three files in `snowline/site/data/` and `snowline/site/stac/`. Branch from fresh `main`, rebase before you push, and never include those generated files in a pull request.
+* **Tiles and wind are not deployed.** CI writes them straight to R2 and the worker reads them from there.
+* **Check after a deploy:** `python tools/release_check.py` tests the live site (pages, newest map, tiles, data freshness). The daily job runs it too. `--base http://localhost:8787` points it at the local preview.
+* **Don't run the imagery workflow with `force=true`** without asking. It reprocesses dates and overwrites their tiles in R2.
+* The season is Oct 1 to May 31 (`lib/aoi.py`). Dates outside it are skipped by the pipeline.
+* Without `CF_ACCOUNT_ID` and `CF_API_TOKEN` in your shell, `update_date.sh` skips the R2 upload and the map stays on your machine. That is the normal way to develop.
 
 ## Conventions
 
@@ -58,7 +73,7 @@ This serves the pages and the tiles in `snowline/site/data_10m/` the way the Clo
 
 | Secret | Used by |
 |---|---|
-| `CF_API_TOKEN` | Uploading tiles to R2 (`snowline-process-imagery.yml`) and the RiverLine ingest |
+| `CF_API_TOKEN` | R2 writes for tiles (`snowline-process-imagery.yml`) and wind (`snowline-wind.yml`), reading site feedback (`snowline-daily.yml`), and the RiverLine ingest |
 
 The Cloudflare account id (`CF_ACCOUNT_ID`) is not secret. It is set in the
 workflow files. Running `sync_r2.py` or `prune_r2.py` locally needs both

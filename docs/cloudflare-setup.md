@@ -4,10 +4,12 @@ Snowline's tiles live in Cloudflare R2, not git. The map asks the edge worker
 (`_worker.js`) for `/snow/api/tile/{date}/{file}.webp`, and the worker reads
 R2 key `tiles/{date}/{file}.webp` from the bucket bound as `SNOWLINE_BUCKET`.
 
-**Status on 2026-10-05:** every tile request on the live site returns 404, so
-the map shows no snow layer at all. The tiles exist only on Ian's laptop
-(`snowline/site/data_10m/*/`, 26 dates, ~118 MB of snow tiles). Either the
-binding is missing or the bucket is empty. The steps below fix both.
+**Status on 2026-11-21:** this setup is done and working. Bucket
+`snowline-tiles` is bound as `SNOWLINE_BUCKET`, CI writes to it with
+`CF_API_TOKEN`, and `tools/release_check.py` gets the newest tiles from R2. The
+bucket also holds `wind/` and the lidar terrain tiles. The steps below are kept
+as a record of how it was set up and for rebuilding it. Contributors don't need
+any of this.
 
 Agents never do these steps and never handle the token.
 
@@ -37,7 +39,6 @@ The old `CF_API_TOKEN` has been in a local `.env` for months; replace it.
    gh secret set CF_API_TOKEN --repo itogeo/line      # paste when prompted
    ```
 
-   Do the same on the new public repo once it exists.
 
 ## 4. Backfill the tiles you already have
 
@@ -74,6 +75,6 @@ processes them, uploads with `sync_r2.py`, and only then lists the date.
 
 ## Later (optional): public open-data bucket
 
-To publish the snow masks as open data (GUIDE.md 6.1), give `snowline-tiles`
+To publish the snow masks from their own domain, give `snowline-tiles`
 a public custom domain (R2 → bucket → Settings → Custom Domains, e.g.
 `tiles.line.itogeospatial.com`). Nothing in the site depends on this.

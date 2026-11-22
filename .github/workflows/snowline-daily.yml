@@ -11,7 +11,8 @@ name: Snowline — Daily Update
 #   3. Weekly (Mondays): rebuilds snow_timeline.json, the 2015→ per-tile
 #      snow history, also from index metadata.
 #
-# Imagery processing is in snowline-process-imagery.yml (manual workflow).
+# Imagery processing is in snowline-process-imagery.yml, which this job
+# triggers and which also runs on its own schedule.
 
 on:
   schedule:

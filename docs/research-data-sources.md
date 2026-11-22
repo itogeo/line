@@ -1,5 +1,10 @@
 # Snowline: what to add next (research, 2026-10-14)
 
+> Status, 2026-11-21: a research note, not a plan. Since it was written, Mesonet
+> snow depth, the terrain grid and terrain stats, wind, and the range page have
+> shipped. The range page uses GNFAC's forecast zone outlines; avalanche
+> forecasts themselves are still out of scope. Open work is in `snowline/PLAN.md`.
+
 Question from Ian: how to show snow across elevations when SNOTEL sits only in
 the mountains; what open scientific data or models would add value; what
 public / community layers (Nordic trails etc.) could go on the map. Avalanche

@@ -1,7 +1,7 @@
 name: Snowline — Wind (hourly)
 
-# 48 hours of NOAA RTMA wind over the area + 7 days of Montana Mesonet station
-# wind, written to R2 (wind/grid_48h.json, wind/stations_7d.json) and served at
+# 48 hours of NOAA RTMA wind over the area + 7 days of station wind (Montana
+# Mesonet, NRCS SNOTEL, NWS), written to R2 (wind/grid_48h.json, wind/stations_7d.json) and served at
 # /snow/api/wind/<file>. Nothing is committed to git. See fetch_wind.py.
 # Free: GitHub-hosted runners cost nothing on a public repo.
 

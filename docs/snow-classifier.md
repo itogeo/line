@@ -1,5 +1,9 @@
 # Snow classifier: why 6–7k ft read snowier than 7–8k ft, and what to change
 
+> Status, 2026-11-21: the change this note recommends shipped as classifier v2
+> in `process_tiles.py` (2026-10-16). "Current classifier" below means the one
+> before v2, and the numbers are the pre-v2 bench.
+
 Ian, 2026-10-15: "Why does 6,000 to 7,000 ft have more snow than 7,000 to
 8,000 ft?" Current classifier (process_tiles.py): snow if NDSI >= 0.4 or
 Sen2Cor SCL = 11; SCL 0/3/8/9/10 dropped as cloud/no data; binary, ~20 m.

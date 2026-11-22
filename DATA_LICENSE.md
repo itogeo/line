@@ -3,8 +3,9 @@
 The **code** in this repository is licensed under [Apache-2.0](LICENSE).
 
 The **data** the Line Network shows comes from public sources, each under its
-own terms. Derived products we publish (Snowline snow masks, `scenes.json`,
-`snow_timeline.json`, `sat_availability.json`) inherit the attribution
+own terms. Derived products we publish (Snowline snow masks and class COGs, the STAC catalog, `scenes.json`,
+`snow_timeline.json`, `sat_availability.json`, `snotel_agreement.json`,
+`terrain_stats.json`, `range_stats.json`) inherit the attribution
 requirements of their inputs. If you reuse them, keep the credits below.
 
 | Source | Used for | Terms | Attribution |
@@ -13,10 +14,15 @@ requirements of their inputs. If you reuse them, keep the credits below.
 | **S2 STAC GeoParquet** index (Taylor Geospatial / TGE Labs, on Source Cooperative) | Finding scenes; scene metadata incl. `s2:snow_ice_percentage` | Code Apache-2.0; metadata mirrors Earth Search | Credit "Taylor Geospatial / TGE Labs, s2-stac-geoparquet" and link https://research.taylorgeospatial.org/s2-stac-geoparquet/ |
 | **Earth Search** STAC (Element 84) | Upstream of the index | Open | Credit "Element 84 Earth Search" |
 | **NRCS SNOTEL** (USDA) | Snow depth, SWE, normals | US Government work, public domain | Credit "USDA NRCS SNOTEL" |
+| **NOAA RTMA** (Real-Time Mesoscale Analysis, on AWS Open Data) | Wind map | Public domain | Credit "NOAA RTMA" |
+| **NWS** station observations (api.weather.gov) | Station wind | Public domain | Credit "NOAA / NWS" |
+| **Montana Mesonet** (Montana Climate Office, University of Montana) | Valley snow depth, station wind | Open API, no key. We have not found stated reuse terms: ask the Montana Climate Office before redistributing | Credit "Montana Mesonet, Montana Climate Office, University of Montana" |
+| **Gallatin National Forest Avalanche Center** forecast zones (National Avalanche Center public API, api.avalanche.org) | Range outlines | Published by the avalanche centers; no reuse terms stated in the API | Credit "Gallatin National Forest Avalanche Center" and link the zone's forecast |
+| **Copernicus DEM GLO-30** (public COGs on AWS) | Elevation and aspect grid | Free use with attribution | "produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved" |
 | **USGS** water data | RiverLine gauges | Public domain | Credit "USGS" |
 | **NOAA / NWS** (NWPS, forecasts) | RiverLine forecasts, weather | Public domain | Credit "NOAA / NWS" |
 | **MODIS MOD10A1** (NASA, via Microsoft Planetary Computer) | 25-year snow frequency layer | NASA EOSDIS data policy, no restrictions | Credit "NASA MODIS" |
-| **ESA WorldCover 2021** (via Microsoft Planetary Computer) | Forest mask | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | "© ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium" |
+| **ESA WorldCover 2021** (Microsoft Planetary Computer; public COGs on AWS) | Forest mask, forest share in the terrain grid | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | "© ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium" |
 | **USGS 3DEP** 1 m lidar elevation | Terrain shading under the snow | Public domain | Credit "USGS 3D Elevation Program" |
 | **USFS** roads | Map overlay | Public domain | Credit "USDA Forest Service" |
 | **Webcam images** (MDT, NPS, resorts, others) | Webcam page | Owned by each operator | Linked and proxied for display only. **Not redistributed and not covered by this repository's licences.** Follow each owner's terms. |
